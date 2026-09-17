@@ -10335,9 +10335,36 @@ public partial class MainViewModel :
     {
         var selectedItems = SubtitleGridSelectedItems.Cast<SubtitleLineViewModel>().OrderBy(p => p.StartTime).ToList();
         var vp = GetVideoPlayerControl();
-        if (Window == null || selectedItems.Count == 0 || vp == null)
+        if (Window == null || vp == null)
         {
             return false;
+        }
+
+        // Without a real selection - nothing selected, or just the current row - "Play selected
+        // lines" keeps going through every following line to the end of the file, skipping the
+        // gaps where there is nothing to hear. A deliberate multi-line selection still plays
+        // exactly those lines (issue #14655).
+        if (selectedItems.Count <= 1)
+        {
+            var start = selectedItems.Count == 1
+                ? selectedItems[0]
+                : Subtitles.FirstOrDefault(s => s.EndTime.TotalSeconds > vp.Position && !string.IsNullOrWhiteSpace(s.Text));
+            if (start == null)
+            {
+                return false;
+            }
+
+            var startIndex = Subtitles.IndexOf(start);
+            if (startIndex < 0)
+            {
+                startIndex = 0;
+            }
+
+            selectedItems = Subtitles.Skip(startIndex).Where(s => !string.IsNullOrWhiteSpace(s.Text)).ToList();
+            if (selectedItems.Count == 0)
+            {
+                return false;
+            }
         }
 
         vp.VideoPlayer.Pause();
