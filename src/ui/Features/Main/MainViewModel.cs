@@ -807,6 +807,12 @@ public partial class MainViewModel :
     private System.Timers.Timer _dropDownFormatsSearchTimer = new System.Timers.Timer(1000);
     private PlaySelectionItem? _playSelectionItem;
 
+    // True while the "play through the following subtitles and skip the gaps" playback started by
+    // the "Play selected lines" command is active. The position timer keeps the play selection
+    // alive while this is set, and pressing the command again pauses or resumes instead of
+    // restarting from the beginning (issue #14655).
+    private bool _playSelectionToggleMode;
+
     // Holds off the position timer's "playback stopped" handling for the moment between asking the
     // player to play and it reporting that it is playing (#14167) - see PlayStartGate.
     private readonly PlayStartGate _playStartGate = new();
@@ -10221,6 +10227,7 @@ public partial class MainViewModel :
     private void ResetPlaySelection()
     {
         _playSelectionItem = null;
+        _playSelectionToggleMode = false;
     }
 
     [RelayCommand]
@@ -10340,6 +10347,23 @@ public partial class MainViewModel :
             return false;
         }
 
+        // The mode is already running: act as a play/pause toggle, so a second press pauses and a
+        // third resumes from the same line instead of starting the whole selection over.
+        if (_playSelectionToggleMode)
+        {
+            if (vp.VideoPlayer.IsPlaying)
+            {
+                RequestPausePlayheadFreeze();
+                vp.VideoPlayer.Pause();
+            }
+            else
+            {
+                PlayVideo(vp);
+            }
+
+            return true;
+        }
+
         // Without a real selection - nothing selected, or just the current row - "Play selected
         // lines" keeps going through every following line to the end of the file, skipping the
         // gaps where there is nothing to hear. A deliberate multi-line selection still plays
@@ -10372,6 +10396,7 @@ public partial class MainViewModel :
         SeekVideoPlayer(vp, p.StartTime.TotalSeconds);
         PinPlayheadTo(p.StartTime.TotalSeconds);
         _playSelectionItem = new PlaySelectionItem(selectedItems, p.EndTime, loop);
+        _playSelectionToggleMode = true;
         PlayVideo(vp);
 
         return true;
@@ -32412,17 +32437,22 @@ public partial class MainViewModel :
                     // which resets the play selection a second way through SelectionChanged.
                     if (!_playStartGate.IsPending(Stopwatch.GetTimestamp(), Stopwatch.Frequency))
                     {
-                        ResetPlaySelection();
-
-                        // "Center also while paused" scrub-editing (SE 4's locked mode): while the user
-                        // wheels through the waveform, keep selecting the line under the centered cursor.
-                        // Only react to position *changes* — otherwise this would immediately steal back
-                        // the selection when the user picks a different line in the grid while paused.
-                        if (WaveformCenter && Se.Settings.Waveform.CenterVideoPositionAlsoWhenPaused &&
-                            SelectCurrentSubtitleWhilePlaying &&
-                            Math.Abs(mediaPlayerSeconds - _pausedSelectLastSeconds) > 0.001)
+                        // Keep the play selection alive while the "play selected lines" toggle mode is
+                        // paused, so pressing it again resumes from the same line instead of restarting.
+                        if (!_playSelectionToggleMode)
                         {
-                            SelectCurrentSubtitleAtPlayhead(mediaPlayerSeconds, subtitle);
+                            ResetPlaySelection();
+
+                            // "Center also while paused" scrub-editing (SE 4's locked mode): while the user
+                            // wheels through the waveform, keep selecting the line under the centered cursor.
+                            // Only react to position *changes* — otherwise this would immediately steal back
+                            // the selection when the user picks a different line in the grid while paused.
+                            if (WaveformCenter && Se.Settings.Waveform.CenterVideoPositionAlsoWhenPaused &&
+                                SelectCurrentSubtitleWhilePlaying &&
+                                Math.Abs(mediaPlayerSeconds - _pausedSelectLastSeconds) > 0.001)
+                            {
+                                SelectCurrentSubtitleAtPlayhead(mediaPlayerSeconds, subtitle);
+                            }
                         }
 
                         _pausedSelectLastSeconds = mediaPlayerSeconds;
