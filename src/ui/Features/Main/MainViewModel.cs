@@ -734,6 +734,11 @@ public partial class MainViewModel :
     private int _changeSubtitleHash = -1;
     private int _changeSubtitleHashOriginal = -1;
     private bool _subtitleGridSelectionChangedSkip;
+
+    // Set while the "Play selected lines" playback moves the grid's highlighted line onto the
+    // line it is playing. The selection-changed handler must not reset the play selection then,
+    // or the mode would stop advancing (issue #14655).
+    private bool _selectingSubtitleForPlayback;
     private long _lastKeyPressedMs;
     private bool _loading;
     private bool _opening;
@@ -10919,6 +10924,23 @@ public partial class MainViewModel :
         _playSelectionToggleMode = false;
     }
 
+    // Highlights the line the "Play selected lines" playback is on, without letting the grid's
+    // selection-changed handler reset the play selection that drives the playback. Must run on
+    // the UI thread.
+    private void SelectSubtitleForPlayback(SubtitleLineViewModel subtitle)
+    {
+        _selectingSubtitleForPlayback = true;
+        try
+        {
+            SubtitleGrid.SelectedItem = subtitle;
+            SubtitleGrid.ScrollIntoView(subtitle);
+        }
+        finally
+        {
+            _selectingSubtitleForPlayback = false;
+        }
+    }
+
     [RelayCommand]
     private void PlaySelectedLinesWithLoop()
     {
@@ -11086,6 +11108,7 @@ public partial class MainViewModel :
         PinPlayheadTo(p.StartTime.TotalSeconds);
         _playSelectionItem = new PlaySelectionItem(selectedItems, p.EndTime, loop);
         _playSelectionToggleMode = true;
+        SelectSubtitleForPlayback(p);
         PlayVideo(vp);
 
         return true;
@@ -33935,7 +33958,11 @@ public partial class MainViewModel :
         var outgoing = SelectedSubtitle;
         EditTextBox.ClearSelection();
         EditTextBoxOriginal.ClearSelection();
-        ResetPlaySelection();
+        if (!_selectingSubtitleForPlayback)
+        {
+            ResetPlaySelection();
+        }
+
         _updateAudioVisualizer = true;
 
         if (selectedItems.Count == 0)
@@ -34846,7 +34873,7 @@ public partial class MainViewModel :
                                 PinPlayheadTo(p.StartTime.TotalSeconds);
                             }
 
-                            Dispatcher.UIThread.Post(() => { SubtitleGrid.ScrollIntoView(p); });
+                            Dispatcher.UIThread.Post(() => { SelectSubtitleForPlayback(p); });
                         }
                     }
 
