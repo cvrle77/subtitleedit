@@ -221,4 +221,40 @@ public class AudioVisualizerWheelModifierTests : IDisposable
             Assert.True(scrolled > 0, "the wheel should scroll the waveform");
         });
     }
+
+    // Alt+wheel keeps the selected subtitle block in the middle of the view while zooming,
+    // instead of leaving the view's left edge where it was.
+    [AvaloniaFact]
+    public void AltWheel_ZoomsCenteredOnSelectedBlock()
+    {
+        var av = new AudioVisualizer { WavePeaks = MakePeaks(200), Width = WidthPx, Height = 200 };
+        var line = new SubtitleLineViewModel
+        {
+            Text = "text",
+            StartTime = TimeSpan.FromSeconds(100),
+            EndTime = TimeSpan.FromSeconds(102),
+        };
+
+        av.SetPosition(ViewStart, new List<SubtitleLineViewModel> { line }, 0, 0,
+            new List<SubtitleLineViewModel> { line });
+
+        var window = new Window { Width = WidthPx, Height = 200, Content = av };
+        _windows.Add(window);
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        window.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+        av.Focus();
+        Dispatcher.UIThread.RunJobs();
+
+        av.ZoomFactor = 1.0;
+        window.MouseWheel(WheelPoint, new Vector(0, 1), RawInputModifiers.Alt);
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(1.1, av.ZoomFactor, 3);
+
+        // The middle of the selected block (100-102s) should sit in the middle of the view.
+        var halfWidth = (WidthPx / 2) / (SampleRate * av.ZoomFactor);
+        Assert.Equal(101.0 - halfWidth, av.StartPositionSeconds, 2);
+    }
 }

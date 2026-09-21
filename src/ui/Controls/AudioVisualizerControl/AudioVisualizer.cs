@@ -850,6 +850,51 @@ public class AudioVisualizer : Control
     public const double MinZoomFactor = 0.1;
     public const double MaxZoomFactor = 20.0;
 
+    /// <summary>
+    /// Time to keep in the middle of the view while Alt+wheel zooming: the middle of the range
+    /// the user is dragging out in the waveform if there is one, otherwise the middle of the
+    /// selected subtitle block(s). Null when there is nothing to anchor to - the view then keeps
+    /// its left edge, as it did before.
+    /// </summary>
+    private double? GetZoomAnchorSeconds()
+    {
+        var dragged = NewSelectionParagraph;
+        if (dragged != null)
+        {
+            var draggedStart = dragged.StartTime.TotalSeconds;
+            var draggedEnd = dragged.EndTime.TotalSeconds;
+            if (draggedEnd > draggedStart)
+            {
+                return (draggedStart + draggedEnd) / 2.0;
+            }
+        }
+
+        var selected = AllSelectedParagraphs;
+        if (selected is { Count: > 0 })
+        {
+            var start = double.MaxValue;
+            var end = double.MinValue;
+            foreach (var paragraph in selected)
+            {
+                var paragraphStart = paragraph.StartTime.TotalSeconds;
+                var paragraphEnd = paragraph.EndTime.TotalSeconds;
+                if (paragraphStart < start)
+                {
+                    start = paragraphStart;
+                }
+
+                if (paragraphEnd > end)
+                {
+                    end = paragraphEnd;
+                }
+            }
+
+            return end > start ? (start + end) / 2.0 : start;
+        }
+
+        return null;
+    }
+
     private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
     {
         _lastMouseWheelScroll = Environment.TickCount64;
@@ -882,7 +927,17 @@ public class AudioVisualizer : Control
                 newZoomFactor = MaxZoomFactor;
             }
 
+            // Remember what to keep in the middle before the zoom changes: the range being
+            // dragged out in the waveform if there is one, otherwise the selected block(s).
+            var anchorSeconds = GetZoomAnchorSeconds();
+
             ZoomFactor = newZoomFactor;
+
+            if (anchorSeconds.HasValue && WavePeaks != null && WavePeaks.SampleRate > 0 && Bounds.Width > 0)
+            {
+                var halfWidthInSeconds = (Bounds.Width / 2) / (WavePeaks.SampleRate * newZoomFactor);
+                StartPositionSeconds = anchorSeconds.Value - halfWidthInSeconds;
+            }
 
             InvalidateVisual();
             return;
