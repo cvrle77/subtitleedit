@@ -68,7 +68,7 @@ v5.3.0-beta9 (22nd of September 2026)
 
 v5.3.0-beta8 (21st of September 2026)
 
-* "Play selected lines" (F5) with no real selection now keeps playing through every following line to the end, skipping the gaps between subtitles; pressing it again pauses and resumes, and the grid highlights the line being played - thx cvrle77
+* "Play selected lines" (F5) now plays from the playhead (even from a gap) through every following line to the end, skipping the gaps between subtitles and highlighting each line as it is reached; pressing it again pauses and resumes - thx cvrle77
 * Add editor-style layout 14 with a track timeline (video row and subtitle rows above the waveform)
 * Add sound on Linux to the FFmpeg video player (PulseAudio / PipeWire)
 * FFmpeg video player: real frame index, seek-free frame stepping (also variable frame rate) and faster scrubbing

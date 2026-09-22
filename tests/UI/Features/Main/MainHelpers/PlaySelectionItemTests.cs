@@ -50,6 +50,43 @@ public class PlaySelectionItemTests
         Assert.Equal(first.EndTime.TotalSeconds, item.EndSeconds);
     }
 
+    [Fact]
+    public void FindSubtitleAtOrAfter_PositionInGap_AnchorsToNextSubtitle()
+    {
+        var first = MakeSubtitle(1, 3);
+        var second = MakeSubtitle(9, 11);
+        var item = new PlaySelectionItem([first, second], first.EndTime, false);
+
+        var next = item.FindSubtitleAtOrAfter(5);
+
+        Assert.Same(second, next);
+        Assert.Equal(1, item.Index);
+        Assert.Equal(second.EndTime.TotalSeconds, item.EndSeconds);
+    }
+
+    [Fact]
+    public void FindSubtitleAtOrAfter_PositionInsideSubtitle_AnchorsToThatSubtitle()
+    {
+        var first = MakeSubtitle(1, 3);
+        var second = MakeSubtitle(9, 11);
+        var item = new PlaySelectionItem([first, second], first.EndTime, false);
+
+        var next = item.FindSubtitleAtOrAfter(10);
+
+        Assert.Same(second, next);
+        Assert.Equal(1, item.Index);
+    }
+
+    [Fact]
+    public void FindSubtitleAtOrAfter_PastTheEnd_ReturnsNull()
+    {
+        var first = MakeSubtitle(1, 3);
+        var second = MakeSubtitle(9, 11);
+        var item = new PlaySelectionItem([first, second], first.EndTime, false);
+
+        Assert.Null(item.FindSubtitleAtOrAfter(20));
+    }
+
     private static SubtitleLineViewModel MakeSubtitle(double startSeconds, double endSeconds) =>
         new()
         {

@@ -10252,6 +10252,26 @@ public partial class MainViewModel :
         }
     }
 
+    // During the "play selected lines" playback, hook the grid onto the subtitle the playhead is
+    // in as soon as it reaches it. This is what makes starting from a gap work: playback runs
+    // from the playhead, and when it reaches the next subtitle that line gets selected and the
+    // normal play-selection behavior (skip the gaps, follow the lines) takes over from there.
+    private void SelectSubtitleUnderPlayheadForPlayback(double positionSeconds)
+    {
+        var current = _playSelectionItem?.GetCurrentSubtitle();
+        if (current == null ||
+            positionSeconds < current.StartTime.TotalSeconds ||
+            positionSeconds > current.EndTime.TotalSeconds)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(SelectedSubtitle, current))
+        {
+            SelectSubtitleForPlayback(current);
+        }
+    }
+
     [RelayCommand]
     private void PlaySelectedLinesWithLoop()
     {
@@ -10369,32 +10389,27 @@ public partial class MainViewModel :
             return false;
         }
 
-        // The mode is already running: act as a play/pause toggle, so a second press pauses and a
-        // third resumes from the same line instead of starting the whole selection over.
+        // The mode is already running: a press pauses it. A press while it is paused starts it
+        // over anchored to the playhead, which may have been moved while it was paused.
         if (_playSelectionToggleMode)
         {
             if (vp.VideoPlayer.IsPlaying)
             {
                 RequestPausePlayheadFreeze();
                 vp.VideoPlayer.Pause();
-            }
-            else
-            {
-                PlayVideo(vp);
+                return true;
             }
 
-            return true;
+            _playSelectionToggleMode = false;
         }
 
         // Without a real selection - nothing selected, or just the current row - "Play selected
-        // lines" keeps going through every following line to the end of the file, skipping the
-        // gaps where there is nothing to hear. A deliberate multi-line selection still plays
-        // exactly those lines (issue #14655).
+        // lines" plays from the playhead through every following line to the end of the file,
+        // skipping the gaps where there is nothing to hear. A deliberate multi-line selection
+        // still plays exactly those lines (issue #14655).
         if (selectedItems.Count <= 1)
         {
-            var start = selectedItems.Count == 1
-                ? selectedItems[0]
-                : Subtitles.FirstOrDefault(s => s.EndTime.TotalSeconds > vp.Position && !string.IsNullOrWhiteSpace(s.Text));
+            var start = Subtitles.FirstOrDefault(s => s.EndTime.TotalSeconds > vp.Position && !string.IsNullOrWhiteSpace(s.Text));
             if (start == null)
             {
                 return false;
@@ -10413,13 +10428,13 @@ public partial class MainViewModel :
             }
         }
 
+        // Start exactly where the playhead is - do not seek to the first line. Playing from a gap
+        // is wanted: the grid hooks onto the subtitle as soon as playback reaches it.
         vp.VideoPlayer.Pause();
-        var p = selectedItems.First();
-        SeekVideoPlayer(vp, p.StartTime.TotalSeconds);
-        PinPlayheadTo(p.StartTime.TotalSeconds);
-        _playSelectionItem = new PlaySelectionItem(selectedItems, p.EndTime, loop);
+        _playSelectionItem = new PlaySelectionItem(selectedItems, selectedItems[0].EndTime, loop);
+        _playSelectionItem.FindSubtitleAtOrAfter(vp.Position);
         _playSelectionToggleMode = true;
-        SelectSubtitleForPlayback(p);
+        SelectSubtitleUnderPlayheadForPlayback(vp.Position);
         PlayVideo(vp);
 
         return true;
@@ -32434,6 +32449,13 @@ public partial class MainViewModel :
 
                             Dispatcher.UIThread.Post(() => { SelectSubtitleForPlayback(p); });
                         }
+                    }
+
+                    else if (_playSelectionItem != null && !_pauseRequested)
+                    {
+                        // Play-selected running from a gap: select the line the moment the playhead
+                        // reaches it, so the grid hooks on before the line's end.
+                        SelectSubtitleUnderPlayheadForPlayback(mediaPlayerSeconds);
                     }
 
                     else if (SelectCurrentSubtitleWhilePlaying && _playSelectionItem == null && !_pauseRequested)
