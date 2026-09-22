@@ -107,6 +107,9 @@ public class LanguageSettings
     public string SileroVadModel { get; set; }
     public string SileroVadInstalled { get; set; }
     public string SileroVadNotInstalled { get; set; }
+    public string VadThreshold { get; set; }
+    public string VadMinSpeechSeconds { get; set; }
+    public string VadMinSilenceSeconds { get; set; }
     public string RememberPositionAndSize { get; set; }
     public string OpenLastFileOnStart { get; set; }
     public string AutoSave { get; set; }
@@ -458,6 +461,9 @@ public class LanguageSettings
         SileroVadModel = "Silero VAD model";
         SileroVadInstalled = "Installed";
         SileroVadNotInstalled = "Not installed";
+        VadThreshold = "Voice detection threshold (0-1)";
+        VadMinSpeechSeconds = "Voice detection minimum speech (seconds)";
+        VadMinSilenceSeconds = "Voice detection minimum silence (seconds)";
         RememberPositionAndSize = "Remember window position and size";
         OpenLastFileOnStart = "Open last recent file on start";
         AutoSave = "Auto-save (save the open file while editing)";

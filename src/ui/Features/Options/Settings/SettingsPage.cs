@@ -1139,6 +1139,12 @@ public class SettingsPage : UserControl
             }),
             new SettingsItem(Se.Language.Options.Settings.WaveformCenterSmoothSeconds, () => UiUtil.MakeNumericUpDownOneDecimal(
                 0, 10, 120, _vm, nameof(_vm.WaveformCenterSmoothSeconds), defaultValue: 2.0m)),
+            new SettingsItem(Se.Language.Options.Settings.VadThreshold, () => UiUtil.MakeNumericUpDownTwoDecimals(
+                0, 1, 120, _vm, nameof(_vm.VadThreshold), defaultValue: 0.5m)),
+            new SettingsItem(Se.Language.Options.Settings.VadMinSpeechSeconds, () => UiUtil.MakeNumericUpDownTwoDecimals(
+                0, 10, 120, _vm, nameof(_vm.VadMinSpeechSeconds), defaultValue: 0.25m)),
+            new SettingsItem(Se.Language.Options.Settings.VadMinSilenceSeconds, () => UiUtil.MakeNumericUpDownTwoDecimals(
+                0, 10, 120, _vm, nameof(_vm.VadMinSilenceSeconds), defaultValue: 0.1m)),
         ]));
 
 

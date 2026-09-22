@@ -124,6 +124,15 @@ public class SeGeneral
     /// </summary>
     public bool SplitTrimUseVoiceDetection { get; set; }
 
+    /// <summary>Silero VAD speech threshold (probability, 0-1). Frames at or above it count as speech.</summary>
+    public double VadThreshold { get; set; }
+
+    /// <summary>Shortest run of speech the VAD keeps, in seconds - anything shorter is dropped as noise.</summary>
+    public double VadMinSpeechSeconds { get; set; }
+
+    /// <summary>Pauses shorter than this (seconds) are merged into one speech segment.</summary>
+    public double VadMinSilenceSeconds { get; set; }
+
     /// <summary>
     /// SE4 parity: whether an original subtitle that does not line up 1:1 may be edited (and
     /// therefore saved back over its file). Off means it is shown read-only, which is what protects
@@ -304,6 +313,9 @@ public class SeGeneral
         MoveAllLinesCustom1Ms = 10;
         MoveAllLinesCustom2Ms = 1000;
         PromptBeforeDelete = true;
+        VadThreshold = 0.5;
+        VadMinSpeechSeconds = 0.25;
+        VadMinSilenceSeconds = 0.1;
         AutoBackupOn = true;
         AutoBackupIntervalMinutes = 5;
         AutoBackupDeleteAfterDays = 90;
