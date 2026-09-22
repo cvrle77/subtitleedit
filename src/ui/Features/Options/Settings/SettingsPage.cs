@@ -426,24 +426,6 @@ public class SettingsPage : UserControl
             new SettingsItem(Se.Language.Options.Settings.TimeCodeMode, () => MakeComboBoxTimeCodeMode()),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextBoxLimitNewLines, nameof(_vm.TextBoxLimitNewLines)),
             MakeCheckboxSetting(Se.Language.General.LockTimeCodes, nameof(_vm.LockTimeCodes)),
-            MakeCheckboxSetting(Se.Language.Options.Settings.MinimalContextMenus, nameof(_vm.MinimalContextMenus)),
-            MakeCheckboxSetting(Se.Language.Options.Settings.TrimSilenceAfterSplit, nameof(_vm.TrimSilenceAfterSplit)),
-            MakeCheckboxSetting(Se.Language.Options.Settings.SplitTrimUseVoiceDetection, nameof(_vm.SplitTrimUseVoiceDetection)),
-            new SettingsItem(Se.Language.Options.Settings.SileroVadModel, () => new StackPanel
-            {
-                Orientation = Orientation.Horizontal,
-                Spacing = 10,
-                Children =
-                {
-                    MakeDownloadButton(Se.Language.Options.Settings.SileroVadModel, _vm.DownloadSileroVadCommand, nameof(_vm.SileroVadStatus)),
-                    new TextBlock
-                    {
-                        DataContext = _vm,
-                        [!TextBlock.TextProperty] = new Binding(nameof(_vm.SileroVadStatus)),
-                        VerticalAlignment = VerticalAlignment.Center,
-                    }
-                }
-            }),
             MakeCheckboxSetting(Se.Language.Options.Settings.RememberPositionAndSize, nameof(_vm.RememberPositionAndSize)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TitleBarFullFileName, nameof(_vm.TitleBarFullFileName)),
             MakeCheckboxSetting(Se.Language.Options.Settings.ShowRecentFiles, nameof(_vm.ShowRecentFiles)),
@@ -796,8 +778,6 @@ public class SettingsPage : UserControl
             MakeCheckboxSetting(Se.Language.Options.Settings.WaveformCenterVideoPositionAlsoWhenPaused, nameof(_vm.WaveformCenterVideoPositionAlsoWhenPaused)),
             MakeCheckboxSetting(Se.Language.Options.Settings.WaveformSelectCurrentSubtitleWhilePaused, nameof(_vm.WaveformSelectCurrentSubtitleWhilePaused)),
             MakeCheckboxSetting(Se.Language.Options.Settings.WaveformRememberZoom, nameof(_vm.WaveformRememberZoom)),
-            new SettingsItem(Se.Language.Options.Settings.WaveformCenterSmoothSeconds, () => UiUtil.MakeNumericUpDownOneDecimal(
-                0, 10, 120, _vm, nameof(_vm.WaveformCenterSmoothSeconds), defaultValue: 2.0m)),
             MakeCheckboxSetting(Se.Language.Options.Settings.WaveformDrawGridLines, nameof(_vm.WaveformDrawGridLines)),
             MakeCheckboxSetting(Se.Language.Options.Settings.WaveformUseSkiaRenderer, nameof(_vm.WaveformUseSkiaRenderer)),
             // SE 4 parity: the per-paragraph footer in the waveform ("#43  01:10" and the
@@ -1153,6 +1133,31 @@ public class SettingsPage : UserControl
                 () => UiUtil.MakeCheckBox(_vm, nameof(_vm.WriteToolsLog))),
             new SettingsItem(Se.Language.Options.Settings.ShowSettingsFile,
                 () => UiUtil.MakeLink(Se.GetSettingsFilePath(), _vm.ShowSettingsFileCommand).WithBindEnabed(_vm, nameof(_vm.ExistsSettingsFile))),
+        ]));
+
+
+        sections.Add(new SettingsSection("cvrle77", IconNames.Cogs, "#c084fc",
+        [
+            MakeCheckboxSetting(Se.Language.Options.Settings.MinimalContextMenus, nameof(_vm.MinimalContextMenus)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TrimSilenceAfterSplit, nameof(_vm.TrimSilenceAfterSplit)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.SplitTrimUseVoiceDetection, nameof(_vm.SplitTrimUseVoiceDetection)),
+            new SettingsItem(Se.Language.Options.Settings.SileroVadModel, () => new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 10,
+                Children =
+                {
+                    MakeDownloadButton(Se.Language.Options.Settings.SileroVadModel, _vm.DownloadSileroVadCommand, nameof(_vm.SileroVadStatus)),
+                    new TextBlock
+                    {
+                        DataContext = _vm,
+                        [!TextBlock.TextProperty] = new Binding(nameof(_vm.SileroVadStatus)),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    }
+                }
+            }),
+            new SettingsItem(Se.Language.Options.Settings.WaveformCenterSmoothSeconds, () => UiUtil.MakeNumericUpDownOneDecimal(
+                0, 10, 120, _vm, nameof(_vm.WaveformCenterSmoothSeconds), defaultValue: 2.0m)),
         ]));
 
 
