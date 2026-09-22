@@ -5955,7 +5955,9 @@ public partial class MainViewModel :
         }
 
         var s = Se.Settings.Waveform;
-        var seconds = AudioVisualizer.FindDataBelowThresholdBack(s.SeekSilenceMaxVolume, s.SeekSilenceMinDurationSeconds);
+        // SeekSilenceMaxVolume is a fraction of the loudest peak (0-1, what the dialog edits);
+        // FindDataBelowThreshold* take a percentage of it.
+        var seconds = AudioVisualizer.FindDataBelowThresholdBack(s.SeekSilenceMaxVolume * 100, s.SeekSilenceMinDurationSeconds);
         if (seconds >= 0)
         {
             vp.Position = seconds;
@@ -5972,7 +5974,7 @@ public partial class MainViewModel :
         }
 
         var s = Se.Settings.Waveform;
-        var seconds = AudioVisualizer.FindDataBelowThreshold(s.SeekSilenceMaxVolume, s.SeekSilenceMinDurationSeconds);
+        var seconds = AudioVisualizer.FindDataBelowThreshold(s.SeekSilenceMaxVolume * 100, s.SeekSilenceMinDurationSeconds);
         if (seconds >= 0)
         {
             vp.Position = seconds;
@@ -22087,10 +22089,10 @@ public partial class MainViewModel :
 
     /// <summary>
     /// After a split, moves the right half's start forward to where the next speech begins, trimming
-    /// the leading silence the cut left in front of it. Uses the "seek silence" volume for the
-    /// threshold (so the same values that already work for seeking silence apply here). A cut made
-    /// inside speech - no real silence in front of it - leaves the line untouched, as does a missing
-    /// waveform or no speech before the line's end.
+    /// the leading silence the cut left in front of it. The threshold is found adaptively from the
+    /// local noise floor and the speech level ahead (the same sweep "guess start" uses), so nothing
+    /// has to be tuned. A cut made inside speech - no real silence in front of it - leaves the line
+    /// untouched, as does a missing waveform or no speech before the line's end.
     /// </summary>
     private void TrimSplitRightHalfSilence(SubtitleLineViewModel firstHalf)
     {
@@ -22114,21 +22116,50 @@ public partial class MainViewModel :
             return;
         }
 
-        const double minSilenceSeconds = 0.1;
-        var speechStartSeconds = av.FindSpeechStartAfter(
-            Se.Settings.Waveform.SeekSilenceMaxVolume, minSilenceSeconds, startSeconds, maxForwardSeconds);
-        if (speechStartSeconds <= startSeconds)
+        var speechStartSeconds = FindAdaptiveSpeechStartAfter(av, startSeconds, maxForwardSeconds);
+        if (!speechStartSeconds.HasValue || speechStartSeconds.Value <= startSeconds)
         {
             return;
         }
 
-        var newStartMs = speechStartSeconds * TimeCode.BaseUnit;
+        var newStartMs = speechStartSeconds.Value * TimeCode.BaseUnit;
         if (newStartMs >= rightHalf.EndTime.TotalMilliseconds)
         {
             return; // would leave the line with no duration
         }
 
         rightHalf.StartTime = TimeSpan.FromMilliseconds(Math.Round(newStartMs));
+    }
+
+    /// <summary>
+    /// Finds where the next speech after <paramref name="startSeconds"/> begins, without a fixed
+    /// threshold: the local noise floor and the speech level ahead give a sweep of volume
+    /// percentages (as "guess start" does), and the first threshold that sees a speech onset wins.
+    /// Returns null when the position is not in real silence or no speech follows in the window.
+    /// </summary>
+    private double? FindAdaptiveSpeechStartAfter(AudioVisualizer av, double startSeconds, double maxForwardSeconds)
+    {
+        const double minSilenceSeconds = 0.1;
+        var reachSeconds = Math.Max(0.8, maxForwardSeconds);
+
+        var lowPercent = av.FindLowPercentage(startSeconds - 0.3, startSeconds + 0.3);
+        var highPercent = av.FindHighPercentage(startSeconds, startSeconds + reachSeconds);
+        if (highPercent <= lowPercent + 0.3)
+        {
+            return null; // no speech-level audio ahead - nothing to detect
+        }
+
+        var sweep = GetGuessVolumeSweep(lowPercent, highPercent);
+        for (var threshold = sweep.Start; threshold < sweep.End; threshold += 0.3)
+        {
+            var position = av.FindSpeechStartAfter(threshold, minSilenceSeconds, startSeconds, reachSeconds);
+            if (position > startSeconds)
+            {
+                return position;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>Scrolls minimally so <paramref name="row"/> is fully on screen; no selection change.</summary>
