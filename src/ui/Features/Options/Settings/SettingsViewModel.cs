@@ -132,6 +132,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _minimalContextMenus;
     [ObservableProperty] private bool _trimSilenceAfterSplit;
     [ObservableProperty] private bool _splitTrimUseVoiceDetection;
+    [ObservableProperty] private decimal _vadThreshold;
+    [ObservableProperty] private decimal _vadMinSpeechSeconds;
+    [ObservableProperty] private decimal _vadMinSilenceSeconds;
     [ObservableProperty] private string _sileroVadStatus = string.Empty;
     [ObservableProperty] private bool _lockTimeCodes;
     [ObservableProperty] private bool _rememberPositionAndSize;
@@ -838,6 +841,9 @@ public partial class SettingsViewModel : ObservableObject
         MinimalContextMenus = general.MinimalContextMenus;
         TrimSilenceAfterSplit = general.TrimSilenceAfterSplit;
         SplitTrimUseVoiceDetection = general.SplitTrimUseVoiceDetection;
+        VadThreshold = (decimal)general.VadThreshold;
+        VadMinSpeechSeconds = (decimal)general.VadMinSpeechSeconds;
+        VadMinSilenceSeconds = (decimal)general.VadMinSilenceSeconds;
         SetSileroVadStatus();
         LockTimeCodes = general.LockTimeCodes;
         RememberPositionAndSize = general.RememberPositionAndSize;
@@ -1757,6 +1763,9 @@ public partial class SettingsViewModel : ObservableObject
         general.MinimalContextMenus = MinimalContextMenus;
         general.TrimSilenceAfterSplit = TrimSilenceAfterSplit;
         general.SplitTrimUseVoiceDetection = SplitTrimUseVoiceDetection;
+        general.VadThreshold = (double)VadThreshold;
+        general.VadMinSpeechSeconds = (double)VadMinSpeechSeconds;
+        general.VadMinSilenceSeconds = (double)VadMinSilenceSeconds;
         general.LockTimeCodes = LockTimeCodes;
         general.RememberPositionAndSize = RememberPositionAndSize;
         general.TitleBarFullFileName = TitleBarFullFileName;

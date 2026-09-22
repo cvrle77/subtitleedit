@@ -58,7 +58,10 @@ public partial class MainViewModel
 
     private static string GetSpeechCacheFileName(string peakWaveFileName)
     {
-        return peakWaveFileName + "_speech.json";
+        // The VAD parameters are part of the name, so changing one in Settings builds a fresh map
+        // instead of reusing one made with the old values.
+        var general = Se.Settings.General;
+        return $"{peakWaveFileName}_speech_{general.VadThreshold:0.###}_{general.VadMinSpeechSeconds:0.###}_{general.VadMinSilenceSeconds:0.###}.json";
     }
 
     /// <summary>
@@ -104,7 +107,11 @@ public partial class MainViewModel
             var segments = await Task.Run(() =>
             {
                 using var vad = new SileroVad(modelPath);
-                return vad.DetectSpeech(waveFileName);
+                return vad.DetectSpeech(
+                    waveFileName,
+                    Se.Settings.General.VadThreshold,
+                    Se.Settings.General.VadMinSpeechSeconds,
+                    Se.Settings.General.VadMinSilenceSeconds);
             });
 
             // A newer video superseded this run - do not publish its result.
