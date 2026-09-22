@@ -131,6 +131,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _promptBeforeDelete;
     [ObservableProperty] private bool _minimalContextMenus;
     [ObservableProperty] private bool _trimSilenceAfterSplit;
+    [ObservableProperty] private bool _splitTrimUseVoiceDetection;
+    [ObservableProperty] private string _sileroVadStatus = string.Empty;
     [ObservableProperty] private bool _lockTimeCodes;
     [ObservableProperty] private bool _rememberPositionAndSize;
     [ObservableProperty] private bool _titleBarFullFileName;
@@ -835,6 +837,8 @@ public partial class SettingsViewModel : ObservableObject
         PromptBeforeDelete = general.PromptBeforeDelete;
         MinimalContextMenus = general.MinimalContextMenus;
         TrimSilenceAfterSplit = general.TrimSilenceAfterSplit;
+        SplitTrimUseVoiceDetection = general.SplitTrimUseVoiceDetection;
+        SetSileroVadStatus();
         LockTimeCodes = general.LockTimeCodes;
         RememberPositionAndSize = general.RememberPositionAndSize;
         TitleBarFullFileName = general.TitleBarFullFileName;
@@ -1752,6 +1756,7 @@ public partial class SettingsViewModel : ObservableObject
         general.PromptBeforeDelete = PromptBeforeDelete;
         general.MinimalContextMenus = MinimalContextMenus;
         general.TrimSilenceAfterSplit = TrimSilenceAfterSplit;
+        general.SplitTrimUseVoiceDetection = SplitTrimUseVoiceDetection;
         general.LockTimeCodes = LockTimeCodes;
         general.RememberPositionAndSize = RememberPositionAndSize;
         general.TitleBarFullFileName = TitleBarFullFileName;
@@ -2897,6 +2902,20 @@ public partial class SettingsViewModel : ObservableObject
 
         LibMpvPath = result.LibMpvFileName;
         SetLibMpvStatus();
+    }
+
+    private void SetSileroVadStatus()
+    {
+        SileroVadStatus = Nikse.SubtitleEdit.Logic.Media.SileroVadModel.IsInstalled()
+            ? Se.Language.Options.Settings.SileroVadInstalled
+            : Se.Language.Options.Settings.SileroVadNotInstalled;
+    }
+
+    [RelayCommand]
+    private async Task DownloadSileroVad()
+    {
+        await _windowService.ShowDialogAsync<DownloadSileroVadWindow, DownloadSileroVadViewModel>(Window!);
+        SetSileroVadStatus();
     }
 
     [RelayCommand]
