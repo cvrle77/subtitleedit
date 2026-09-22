@@ -421,6 +421,7 @@ public static class DependencyInjectionExtensions
         collection.AddTransient<DownloadFfmpegViewModel>();
         collection.AddTransient<DownloadGoogleLensOcrViewModel>();
         collection.AddTransient<DownloadLibMpvViewModel>();
+        collection.AddTransient<DownloadSileroVadViewModel>();
         collection.AddTransient<DownloadLibVlcViewModel>();
         collection.AddTransient<DownloadFfmpegLibsViewModel>();
         collection.AddTransient<DownloadLlamaCppViewModel>();

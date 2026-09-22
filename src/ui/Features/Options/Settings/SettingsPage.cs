@@ -427,6 +427,22 @@ public class SettingsPage : UserControl
             MakeCheckboxSetting(Se.Language.General.LockTimeCodes, nameof(_vm.LockTimeCodes)),
             MakeCheckboxSetting(Se.Language.Options.Settings.MinimalContextMenus, nameof(_vm.MinimalContextMenus)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TrimSilenceAfterSplit, nameof(_vm.TrimSilenceAfterSplit)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.SplitTrimUseVoiceDetection, nameof(_vm.SplitTrimUseVoiceDetection)),
+            new SettingsItem(Se.Language.Options.Settings.SileroVadModel, () => new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 10,
+                Children =
+                {
+                    MakeDownloadButton(Se.Language.Options.Settings.SileroVadModel, _vm.DownloadSileroVadCommand, nameof(_vm.SileroVadStatus)),
+                    new TextBlock
+                    {
+                        DataContext = _vm,
+                        [!TextBlock.TextProperty] = new Binding(nameof(_vm.SileroVadStatus)),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    }
+                }
+            }),
             MakeCheckboxSetting(Se.Language.Options.Settings.RememberPositionAndSize, nameof(_vm.RememberPositionAndSize)),
             MakeCheckboxSetting(Se.Language.Options.Settings.OpenLastFileOnStart, nameof(_vm.OpenLastFileOnStart)),
             MakeCheckboxSetting(Se.Language.Options.Settings.AutoConvertToUtf8, nameof(_vm.AutoConvertToUtf8)),

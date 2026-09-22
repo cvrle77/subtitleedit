@@ -22096,12 +22096,6 @@ public partial class MainViewModel :
     /// </summary>
     private void TrimSplitRightHalfSilence(SubtitleLineViewModel firstHalf)
     {
-        var av = AudioVisualizer;
-        if (av?.WavePeaks == null)
-        {
-            return;
-        }
-
         var firstIndex = Subtitles.IndexOf(firstHalf);
         var rightHalf = firstIndex < 0 ? null : Subtitles.GetOrNull(firstIndex + 1);
         if (rightHalf == null)
@@ -22116,7 +22110,24 @@ public partial class MainViewModel :
             return;
         }
 
-        var speechStartSeconds = FindAdaptiveSpeechStartAfter(av, startSeconds, maxForwardSeconds);
+        // Voice detection (Silero VAD) first when enabled and its speech map is ready - it tells a
+        // voice from a clink or a rustle; otherwise (or when it finds nothing) fall back to the
+        // amplitude waveform.
+        double? speechStartSeconds = null;
+        if (Se.Settings.General.SplitTrimUseVoiceDetection)
+        {
+            speechStartSeconds = FindSpeechStartAfter(startSeconds);
+        }
+
+        if (speechStartSeconds == null)
+        {
+            var av = AudioVisualizer;
+            if (av?.WavePeaks != null)
+            {
+                speechStartSeconds = FindAdaptiveSpeechStartAfter(av, startSeconds, maxForwardSeconds);
+            }
+        }
+
         if (!speechStartSeconds.HasValue || speechStartSeconds.Value <= startSeconds)
         {
             return;
@@ -27454,6 +27465,10 @@ public partial class MainViewModel :
             return;
         }
 
+        // Cached peaks: make sure the speech map is there too - loaded from its cache, or built with
+        // a separate ffmpeg pass when only the peaks were cached. Runs in the background.
+        _ = BuildSpeechSegmentsAsync(null, videoFileName, trackNumber, cached.PeakWaveFileName);
+
         Dispatcher.UIThread.Post(() =>
         {
             AudioVisualizer.WavePeaks = cached.WavePeaks;
@@ -28197,6 +28212,13 @@ public partial class MainViewModel :
                     DeleteTempFile(tempWaveFileName);
                     return;
                 }
+            }
+
+            if (File.Exists(tempWaveFileName))
+            {
+                // One VAD pass over the audio that was just extracted (no second ffmpeg run) so a
+                // split can later trim to the next voice; cached next to the peaks.
+                await BuildSpeechSegmentsAsync(tempWaveFileName, videoFileName, _audioTrack?.FfIndex ?? -1, peakWaveFileName);
             }
 
             ExtractShotChanges(videoFileName, _audioTrack?.FfIndex ?? -1);

@@ -103,6 +103,10 @@ public class LanguageSettings
     public string PromptBeforeDelete { get; set; }
     public string MinimalContextMenus { get; set; }
     public string TrimSilenceAfterSplit { get; set; }
+    public string SplitTrimUseVoiceDetection { get; set; }
+    public string SileroVadModel { get; set; }
+    public string SileroVadInstalled { get; set; }
+    public string SileroVadNotInstalled { get; set; }
     public string RememberPositionAndSize { get; set; }
     public string OpenLastFileOnStart { get; set; }
     public string AutoSave { get; set; }
@@ -450,6 +454,10 @@ public class LanguageSettings
         PromptBeforeDelete = "Prompt before delete";
         MinimalContextMenus = "Minimal right-click menus (text box, subtitle grid, waveform)";
         TrimSilenceAfterSplit = "Trim leading silence of the line after a split";
+        SplitTrimUseVoiceDetection = "Use voice detection (Silero VAD) for the split trim";
+        SileroVadModel = "Silero VAD model";
+        SileroVadInstalled = "Installed";
+        SileroVadNotInstalled = "Not installed";
         RememberPositionAndSize = "Remember window position and size";
         OpenLastFileOnStart = "Open last recent file on start";
         AutoSave = "Auto-save (save the open file while editing)";

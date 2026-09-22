@@ -118,6 +118,13 @@ public class SeGeneral
     public bool TrimSilenceAfterSplit { get; set; }
 
     /// <summary>
+    /// Use the Silero VAD voice detection (instead of the amplitude waveform) to trim the leading
+    /// silence after a split, so a non-voice sound (a spoon, a clink) is not taken for the speech.
+    /// Needs the model installed from Settings; falls back to the amplitude method when missing.
+    /// </summary>
+    public bool SplitTrimUseVoiceDetection { get; set; }
+
+    /// <summary>
     /// SE4 parity: whether an original subtitle that does not line up 1:1 may be edited (and
     /// therefore saved back over its file). Off means it is shown read-only, which is what protects
     /// the lines with no counterpart here (#13449). Remembered from the import prompt.

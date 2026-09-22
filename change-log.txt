@@ -68,6 +68,7 @@ v5.3.0-beta9 (22nd of September 2026)
 
 v5.3.0-beta8 (21st of September 2026)
 
+* Add optional Silero VAD voice detection for the split trim (Settings > General; the model is installed from there): the right line's start moves to the next voice, so a clink or a rustle is no longer taken for speech; without the model it falls back to the waveform - thx cvrle77
 * Add a "Trim leading silence of the line after a split" option (Settings > General): after "split line at video and text box position" the right line's start moves to the next speech (detected adaptively from the waveform, no tuning needed, and anything shorter than half a second is not mistaken for speech), so the silence the cut left in front of it is removed - thx cvrle77
 * Fix "Seek silence" volume: the dialog edited a 0-1 fraction while the search treated it as a percentage, so the setting was unusable below ~0.4; the value is now converted and the dialog edits it with three decimals - thx cvrle77
 * "Split line at video and text box position" now automatically re-wraps both halves the way "split/rebalance long lines" does, without asking - thx cvrle77
