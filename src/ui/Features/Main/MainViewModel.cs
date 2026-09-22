@@ -32531,9 +32531,14 @@ public partial class MainViewModel :
                         vp.Position = av.StartPositionSeconds + ((av.EndPositionSeconds - av.StartPositionSeconds) / 2.0);
                     }
                 }
-                else if (av != null && isPlaying &&
+                else if (av != null && isPlaying && !WaveformCenter &&
                          (mediaPlayerSeconds > av.EndPositionSeconds || mediaPlayerSeconds < av.StartPositionSeconds))
                 {
+                    // A play-head that left the visible window is scrolled back into view in one
+                    // step - but never in "center on position" mode: there the 60 fps cursor
+                    // timer's magnet is the one that moves the view, and this step would snap it
+                    // the whole way at once (a far next subtitle looked like an instant skip while
+                    // a short one glided, which is why it only showed up zoomed in).
                     // -1 like the other branches: passing an index here names the PRIMARY
                     // selected paragraph, and 0 made this scroll-jump branch mark the file's
                     // first line as selected in the waveform for one tick.
@@ -32835,11 +32840,8 @@ public partial class MainViewModel :
                             }
                             else
                             {
-                                // Smoothstep: the view barely moves at first, so the play-head is
-                                // seen to run ahead and only then does the waveform catch up and
-                                // slide it to the center. A front-loaded (ease-out) curve made a
-                                // far jump look like an instant skip.
-                                var eased = progress * progress * (3 - 2 * progress);
+                                // Ease-out: quick at first, settling as it reaches the center.
+                                var eased = 1 - Math.Pow(1 - progress, 3);
                                 av.StartPositionSeconds = _centerAnimFromSeconds + (centerTarget - _centerAnimFromSeconds) * eased;
                             }
                         }
