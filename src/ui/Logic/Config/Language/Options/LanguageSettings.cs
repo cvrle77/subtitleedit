@@ -102,6 +102,7 @@ public class LanguageSettings
     public string MoveStartEndStepMs { get; set; }
     public string MoveLinesShortenNeighbor { get; set; }
     public string PromptBeforeDelete { get; set; }
+    public string MinimalContextMenus { get; set; }
     public string RememberPositionAndSize { get; set; }
     public string TitleBarFullFileName { get; set; }
     public string ShowRecentFiles { get; set; }
@@ -466,6 +467,7 @@ public class LanguageSettings
         MoveStartEndStepMs = "Move start/end shortcut step (ms)";
         MoveLinesShortenNeighbor = "Move lines: shorten previous/next line instead of overlapping it";
         PromptBeforeDelete = "Prompt before delete";
+        MinimalContextMenus = "Minimal right-click menus (text box, subtitle grid, waveform)";
         RememberPositionAndSize = "Remember window position and size";
         TitleBarFullFileName = "Show full file path in title bar";
         ShowRecentFiles = "Show recent files (for reopen)";
