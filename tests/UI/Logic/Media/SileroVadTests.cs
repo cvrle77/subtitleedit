@@ -33,10 +33,11 @@ public class SileroVadTests
         Assert.Equal(15, SileroVad.FindSpeechStartAfter(segments, 9));
     }
 
-    // Runs the real ONNX model when it is installed on this machine, so the input/output names and
-    // tensor shapes are exercised instead of only found out on a user's first split.
+    // Runs the real ONNX model when it is installed on this machine, so the input/output names,
+    // tensor shapes and the 64-sample context handling are exercised instead of only found out on a
+    // split. A tone is not speech, so only that it runs is asserted here.
     [Fact]
-    public void DetectSpeech_RunsTheModel_WithoutThrowing()
+    public void DetectSpeech_RunsTheModel_WhenInstalled()
     {
         var modelPath = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -50,13 +51,13 @@ public class SileroVadTests
         var wavPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".wav");
         try
         {
-            // 1 s silence, then 1 s of a 440 Hz tone at 16 kHz mono.
-            WriteWav(wavPath, 16000, 1, 2.0, t => t < 1.0 ? 0.0 : 0.5 * Math.Sin(2 * Math.PI * 440 * t));
+            WriteWav(wavPath, 16000, 1, 3.0, t => t < 1.0 ? 0.0 : 0.6 * Math.Sin(2 * Math.PI * 200 * t));
 
             using var vad = new SileroVad(modelPath);
             var segments = vad.DetectSpeech(wavPath);
 
             Assert.NotNull(segments);
+            Assert.InRange(vad.LastMaxProbability, 0f, 1f);
         }
         finally
         {

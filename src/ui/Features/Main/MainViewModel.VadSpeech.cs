@@ -197,8 +197,8 @@ public partial class MainViewModel
                 Arguments = arguments,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
+                // No output redirection: nothing drains those pipes, so ffmpeg would block once the
+                // pipe buffer fills and WaitForExitAsync would never return.
             }
         };
 

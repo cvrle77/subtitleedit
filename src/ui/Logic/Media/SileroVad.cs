@@ -21,6 +21,7 @@ public sealed class SileroVad : IDisposable
 
     private const int SampleRate = 16000;
     private const int FrameSize = 512;   // 32 ms at 16 kHz
+    private const int ContextSize = 64;  // 16 kHz context prepended to each frame
     private const int StateSize = 128;
 
     private readonly InferenceSession _session;
@@ -29,6 +30,9 @@ public sealed class SileroVad : IDisposable
     private readonly string? _sampleRateInputName;
     private readonly string _outputName;
     private readonly string _stateOutputName;
+
+    /// <summary>Largest speech probability seen in the last <see cref="DetectSpeech"/> run (diagnostics).</summary>
+    public float LastMaxProbability { get; private set; }
 
     public SileroVad(string modelPath)
     {
@@ -66,6 +70,16 @@ public sealed class SileroVad : IDisposable
         }
 
         var probabilities = GetProbabilities(samples);
+        var max = 0f;
+        foreach (var probability in probabilities)
+        {
+            if (probability > max)
+            {
+                max = probability;
+            }
+        }
+
+        LastMaxProbability = max;
         return ToSegments(probabilities, threshold, minSpeechSeconds, minSilenceSeconds);
     }
 
@@ -76,13 +90,23 @@ public sealed class SileroVad : IDisposable
         var state = new float[2 * StateSize];
         var stateDims = new[] { 2, 1, StateSize };
 
+        // The model wants 64 context samples (16 kHz) prepended to each 512-sample chunk, and the
+        // context carries over from the previous chunk - feeding the bare 512 samples made every
+        // probability read as noise.
+        var context = new float[ContextSize];
+
         for (var frame = 0; frame < frameCount; frame++)
         {
-            var input = new DenseTensor<float>(new[] { 1, FrameSize });
             var offset = frame * FrameSize;
+            var input = new DenseTensor<float>(new[] { 1, ContextSize + FrameSize });
+            for (var i = 0; i < ContextSize; i++)
+            {
+                input[0, i] = context[i];
+            }
+
             for (var i = 0; i < FrameSize; i++)
             {
-                input[0, i] = samples[offset + i];
+                input[0, ContextSize + i] = samples[offset + i];
             }
 
             var inputs = new List<NamedOnnxValue>
@@ -93,8 +117,9 @@ public sealed class SileroVad : IDisposable
 
             if (_sampleRateInputName != null)
             {
-                inputs.Add(NamedOnnxValue.CreateFromTensor(_sampleRateInputName,
-                    new DenseTensor<long>(new[] { (long)SampleRate }, new[] { 1 })));
+                // The model's "sr" input is a scalar (0-dimensional), not a [1] tensor.
+                var sampleRate = new DenseTensor<long>(new[] { (long)SampleRate }, new int[0]);
+                inputs.Add(NamedOnnxValue.CreateFromTensor(_sampleRateInputName, sampleRate));
             }
 
             using var results = _session.Run(inputs);
@@ -107,6 +132,8 @@ public sealed class SileroVad : IDisposable
             {
                 state[index++] = value;
             }
+
+            Array.Copy(samples, offset + FrameSize - ContextSize, context, 0, ContextSize);
         }
 
         return probabilities;
