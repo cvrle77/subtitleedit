@@ -33,6 +33,13 @@ v5.3.0-beta10 (23rd of September 2026)
 
 v5.3.0-beta9 (22nd of September 2026)
 
+* Add optional Silero VAD voice detection for the split trim (Settings > General; the model is installed from there): the right line's start moves to the next voice, so a clink or a rustle is no longer taken for speech; without the model it falls back to the waveform - thx cvrle77
+* Add a "Trim leading silence of the line after a split" option (Settings > General): after "split line at video and text box position" the right line's start moves to the next speech (detected adaptively from the waveform, no tuning needed, and anything shorter than half a second is not mistaken for speech), so the silence the cut left in front of it is removed - thx cvrle77
+* Fix "Seek silence" volume: the dialog edited a 0-1 fraction while the search treated it as a percentage, so the setting was unusable below ~0.4; the value is now converted and the dialog edits it with three decimals - thx cvrle77
+* "Split line at video and text box position" now automatically re-wraps both halves the way "split/rebalance long lines" does, without asking - thx cvrle77
+* Add a "Minimal right-click menus" option (Settings > General): keeps only the commands you use in the subtitle text box (split at video and text box position), the subtitle grid (merge selected) and the waveform (insert new selection / merge with line before/after) - thx cvrle77
+* Waveform "center on video position": the play-head now eases to the center over a configurable time instead of snapping the whole waveform over, and the ease pauses while you scroll/drag/zoom and resumes when you stop. A far next subtitle no longer snaps the view instantly, even when it arrives while the ease is still running - the 50 ms play-head-follow step stays out of the way while centering is on, and a jump mid-ease restarts the ease from the current position - thx cvrle77
+* "Play selected lines" (F5) now plays from the playhead (even from a gap) through every following line to the end, skipping the gaps between subtitles and highlighting each line as it is reached; pressing it again pauses and resumes - thx cvrle77
 * Add TranslatePsy-AfriSLM 4B (English <-> 19 African languages) to the llama.cpp auto-translate models
 * Add Romanian OCR fix replace list (cedilla ş/ţ to comma below ș/ț) - thx Gabriel
 * Batch convert: OCR language per file from the container track or file name (e.g. "Movie [fra].sup") - thx Gabriel
@@ -68,13 +75,6 @@ v5.3.0-beta9 (22nd of September 2026)
 
 v5.3.0-beta8 (21st of September 2026)
 
-* Add optional Silero VAD voice detection for the split trim (Settings > General; the model is installed from there): the right line's start moves to the next voice, so a clink or a rustle is no longer taken for speech; without the model it falls back to the waveform - thx cvrle77
-* Add a "Trim leading silence of the line after a split" option (Settings > General): after "split line at video and text box position" the right line's start moves to the next speech (detected adaptively from the waveform, no tuning needed, and anything shorter than half a second is not mistaken for speech), so the silence the cut left in front of it is removed - thx cvrle77
-* Fix "Seek silence" volume: the dialog edited a 0-1 fraction while the search treated it as a percentage, so the setting was unusable below ~0.4; the value is now converted and the dialog edits it with three decimals - thx cvrle77
-* "Split line at video and text box position" now automatically re-wraps both halves the way "split/rebalance long lines" does, without asking - thx cvrle77
-* Add a "Minimal right-click menus" option (Settings > General): keeps only the commands you use in the subtitle text box (split at video and text box position), the subtitle grid (merge selected) and the waveform (insert new selection / merge with line before/after) - thx cvrle77
-* Waveform "center on video position": the play-head now eases to the center over a configurable time instead of snapping the whole waveform over, and the ease pauses while you scroll/drag/zoom and resumes when you stop. A far next subtitle no longer snaps the view instantly, even when it arrives while the ease is still running - the 50 ms play-head-follow step stays out of the way while centering is on, and a jump mid-ease restarts the ease from the current position - thx cvrle77
-* "Play selected lines" (F5) now plays from the playhead (even from a gap) through every following line to the end, skipping the gaps between subtitles and highlighting each line as it is reached; pressing it again pauses and resumes - thx cvrle77
 * Add editor-style layout 14 with a track timeline (video row and subtitle rows above the waveform)
 * Add sound on Linux to the FFmpeg video player (PulseAudio / PipeWire)
 * FFmpeg video player: real frame index, seek-free frame stepping (also variable frame rate) and faster scrubbing
