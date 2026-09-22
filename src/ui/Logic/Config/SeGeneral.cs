@@ -104,6 +104,12 @@ public class SeGeneral
     public bool LockTimeCodes { get; set; }
 
     /// <summary>
+    /// Show only a handful of the commands that are actually used in the three right-click menus
+    /// (subtitle text box, subtitle grid, waveform) and hide the rest. Configurable in Settings.
+    /// </summary>
+    public bool MinimalContextMenus { get; set; }
+
+    /// <summary>
     /// SE4 parity: whether an original subtitle that does not line up 1:1 may be edited (and
     /// therefore saved back over its file). Off means it is shown read-only, which is what protects
     /// the lines with no counterpart here (#13449). Remembered from the import prompt.
