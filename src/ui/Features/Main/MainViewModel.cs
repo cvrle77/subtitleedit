@@ -32835,8 +32835,11 @@ public partial class MainViewModel :
                             }
                             else
                             {
-                                // Ease-out cubic: quick at first, settling as it reaches the center.
-                                var eased = 1 - Math.Pow(1 - progress, 3);
+                                // Smoothstep: the view barely moves at first, so the play-head is
+                                // seen to run ahead and only then does the waveform catch up and
+                                // slide it to the center. A front-loaded (ease-out) curve made a
+                                // far jump look like an instant skip.
+                                var eased = progress * progress * (3 - 2 * progress);
                                 av.StartPositionSeconds = _centerAnimFromSeconds + (centerTarget - _centerAnimFromSeconds) * eased;
                             }
                         }
