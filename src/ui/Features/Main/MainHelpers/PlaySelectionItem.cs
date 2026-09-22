@@ -52,6 +52,32 @@ public class PlaySelectionItem
         return Subtitles[Index].StartTime.TotalSeconds;
     }
 
+    public SubtitleLineViewModel? GetCurrentSubtitle()
+    {
+        return Index >= 0 && Index < Subtitles.Count ? Subtitles[Index] : null;
+    }
+
+    /// <summary>
+    /// Moves the selection onto the first subtitle that contains the playhead or starts after it,
+    /// so resuming after the playhead was moved (a click in a gap, a scrub) hooks onto the next
+    /// subtitle instead of continuing from a stale index. Null when the playhead is past the last
+    /// subtitle of the selection.
+    /// </summary>
+    public SubtitleLineViewModel? FindSubtitleAtOrAfter(double playerPositionInSeconds)
+    {
+        for (var i = 0; i < Subtitles.Count; i++)
+        {
+            if (Subtitles[i].EndTime.TotalSeconds > playerPositionInSeconds)
+            {
+                Index = i;
+                EndSeconds = Subtitles[i].EndTime.TotalSeconds;
+                return Subtitles[i];
+            }
+        }
+
+        return null;
+    }
+
     public bool HasGapOrIsFirst()
     {
         if (Index < 1)
