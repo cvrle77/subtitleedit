@@ -22140,7 +22140,7 @@ public partial class MainViewModel :
     private double? FindAdaptiveSpeechStartAfter(AudioVisualizer av, double startSeconds, double maxForwardSeconds)
     {
         const double minSilenceSeconds = 0.1;
-        const double minSpeechSeconds = 0.1;
+        const double minSpeechSeconds = 0.5;
         var reachSeconds = Math.Max(0.8, maxForwardSeconds);
 
         var lowPercent = av.FindLowPercentage(startSeconds - 0.3, startSeconds + 0.3);
