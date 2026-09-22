@@ -4626,6 +4626,60 @@ public class AudioVisualizer : Control
     }
 
     /// <summary>
+    /// Finds where the speech after <paramref name="startSeconds"/> begins, i.e. the end of the
+    /// silence the position sits in. Used to trim the leading silence off the right half of a
+    /// split. Returns -1 when the position is already in speech (a cut inside speech), when the
+    /// silence before that speech is shorter than <paramref name="minSilenceSeconds"/>, or when no
+    /// speech follows within <paramref name="maxForwardSeconds"/> - the caller then leaves the
+    /// position untouched.
+    /// </summary>
+    /// <returns>video position in seconds, -1 if not found</returns>
+    public double FindSpeechStartAfter(double thresholdPercent, double minSilenceSeconds, double startSeconds, double maxForwardSeconds)
+    {
+        if (WavePeaks == null || WavePeaks.Peaks.Count == 0)
+        {
+            return -1;
+        }
+
+        var startSample = SecondsToSampleIndex(startSeconds);
+        if (startSample < 0 || startSample >= WavePeaks.Peaks.Count)
+        {
+            return -1;
+        }
+
+        var threshold = thresholdPercent / 100.0 * WavePeaks.HighestPeak;
+        if (WavePeaks.Peaks[startSample].Abs > threshold)
+        {
+            return -1; // already speech
+        }
+
+        var endSample = maxForwardSeconds > 0
+            ? Math.Min(WavePeaks.Peaks.Count - 1, SecondsToSampleIndex(startSeconds + maxForwardSeconds))
+            : WavePeaks.Peaks.Count - 1;
+        var minSilenceSamples = Math.Max(0, SecondsToSampleIndex(minSilenceSeconds));
+
+        var silenceCount = 0;
+        for (var i = startSample; i <= endSample; i++)
+        {
+            if (WavePeaks.Peaks[i].Abs <= threshold)
+            {
+                silenceCount++;
+            }
+            else
+            {
+                if (silenceCount < minSilenceSamples)
+                {
+                    return -1; // too little silence in front of it - treat as speech
+                }
+
+                return SampleIndexToSeconds(i);
+            }
+        }
+
+        return -1; // no speech within the window
+    }
+
+    /// <summary>
     /// "Guess start": finds the moment the speech around <paramref name="startSeconds"/> begins,
     /// i.e. where the silence before it ends. A cue that sits in silence is moved forward to the
     /// first speech within <paramref name="maxForwardSeconds"/>; a cue that sits in speech is

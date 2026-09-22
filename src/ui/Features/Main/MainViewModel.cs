@@ -21995,6 +21995,11 @@ public partial class MainViewModel :
             if (atVideoPosition && atTextBoxPosition && Subtitles.Count > countBefore)
             {
                 RebalanceAfterSplit(s, language);
+
+                if (Se.Settings.General.TrimSilenceAfterSplit)
+                {
+                    TrimSplitRightHalfSilence(s);
+                }
             }
         });
 
@@ -22078,6 +22083,52 @@ public partial class MainViewModel :
         {
             line.Text = rebalanced;
         }
+    }
+
+    /// <summary>
+    /// After a split, moves the right half's start forward to where the next speech begins, trimming
+    /// the leading silence the cut left in front of it. Uses the "seek silence" volume for the
+    /// threshold (so the same values that already work for seeking silence apply here). A cut made
+    /// inside speech - no real silence in front of it - leaves the line untouched, as does a missing
+    /// waveform or no speech before the line's end.
+    /// </summary>
+    private void TrimSplitRightHalfSilence(SubtitleLineViewModel firstHalf)
+    {
+        var av = AudioVisualizer;
+        if (av?.WavePeaks == null)
+        {
+            return;
+        }
+
+        var firstIndex = Subtitles.IndexOf(firstHalf);
+        var rightHalf = firstIndex < 0 ? null : Subtitles.GetOrNull(firstIndex + 1);
+        if (rightHalf == null)
+        {
+            return;
+        }
+
+        var startSeconds = rightHalf.StartTime.TotalSeconds;
+        var maxForwardSeconds = rightHalf.Duration.TotalSeconds;
+        if (maxForwardSeconds <= 0)
+        {
+            return;
+        }
+
+        const double minSilenceSeconds = 0.1;
+        var speechStartSeconds = av.FindSpeechStartAfter(
+            Se.Settings.Waveform.SeekSilenceMaxVolume, minSilenceSeconds, startSeconds, maxForwardSeconds);
+        if (speechStartSeconds <= startSeconds)
+        {
+            return;
+        }
+
+        var newStartMs = speechStartSeconds * TimeCode.BaseUnit;
+        if (newStartMs >= rightHalf.EndTime.TotalMilliseconds)
+        {
+            return; // would leave the line with no duration
+        }
+
+        rightHalf.StartTime = TimeSpan.FromMilliseconds(Math.Round(newStartMs));
     }
 
     /// <summary>Scrolls minimally so <paramref name="row"/> is fully on screen; no selection change.</summary>

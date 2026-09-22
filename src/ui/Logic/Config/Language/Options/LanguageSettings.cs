@@ -102,6 +102,7 @@ public class LanguageSettings
     public string MoveLinesShortenNeighbor { get; set; }
     public string PromptBeforeDelete { get; set; }
     public string MinimalContextMenus { get; set; }
+    public string TrimSilenceAfterSplit { get; set; }
     public string RememberPositionAndSize { get; set; }
     public string OpenLastFileOnStart { get; set; }
     public string AutoSave { get; set; }
@@ -448,6 +449,7 @@ public class LanguageSettings
         MoveLinesShortenNeighbor = "Move lines: shorten previous/next line instead of overlapping it";
         PromptBeforeDelete = "Prompt before delete";
         MinimalContextMenus = "Minimal right-click menus (text box, subtitle grid, waveform)";
+        TrimSilenceAfterSplit = "Trim leading silence of the line after a split";
         RememberPositionAndSize = "Remember window position and size";
         OpenLastFileOnStart = "Open last recent file on start";
         AutoSave = "Auto-save (save the open file while editing)";
