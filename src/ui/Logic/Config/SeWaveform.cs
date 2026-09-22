@@ -25,6 +25,11 @@ public class SeWaveform
     public bool RememberZoom { get; set; }
     public double ZoomFactor { get; set; }
     public double VerticalZoomFactor { get; set; }
+
+    // Seconds the view takes to ease the play-head back to the center when "center on video
+    // position" is on and the play-head is off-center (starting playback, a seek, scrubbing) -
+    // instead of snapping the whole waveform over. Configurable in Settings.
+    public double CenterSmoothSeconds { get; set; }
     public bool DrawGridLines { get; set; }
 
     /// <summary>
@@ -149,6 +154,7 @@ public class SeWaveform
         UseSkiaRenderer = false;
         FocusTextBoxAfterInsertNew = true;
         SpectrogramCombinedWaveformHeight = 50;
+        CenterSmoothSeconds = 2.0;
         WaveformTextFontSize = 10;
         WaveformTextFontBold = false;
         WaveformTextColor = Colors.White.FromColorToHex();

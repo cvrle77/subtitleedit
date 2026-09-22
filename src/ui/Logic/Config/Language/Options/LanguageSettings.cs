@@ -133,6 +133,7 @@ public class LanguageSettings
     public string WaveformCenterVideoPositionAlsoWhenPaused { get; set; }
     public string WaveformSelectCurrentSubtitleWhilePaused { get; set; }
     public string WaveformRememberZoom { get; set; }
+    public string WaveformCenterSmoothSeconds { get; set; }
     public string WaveformShowToolbar { get; set; }
     public string WaveformShowToolbarEdit { get; set; }
     public string WaveformShowToolbarEditLabel { get; set; }
@@ -497,6 +498,7 @@ public class LanguageSettings
         WaveformCenterVideoPositionAlsoWhenPaused = "Center video position also while paused";
         WaveformSelectCurrentSubtitleWhilePaused = "Select current subtitle also while paused";
         WaveformRememberZoom = "Remember zoom (horizontal and vertical)";
+        WaveformCenterSmoothSeconds = "Center transition time (seconds)";
         WaveformShowToolbar = "Show toolbar";
         WaveformShowToolbarEdit = "Edit toolbar...";
         WaveformShowToolbarEditLabel = "Toolbar items";
