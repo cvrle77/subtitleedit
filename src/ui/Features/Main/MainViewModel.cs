@@ -22150,17 +22150,12 @@ public partial class MainViewModel :
             return null; // no speech-level audio ahead - nothing to detect
         }
 
-        var sweep = GetGuessVolumeSweep(lowPercent, highPercent);
-        for (var threshold = sweep.Start; threshold < sweep.End; threshold += 0.3)
-        {
-            var position = av.FindSpeechStartAfter(threshold, minSilenceSeconds, minSpeechSeconds, startSeconds, reachSeconds);
-            if (position > startSeconds)
-            {
-                return position;
-            }
-        }
-
-        return null;
+        // Halfway between the noise floor and the loudest ahead: this sees past ambient noise
+        // (which sits near the floor) and only counts a sound that reaches a good part of the
+        // speech level, instead of whatever first pokes above the floor.
+        var threshold = lowPercent + (highPercent - lowPercent) * 0.5;
+        var position = av.FindSpeechStartAfter(threshold, minSilenceSeconds, minSpeechSeconds, startSeconds, reachSeconds);
+        return position > startSeconds ? position : null;
     }
 
     /// <summary>Scrolls minimally so <paramref name="row"/> is fully on screen; no selection change.</summary>
