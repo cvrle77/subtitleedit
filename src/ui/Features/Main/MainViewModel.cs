@@ -22117,6 +22117,12 @@ public partial class MainViewModel :
         if (Se.Settings.General.SplitTrimUseVoiceDetection)
         {
             speechStartSeconds = FindSpeechStartAfter(startSeconds);
+            if (speechStartSeconds == null)
+            {
+                // No map yet (option or model enabled after the video was loaded): build it now so
+                // the next split uses the voice detection; this one falls back to the waveform.
+                EnsureSpeechSegmentsBuilding();
+            }
         }
 
         if (speechStartSeconds == null)
