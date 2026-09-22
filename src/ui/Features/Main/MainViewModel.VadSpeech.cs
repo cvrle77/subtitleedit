@@ -80,9 +80,8 @@ public partial class MainViewModel
         }
 
         var cacheFile = GetSpeechCacheFileName(peakWaveFileName);
-        if (File.Exists(cacheFile))
+        if (File.Exists(cacheFile) && LoadSpeechSegmentsFromCache(cacheFile, videoFileName))
         {
-            LoadSpeechSegmentsFromCache(cacheFile, videoFileName);
             return;
         }
 
@@ -145,15 +144,17 @@ public partial class MainViewModel
         }
     }
 
-    private void LoadSpeechSegmentsFromCache(string cacheFile, string videoFileName)
+    private bool LoadSpeechSegmentsFromCache(string cacheFile, string videoFileName)
     {
         try
         {
             var json = File.ReadAllText(cacheFile);
             var pairs = JsonSerializer.Deserialize<List<double[]>>(json);
-            if (pairs == null)
+            if (pairs == null || pairs.Count == 0)
             {
-                return;
+                // An empty cache is rebuilt: a pass that found nothing (an older, broken one, or a
+                // video with no speech) must not pin the trim to the amplitude fallback forever.
+                return false;
             }
 
             var segments = new List<(double, double)>();
@@ -171,10 +172,13 @@ public partial class MainViewModel
                 _speechSegments.AddRange(segments);
                 _speechSegmentsVideo = videoFileName;
             }
+
+            return segments.Count > 0;
         }
         catch (Exception exception)
         {
             Se.LogError(exception, $"Discarding unreadable speech cache: {cacheFile}");
+            return false;
         }
     }
 
