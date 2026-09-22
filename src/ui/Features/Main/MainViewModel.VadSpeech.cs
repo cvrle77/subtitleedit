@@ -20,7 +20,41 @@ public partial class MainViewModel
     private readonly List<(double Start, double End)> _speechSegments = new();
     private readonly Lock _speechSegmentsLock = new();
     private string? _speechSegmentsVideo;
+    private string? _speechSegmentsAttempted;
     private int _speechSegmentsSequence;
+    private int _speechSegmentsBuilding;
+
+    /// <summary>
+    /// Starts the speech map for the loaded video when it is missing and the option is on - so
+    /// enabling the option (or installing the model) after the video was already loaded still
+    /// builds it, and the next split uses the voice detection instead of the amplitude fallback.
+    /// </summary>
+    private void EnsureSpeechSegmentsBuilding()
+    {
+        if (string.IsNullOrEmpty(_videoFileName) ||
+            !Se.Settings.General.TrimSilenceAfterSplit ||
+            !Se.Settings.General.SplitTrimUseVoiceDetection ||
+            !SileroVadModel.IsInstalled())
+        {
+            return;
+        }
+
+        if (_speechSegmentsVideo == _videoFileName || _speechSegmentsAttempted == _videoFileName)
+        {
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _speechSegmentsBuilding, 1, 0) != 0)
+        {
+            return; // a pass is already running
+        }
+
+        var videoFileName = _videoFileName;
+        var trackNumber = _audioTrack?.FfIndex ?? -1;
+        var peakWaveFileName = WavePeakGenerator2.GetPeakWaveFileName(videoFileName, trackNumber);
+        _ = BuildSpeechSegmentsAsync(null, videoFileName, trackNumber, peakWaveFileName)
+            .ContinueWith(_ => Interlocked.Exchange(ref _speechSegmentsBuilding, 0));
+    }
 
     private static string GetSpeechCacheFileName(string peakWaveFileName)
     {
@@ -103,6 +137,7 @@ public partial class MainViewModel
         }
         finally
         {
+            _speechSegmentsAttempted = videoFileName;
             if (tempWaveFileName != null)
             {
                 DeleteTempFile(tempWaveFileName);
