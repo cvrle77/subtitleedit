@@ -4628,13 +4628,14 @@ public class AudioVisualizer : Control
     /// <summary>
     /// Finds where the speech after <paramref name="startSeconds"/> begins, i.e. the end of the
     /// silence the position sits in. Used to trim the leading silence off the right half of a
-    /// split. Returns -1 when the position is already in speech (a cut inside speech), when the
-    /// silence before that speech is shorter than <paramref name="minSilenceSeconds"/>, or when no
-    /// speech follows within <paramref name="maxForwardSeconds"/> - the caller then leaves the
-    /// position untouched.
+    /// split. The position must be in silence, at least <paramref name="minSilenceSeconds"/> must
+    /// pass before the speech, and the loud part must then be sustained for
+    /// <paramref name="minSpeechSeconds"/> - so a short noise blip on the waveform is not mistaken
+    /// for the speech. Returns -1 when any of that fails; the caller then leaves the position
+    /// untouched.
     /// </summary>
     /// <returns>video position in seconds, -1 if not found</returns>
-    public double FindSpeechStartAfter(double thresholdPercent, double minSilenceSeconds, double startSeconds, double maxForwardSeconds)
+    public double FindSpeechStartAfter(double thresholdPercent, double minSilenceSeconds, double minSpeechSeconds, double startSeconds, double maxForwardSeconds)
     {
         if (WavePeaks == null || WavePeaks.Peaks.Count == 0)
         {
@@ -4657,26 +4658,32 @@ public class AudioVisualizer : Control
             ? Math.Min(WavePeaks.Peaks.Count - 1, SecondsToSampleIndex(startSeconds + maxForwardSeconds))
             : WavePeaks.Peaks.Count - 1;
         var minSilenceSamples = Math.Max(0, SecondsToSampleIndex(minSilenceSeconds));
+        var minSpeechSamples = Math.Max(1, SecondsToSampleIndex(minSpeechSeconds));
 
-        var silenceCount = 0;
-        for (var i = startSample; i <= endSample; i++)
+        for (var i = startSample + minSilenceSamples; i <= endSample; i++)
         {
             if (WavePeaks.Peaks[i].Abs <= threshold)
             {
-                silenceCount++;
+                continue;
             }
-            else
-            {
-                if (silenceCount < minSilenceSamples)
-                {
-                    return -1; // too little silence in front of it - treat as speech
-                }
 
+            // The loud stretch must last, or a single noise blip would be taken for the onset.
+            var speechEnd = Math.Min(endSample + 1, i + minSpeechSamples);
+            double sum = 0;
+            var count = 0;
+            for (var j = i; j < speechEnd; j++)
+            {
+                sum += WavePeaks.Peaks[j].Abs;
+                count++;
+            }
+
+            if (count > 0 && sum / count > threshold)
+            {
                 return SampleIndexToSeconds(i);
             }
         }
 
-        return -1; // no speech within the window
+        return -1; // no sustained speech within the window
     }
 
     /// <summary>
