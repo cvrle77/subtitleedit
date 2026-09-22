@@ -21988,6 +21988,14 @@ public partial class MainViewModel :
         {
             _splitManager.Split(Subtitles, s, videoPositionSeconds, textIndex, language, originalSplit);
             Renumber();
+
+            // "Split line at video and text box position" also re-wraps both halves the way
+            // "split/rebalance long lines" does, automatically and without asking - the two events
+            // are not split any further, only their line breaks are made optimal.
+            if (atVideoPosition && atTextBoxPosition && Subtitles.Count > countBefore)
+            {
+                RebalanceAfterSplit(s, language);
+            }
         });
 
         // The first half stays the current row (SE4's "focus left"), but the second half goes in
@@ -22026,6 +22034,50 @@ public partial class MainViewModel :
             : language;
 
         return new OriginalSplit(originalTextIndex, originalLanguage);
+    }
+
+    /// <summary>
+    /// Re-wraps the two halves a split produced with the same algorithm as "split/rebalance long
+    /// lines", using the settings that tool remembers. Only the line breaks change - neither half is
+    /// split into more events, and nothing is asked.
+    /// </summary>
+    private void RebalanceAfterSplit(SubtitleLineViewModel firstHalf, string language)
+    {
+        var singleLineMaxLength = Se.Settings.Tools.SplitRebalanceLongLinesSingleLineMaxLength > 0
+            ? Se.Settings.Tools.SplitRebalanceLongLinesSingleLineMaxLength
+            : Se.Settings.General.SubtitleLineMaximumLength;
+        var unbreakLinesShorterThan = Se.Settings.Tools.SplitRebalanceLongLinesUnbreakShorterThan > 0
+            ? Se.Settings.Tools.SplitRebalanceLongLinesUnbreakShorterThan
+            : Se.Settings.General.UnbreakLinesShorterThan;
+
+        // Same cap as the dialog: a threshold at or above the single line max length means "keep
+        // any text that fits on one line".
+        var mergeLinesShorterThan = unbreakLinesShorterThan >= singleLineMaxLength
+            ? singleLineMaxLength + 1
+            : unbreakLinesShorterThan;
+
+        var firstIndex = Subtitles.IndexOf(firstHalf);
+        if (firstIndex < 0)
+        {
+            return;
+        }
+
+        RebalanceSplitHalf(Subtitles.GetOrNull(firstIndex), language, singleLineMaxLength, mergeLinesShorterThan);
+        RebalanceSplitHalf(Subtitles.GetOrNull(firstIndex + 1), language, singleLineMaxLength, mergeLinesShorterThan);
+    }
+
+    private static void RebalanceSplitHalf(SubtitleLineViewModel? line, string language, int singleLineMaxLength, int mergeLinesShorterThan)
+    {
+        if (line == null || line.IsReferenceOnly || string.IsNullOrEmpty(line.Text))
+        {
+            return;
+        }
+
+        var rebalanced = Utilities.AutoBreakLine(line.Text, singleLineMaxLength, mergeLinesShorterThan, language);
+        if (rebalanced != line.Text)
+        {
+            line.Text = rebalanced;
+        }
     }
 
     /// <summary>Scrolls minimally so <paramref name="row"/> is fully on screen; no selection change.</summary>
