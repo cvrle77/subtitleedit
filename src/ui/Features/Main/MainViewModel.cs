@@ -22140,7 +22140,6 @@ public partial class MainViewModel :
     private double? FindAdaptiveSpeechStartAfter(AudioVisualizer av, double startSeconds, double maxForwardSeconds)
     {
         const double minSilenceSeconds = 0.1;
-        const double minSpeechSeconds = 0.5;
         var reachSeconds = Math.Max(0.8, maxForwardSeconds);
 
         var lowPercent = av.FindLowPercentage(startSeconds - 0.3, startSeconds + 0.3);
@@ -22150,12 +22149,20 @@ public partial class MainViewModel :
             return null; // no speech-level audio ahead - nothing to detect
         }
 
-        // Halfway between the noise floor and the loudest ahead: this sees past ambient noise
-        // (which sits near the floor) and only counts a sound that reaches a good part of the
-        // speech level, instead of whatever first pokes above the floor.
-        var threshold = lowPercent + (highPercent - lowPercent) * 0.5;
-        var position = av.FindSpeechStartAfter(threshold, minSilenceSeconds, minSpeechSeconds, startSeconds, reachSeconds);
-        return position > startSeconds ? position : null;
+        // Same proven search "guess start" uses: it sweeps the volume up from the noise floor and
+        // takes the first boundary where a quiet run is clearly followed by louder audio, which
+        // sees past ambient noise instead of taking whatever first pokes above the floor.
+        var sweep = GetGuessVolumeSweep(lowPercent, highPercent);
+        for (var threshold = sweep.Start; threshold < sweep.End; threshold += 0.3)
+        {
+            var position = av.FindDataBelowThresholdBackForStart(threshold, minSilenceSeconds, startSeconds, reachSeconds);
+            if (position > startSeconds)
+            {
+                return position;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>Scrolls minimally so <paramref name="row"/> is fully on screen; no selection change.</summary>
