@@ -1876,14 +1876,17 @@ public partial class ReviewSpeechViewModel : ObservableObject
     }
 
     /// <summary>
-    /// True when the pressed keys match the user's main-window play/pause bindings
-    /// (TogglePlayPause / TogglePlayPause2; defaults Space and Ctrl/Cmd+Space), so the review
-    /// window plays with the same keys as the rest of the app (#12093).
+    /// True when the pressed keys are this window's play/pause keys. Fixed to Space / Ctrl+Space
+    /// here, not the user's main-window bindings: if the main window's play/pause was remapped
+    /// (e.g. Space moved to "play selected lines" and F5 to play/pause), following it left this
+    /// window with no Space to play the selected segment.
     /// </summary>
     private static bool MatchesPlayPauseShortcut(KeyEventArgs e)
     {
-        return MainShortcutKeys.Matches(e, nameof(MainViewModel.TogglePlayPauseCommand), [nameof(Key.Space)]) ||
-               MainShortcutKeys.Matches(e, nameof(MainViewModel.TogglePlayPause2Command), [MainShortcutKeys.CtrlOrCmd, nameof(Key.Space)]);
+        return e.Key == Key.Space &&
+               (e.KeyModifiers == KeyModifiers.None ||
+                e.KeyModifiers == KeyModifiers.Control ||
+                e.KeyModifiers == KeyModifiers.Meta);
     }
 
     private void TogglePlayPauseSelectedRow()
