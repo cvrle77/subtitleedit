@@ -29501,6 +29501,21 @@ public partial class MainViewModel :
         }
 
         AddSubtitleGridSpellCheckMenuItems(sender as MenuFlyout);
+
+        // Minimal right-click menu: keep only "Merge selected" (and only with 2+ lines selected),
+        // hide every other command and separator.
+        if (Se.Settings.General.MinimalContextMenus && sender is MenuFlyout minimalGridFlyout)
+        {
+            foreach (var item in minimalGridFlyout.Items)
+            {
+                if (item is Control control)
+                {
+                    control.IsVisible = false;
+                }
+            }
+
+            MenuItemMerge.IsVisible = selectedCount > 1;
+        }
     }
 
     private const int MaxSpellCheckMenuWords = 10;
@@ -34163,6 +34178,19 @@ public partial class MainViewModel :
                 _lastTextEditorPointerArgs = null;
             }
         }
+
+        // Minimal right-click menu: keep only "Split line at video and text box position" (its own
+        // visibility binding still decides whether it applies) and hide every other command.
+        if (Se.Settings.General.MinimalContextMenus && sender is MenuFlyout minimalFlyout)
+        {
+            foreach (var item in minimalFlyout.Items)
+            {
+                if (item is Control control && control.Tag?.ToString() != "TextBoxSplitAtVideo")
+                {
+                    control.IsVisible = false;
+                }
+            }
+        }
     }
 
     [RelayCommand]
@@ -34191,6 +34219,37 @@ public partial class MainViewModel :
         // Remembered so "Insert subtitle file at video position..." anchors the file at the
         // right-clicked waveform position instead of wherever the play-head happens to be.
         _waveformContextMenuSeconds = e.PositionInSeconds;
+
+        // Minimal right-click menu: on a new (empty-area) selection keep only "Insert new
+        // selection"; on a subtitle keep only "Merge with line before/after". Everything else is
+        // hidden.
+        if (Se.Settings.General.MinimalContextMenus && sender is AudioVisualizer minimalVisualizer && minimalVisualizer.MenuFlyout != null)
+        {
+            foreach (var item in minimalVisualizer.MenuFlyout.Items)
+            {
+                if (item is Control control)
+                {
+                    control.IsVisible = false;
+                }
+            }
+
+            if (e.NewParagraph != null)
+            {
+                MenuItemAudioVisualizerInsertNewSelection.IsVisible = true;
+                return;
+            }
+
+            var clickedSubtitle = Subtitles.FirstOrDefault(p => p.StartTime.TotalSeconds < e.PositionInSeconds &&
+                                                                p.EndTime.TotalSeconds > e.PositionInSeconds);
+            if (clickedSubtitle != null && _selectedSubtitles?.Count == 1 && ReferenceEquals(_selectedSubtitles[0], clickedSubtitle))
+            {
+                var selectedIdxMinimal = SubtitleGrid.SelectedIndex;
+                MenuItemAudioVisualizerMergeWithPrevious.IsVisible = selectedIdxMinimal > 0;
+                MenuItemAudioVisualizerMergeWithNext.IsVisible = selectedIdxMinimal >= 0 && selectedIdxMinimal < Subtitles.Count - 1;
+            }
+
+            return;
+        }
 
         MenuItemAudioVisualizerInsertNewSelection.IsVisible = false;
         MenuItemAudioVisualizerPasteNewSelection.IsVisible = false;

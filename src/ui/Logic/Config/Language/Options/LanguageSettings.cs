@@ -101,6 +101,7 @@ public class LanguageSettings
     public string MoveSelectedLinesStepMs { get; set; }
     public string MoveLinesShortenNeighbor { get; set; }
     public string PromptBeforeDelete { get; set; }
+    public string MinimalContextMenus { get; set; }
     public string RememberPositionAndSize { get; set; }
     public string OpenLastFileOnStart { get; set; }
     public string AutoSave { get; set; }
@@ -446,6 +447,7 @@ public class LanguageSettings
         MoveSelectedLinesStepMs = "Move selected lines shortcut step (ms)";
         MoveLinesShortenNeighbor = "Move lines: shorten previous/next line instead of overlapping it";
         PromptBeforeDelete = "Prompt before delete";
+        MinimalContextMenus = "Minimal right-click menus (text box, subtitle grid, waveform)";
         RememberPositionAndSize = "Remember window position and size";
         OpenLastFileOnStart = "Open last recent file on start";
         AutoSave = "Auto-save (save the open file while editing)";

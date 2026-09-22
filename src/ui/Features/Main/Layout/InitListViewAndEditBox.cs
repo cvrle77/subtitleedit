@@ -1832,7 +1832,7 @@ public static partial class InitListViewAndEditBox
 
         // Keep the SE4 order here: "at cursor/video position" first, then "at cursor position".
         // Swapping them broke muscle memory for people coming from SE4 (see issue #12888).
-        var menuItemTextBoxSplitAtCursorAndVideoPosition = new MenuItem { Header = Se.Language.General.SplitLineAtVideoAndTextBoxPosition };
+        var menuItemTextBoxSplitAtCursorAndVideoPosition = new MenuItem { Header = Se.Language.General.SplitLineAtVideoAndTextBoxPosition, Tag = "TextBoxSplitAtVideo" };
         menuItemTextBoxSplitAtCursorAndVideoPosition.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsTextBoxSplitAtCursorAndVideoPositionVisible)));
         menuItemTextBoxSplitAtCursorAndVideoPosition.Command = vm.SplitAtVideoPositionAndTextBoxCursorPositionCommand;
         flyoutTextBox.Items.Add(menuItemTextBoxSplitAtCursorAndVideoPosition);
