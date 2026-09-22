@@ -756,6 +756,14 @@ public partial class MainViewModel :
     private double _playheadPlaybackSpeed = 1.0;
     private double _pausedSelectLastSeconds = -1;
 
+    // State of the smooth "center on play-head" scroll (the magnet). While it runs, the view eases
+    // from where it was to the centered target over SeWaveform.CenterSmoothSeconds instead of
+    // snapping there. _centerAnimFromSeconds is the view position the ease started from.
+    private bool _centerAnimActive;
+    private long _centerAnimStartTicks;
+    private double _centerAnimFromSeconds;
+    private double _centerAnimTargetSeconds;
+
     // Scrub-seek throttle for waveform-driven position changes (wheel scrubbing in center mode,
     // wheel video-position stepping, edge drags with "set video position on move start/end").
     // Those paths fire OnVideoPositionChanged once per input event - 30-60/s on a trackpad - and
@@ -32620,6 +32628,18 @@ public partial class MainViewModel :
                 // few of them. Whole-paragraph moves never scrubbed, which is why only edge drags
                 // ran away. Re-centering the waveform under a held pointer is wrong on its own
                 // terms too - it drags the content out from under the user.
+                // In "center waveform on current position" mode the waveform scrolls to keep the
+                // cursor centered. Driven here at ~60 fps, in lockstep with the cursor, so it
+                // glides smoothly instead of jumping in 20 fps steps from the heavy 50 ms timer.
+                // With "center also while paused" on, paused position changes (wheel scrub,
+                // waveform clicks, shortcuts) recenter too - but only on actual changes, so the
+                // user can still scroll around the waveform freely while the play-head is at rest.
+                // It eases to the center over the configured time instead of snapping (the snap is
+                // painful on the eyes when the play-head jumps), and the ease is held off while the
+                // user is scrolling/dragging/zooming so it never fights them. Never recenter while
+                // the user is dragging an edge (#13955): the drag scrubs the video to the edge, so
+                // recentering would scroll to the very edge being dragged and the drag delta feeds
+                // back into the scroll until the edge shoots off screen (#13600).
                 var centerPausedChange = WaveformCenter && !isPlaying &&
                                          Se.Settings.Waveform.CenterVideoPositionAlsoWhenPaused &&
                                          !av.IsEditingWithPointer &&
@@ -32628,7 +32648,58 @@ public partial class MainViewModel :
                 if (centered)
                 {
                     var halfSeconds = (av.EndPositionSeconds - av.StartPositionSeconds) / 2.0;
-                    av.StartPositionSeconds = Math.Max(0, est - halfSeconds);
+                    var centerTarget = Math.Max(0, est - halfSeconds);
+                    var centerSuspended = av.IsEditingWithPointer || av.IsMouseWheelInteracting;
+
+                    if (centerSuspended)
+                    {
+                        _centerAnimActive = false;
+                    }
+                    else
+                    {
+                        // The centre target jumped (a seek, the next subtitle) while the ease was
+                        // still running: restart it from where the view is now. Carrying the old
+                        // progress onto the new target snapped the view the rest of the way at
+                        // once - the skip seen on short lines that had not centred yet.
+                        if (_centerAnimActive && Math.Abs(centerTarget - _centerAnimTargetSeconds) > 0.15)
+                        {
+                            _centerAnimActive = false;
+                        }
+
+                        if (!_centerAnimActive && Math.Abs(av.StartPositionSeconds - centerTarget) > 0.15)
+                        {
+                            _centerAnimActive = true;
+                            _centerAnimFromSeconds = av.StartPositionSeconds;
+                            _centerAnimStartTicks = Stopwatch.GetTimestamp();
+                        }
+
+                        _centerAnimTargetSeconds = centerTarget;
+
+                        if (_centerAnimActive)
+                        {
+                            var duration = Math.Max(0.1, Se.Settings.Waveform.CenterSmoothSeconds);
+                            var progress = (Stopwatch.GetTimestamp() - _centerAnimStartTicks) / (double)Stopwatch.Frequency / duration;
+                            if (progress >= 1)
+                            {
+                                _centerAnimActive = false;
+                                av.StartPositionSeconds = centerTarget;
+                            }
+                            else
+                            {
+                                // Ease-out cubic: quick at first, settling as it reaches the center.
+                                var eased = 1 - Math.Pow(1 - progress, 3);
+                                av.StartPositionSeconds = _centerAnimFromSeconds + (centerTarget - _centerAnimFromSeconds) * eased;
+                            }
+                        }
+                        else
+                        {
+                            av.StartPositionSeconds = centerTarget;
+                        }
+                    }
+                }
+                else
+                {
+                    _centerAnimActive = false;
                 }
 
                 av.SetPlayheadMotion(tickTimestamp, playheadVelocity, centered && isPlaying);

@@ -551,6 +551,14 @@ public class AudioVisualizer : Control
     private const double ClickDragSlopPixels = 3.0;
     public bool IsScrolling => (Environment.TickCount64 - _audioVisualizerLastScroll) < 100;
 
+    /// <summary>
+    /// True for a moment after any mouse-wheel event over the waveform, including the Alt+wheel
+    /// horizontal zoom and the Shift+wheel vertical zoom. The view model uses it to hold off the
+    /// smooth "center on play-head" scroll while the user is wheel-interacting, so a zoom or a
+    /// manual scroll is not fought - it resumes once the wheel stops.
+    /// </summary>
+    public bool IsMouseWheelInteracting => (Environment.TickCount64 - _lastMouseWheelScroll) < 250;
+
     // Wall clock of the last pointer-driven time code edit (drag move/resize/new selection).
     private long _lastPointerEditMs;
 
