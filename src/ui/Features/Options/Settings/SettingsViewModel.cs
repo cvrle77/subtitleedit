@@ -130,6 +130,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _moveLinesShortenNeighbor;
     [ObservableProperty] private bool _promptBeforeDelete;
     [ObservableProperty] private bool _minimalContextMenus;
+    [ObservableProperty] private bool _trimSilenceAfterSplit;
     [ObservableProperty] private bool _lockTimeCodes;
     [ObservableProperty] private bool _rememberPositionAndSize;
     [ObservableProperty] private bool _titleBarFullFileName;
@@ -833,6 +834,7 @@ public partial class SettingsViewModel : ObservableObject
         MoveLinesShortenNeighbor = general.MoveLinesShortenNeighbor;
         PromptBeforeDelete = general.PromptBeforeDelete;
         MinimalContextMenus = general.MinimalContextMenus;
+        TrimSilenceAfterSplit = general.TrimSilenceAfterSplit;
         LockTimeCodes = general.LockTimeCodes;
         RememberPositionAndSize = general.RememberPositionAndSize;
         TitleBarFullFileName = general.TitleBarFullFileName;
@@ -1749,6 +1751,7 @@ public partial class SettingsViewModel : ObservableObject
         general.MoveLinesShortenNeighbor = MoveLinesShortenNeighbor;
         general.PromptBeforeDelete = PromptBeforeDelete;
         general.MinimalContextMenus = MinimalContextMenus;
+        general.TrimSilenceAfterSplit = TrimSilenceAfterSplit;
         general.LockTimeCodes = LockTimeCodes;
         general.RememberPositionAndSize = RememberPositionAndSize;
         general.TitleBarFullFileName = TitleBarFullFileName;
