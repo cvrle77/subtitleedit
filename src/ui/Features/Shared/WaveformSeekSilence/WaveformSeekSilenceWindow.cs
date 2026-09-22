@@ -29,7 +29,7 @@ public class WaveformSeekSilenceWindow : Window
         var panelMinSilenceDuration = UiUtil.MakeHorizontalPanel(labelMinSilenceDuration, numericUpDownMinSilenceDuration);
 
         var labelMaxSilenceVolume = UiUtil.MakeLabel(Se.Language.Waveform.MaxSilenceVolume);
-        var numericUpDownMaxSilenceVolume = UiUtil.MakeNumericUpDownTwoDecimals(0, 1, 140, vm, nameof(vm.SilenceMaxVolume));
+        var numericUpDownMaxSilenceVolume = UiUtil.MakeNumericUpDownThreeDecimals(0, 1, 140, vm, nameof(vm.SilenceMaxVolume));
         var panelMaxSilenceVolume = UiUtil.MakeHorizontalPanel(labelMaxSilenceVolume, numericUpDownMaxSilenceVolume);
 
         var buttonOk = UiUtil.MakeButtonOk(vm.OkCommand);
