@@ -1119,7 +1119,11 @@ public class SettingsPage : UserControl
 
         sections.Add(new SettingsSection("cvrle77", IconNames.Cogs, "#c084fc",
         [
+            MakeGroupHeader("Right-click menus"),
             MakeCheckboxSetting(Se.Language.Options.Settings.MinimalContextMenus, nameof(_vm.MinimalContextMenus)),
+
+            MakeSeparator(),
+            MakeGroupHeader("Split: trim the leading silence"),
             MakeCheckboxSetting(Se.Language.Options.Settings.TrimSilenceAfterSplit, nameof(_vm.TrimSilenceAfterSplit)),
             MakeCheckboxSetting(Se.Language.Options.Settings.SplitTrimUseVoiceDetection, nameof(_vm.SplitTrimUseVoiceDetection)),
             new SettingsItem(Se.Language.Options.Settings.SileroVadModel, () => new StackPanel
@@ -1137,14 +1141,17 @@ public class SettingsPage : UserControl
                     }
                 }
             }),
-            new SettingsItem(Se.Language.Options.Settings.WaveformCenterSmoothSeconds, () => UiUtil.MakeNumericUpDownOneDecimal(
-                0, 10, 120, _vm, nameof(_vm.WaveformCenterSmoothSeconds), defaultValue: 2.0m)),
             new SettingsItem(Se.Language.Options.Settings.VadThreshold, () => UiUtil.MakeNumericUpDownTwoDecimals(
                 0, 1, 120, _vm, nameof(_vm.VadThreshold), defaultValue: 0.5m)),
             new SettingsItem(Se.Language.Options.Settings.VadMinSpeechSeconds, () => UiUtil.MakeNumericUpDownTwoDecimals(
                 0, 10, 120, _vm, nameof(_vm.VadMinSpeechSeconds), defaultValue: 0.25m)),
             new SettingsItem(Se.Language.Options.Settings.VadMinSilenceSeconds, () => UiUtil.MakeNumericUpDownTwoDecimals(
                 0, 10, 120, _vm, nameof(_vm.VadMinSilenceSeconds), defaultValue: 0.1m)),
+
+            MakeSeparator(),
+            MakeGroupHeader("Waveform centering"),
+            new SettingsItem(Se.Language.Options.Settings.WaveformCenterSmoothSeconds, () => UiUtil.MakeNumericUpDownOneDecimal(
+                0, 10, 120, _vm, nameof(_vm.WaveformCenterSmoothSeconds), defaultValue: 2.0m)),
         ]));
 
 
@@ -1506,6 +1513,20 @@ public class SettingsPage : UserControl
     private static SettingsItem MakeSeparator()
     {
         return new SettingsItem(string.Empty, () => new Label());
+    }
+
+    // A bold sub-heading inside a section, to group related options. The negative left margin pulls
+    // it back over the 200 px label column so it lines up with the section's left edge.
+    private static SettingsItem MakeGroupHeader(string text)
+    {
+        return new SettingsItem(string.Empty, () => new TextBlock
+        {
+            Text = text,
+            FontWeight = FontWeight.Bold,
+            FontSize = UiUtil.ScaledFontSize(14),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(-200, 4, 0, 0),
+        });
     }
 
     private SettingsItem MakeNumericSetting(string label, string bindingProperty)
