@@ -205,6 +205,14 @@ public class AudioVisualizer : Control
 
     public SubtitleLineViewModel? SelectedParagraph { get; set; }
 
+    /// <summary>
+    /// The time-base rate used for the playhead when <see cref="WavePeaks"/> is null/empty, so a
+    /// control that is fed a time axis by its owner (the review window's generated-speech track)
+    /// still draws the shared cursor before its own peaks exist. 0 (the default) keeps the old
+    /// "no cursor without peaks" behavior.
+    /// </summary>
+    public int FallbackSampleRate { get; set; }
+
     public double MinGapSeconds { get; set; } = 0.1;
 
     /// <summary>Fallback capture distance when the pixel distance cannot be converted (no peaks yet).</summary>
@@ -4112,14 +4120,22 @@ public class AudioVisualizer : Control
     private void DrawCurrentVideoPosition(DrawingContext context, ref RenderContext renderCtx)
     {
         // Without peaks there is no timeline to place the cursor on (closing the video clears them
-        // and resets the position to 0). With them, 0 is a real position - after Stop, or on a
-        // freshly opened video - and the cursor shows there like anywhere else.
-        if (renderCtx.SampleRate <= 0 || renderCtx.CurrentVideoPositionSeconds < 0)
+        // and resets the position to 0) UNLESS a caller is driving the control's time axis on its
+        // own - the review window's generated-speech track has its own peaks of a different length
+        // and the shared playhead must still show there. In that case UseFallbackSampleRate tells
+        // this control which rate to measure the x position with.
+        if (renderCtx.CurrentVideoPositionSeconds < 0)
         {
             return;
         }
 
-        var currentPositionPos = SecondsToXPositionOptimized(renderCtx.CurrentVideoPositionSeconds - renderCtx.StartPositionSeconds, renderCtx.SampleRate, renderCtx.ZoomFactor);
+        var sampleRate = renderCtx.SampleRate > 0 ? renderCtx.SampleRate : FallbackSampleRate;
+        if (sampleRate <= 0)
+        {
+            return;
+        }
+
+        var currentPositionPos = SecondsToXPositionOptimized(renderCtx.CurrentVideoPositionSeconds - renderCtx.StartPositionSeconds, sampleRate, renderCtx.ZoomFactor);
         if (currentPositionPos >= 0 && currentPositionPos < renderCtx.Width)
         {
             var isOnShotChange = GetShotChangeIndex(renderCtx.CurrentVideoPositionSeconds) >= 0;
@@ -4317,12 +4333,58 @@ public class AudioVisualizer : Control
 
             changed = !SameParagraphs(_previousDisplayableParagraphs, _displayableParagraphs) ||
                       !SameParagraphs(_previousSelectedParagraphs, AllSelectedParagraphs);
+
+            // Remember the view the block set was built at, so NeedsParagraphReload can tell a
+            // meaningful scroll from the sub-pixel per-frame drift of the center-ease (the review
+            // window calls SetPosition on every frame while it keeps the play-head centered).
+            _paragraphsAtStartPositionSeconds = StartPositionSeconds;
+            _paragraphsAtZoomFactor = ZoomFactor;
         }
 
         if (changed)
         {
             InvalidateVisual();
         }
+    }
+
+    private double _paragraphsAtStartPositionSeconds = double.NaN;
+    private double _paragraphsAtZoomFactor = double.NaN;
+
+    /// <summary>
+    /// True when the view has moved far enough since the last <see cref="SetPosition"/> that the
+    /// set of blocks it holds is likely stale and worth rebuilding (scroll, zoom, resize). The
+    /// center-ease writes StartPositionSeconds many times a second; rebuilding the paragraph lists
+    /// on every one of those writes re-sorts a large subtitle ~60 times a second, so a caller that
+    /// drives SetPosition every frame should gate on this instead. A block spans at least a few
+    /// seconds, so a threshold of half a second of drift never hides one that scrolled into view.
+    /// </summary>
+    public bool NeedsParagraphReload()
+    {
+        if (double.IsNaN(_paragraphsAtStartPositionSeconds))
+        {
+            return true;
+        }
+
+        if (Math.Abs(ZoomFactor - _paragraphsAtZoomFactor) > 0.001)
+        {
+            return true;
+        }
+
+        if (WavePeaks == null || WavePeaks.SampleRate <= 0)
+        {
+            return true;
+        }
+
+        var visibleSeconds = ZoomFactor > 0 ? Bounds.Width / (ZoomFactor * WavePeaks.SampleRate) : 0;
+        if (visibleSeconds <= 0)
+        {
+            return true;
+        }
+
+        // 1/8 of the visible window, but never more than 0.5 s - so a zoomed-in view still reloads
+        // before a block can slide into it, while a zoomed-out one does not rebuild constantly.
+        var threshold = Math.Min(0.5, visibleSeconds / 8.0);
+        return Math.Abs(StartPositionSeconds - _paragraphsAtStartPositionSeconds) > threshold;
     }
 
     /// <summary>

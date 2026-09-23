@@ -33,6 +33,8 @@ public class LanguageTextToSpeech
     public string PlayLine { get; set; }
     public string FitDurationToGeneratedAudio { get; set; }
     public string ResetTiming { get; set; }
+    public string WaveformOriginalAudio { get; set; }
+    public string WaveformGeneratedAudio { get; set; }
     public string AddingAudioToVideoFileDotDotDot { get; set; }
     public string PreparingMergeDotDotDot { get; set; }
     public string ImportVoiceDotDotDot { get; set; }
@@ -242,6 +244,8 @@ public class LanguageTextToSpeech
         PlayLine = "Play line";
         FitDurationToGeneratedAudio = "Fit duration to generated audio";
         ResetTiming = "Reset timing";
+        WaveformOriginalAudio = "Original audio";
+        WaveformGeneratedAudio = "Generated speech";
         AddingAudioToVideoFileDotDotDot = "Adding audio to video file...";
         PreparingMergeDotDotDot = "Preparing merge...";
         ImportVoiceDotDotDot = "Import voice...";

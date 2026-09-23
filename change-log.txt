@@ -3,6 +3,20 @@ Subtitle Edit Changelog
 
 -----------------------------------------------------------------------------------------------------
 
+v5.3.0-beta11 (cvrle77 fork)
+
+* TTS ElevenLabs: optional parallel generation (a checkbox in the ElevenLabs settings) that synthesizes lines through a pool sized to your account's plan - the tier is read from the API key automatically, no manual entry; the default linear mode is unchanged - thx cvrle77
+* TTS: pin the merged audio to the video's own duration, so a cue that ends past the last frame no longer makes the exported wav longer than the video - thx cvrle77
+* Fix common errors: add a "Split/rebalance long lines" rule that re-wraps every line using the settings that tool remembers (falls back to the general line-length settings when it was never run); it is listed last and runs last, after the wording fixes - thx cvrle77
+* TTS review window: show two waveforms - the original video audio on top and the generated speech of every line on the bottom, on one shared time axis (scrolling, zoom and the play-head stay in sync) - thx cvrle77
+* TTS review window: the play-head now moves at ~60 fps and eases the view to keep it centered instead of snapping, so playing clips one after another no longer jerks the timeline - thx cvrle77
+* TTS review window: "Split line at video and text box position" (text box right-click, row button or waveform menu) splits the line at the play-head (audio) and the text caret (text) into two rows that are both re-synthesized, re-wrapped like the main window's split, with Undo (Ctrl+Z / the Undo button) to put the line back - thx cvrle77
+* TTS review window: Play (and Space) now plays the clip under the play-head, or the next clip when the play-head sits in a gap, never the clip it already passed - thx cvrle77
+* TTS review window: the waveform right-click menu lists "Regenerate audio" first - thx cvrle77
+* Waveform: the play-head is also drawn on a second/companion waveform that has no peaks of its own yet (the TTS review generated-speech track) - thx cvrle77
+
+-----------------------------------------------------------------------------------------------------
+
 v5.3.0-beta10 (23rd of September 2026)
 
 * Add "Edit second subtitle settings..." to the Video menu (restyle the second subtitle without the file picker) - thx GrampaWildWilly

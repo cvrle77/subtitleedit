@@ -40,10 +40,12 @@ public class ReviewSpeechWindow : Window
 
         // Disabled while a regenerate runs: its progress popup is non-modal, and publishing
         // (OK/Export) or closing mid-run would commit the row's half-updated step result.
+        var buttonUndo = UiUtil.MakeButton(vm.UndoCommand, IconNames.Restore, Se.Language.General.Undo)
+            .WithBindEnabled(nameof(vm.CanUndo));
         var buttonExport = UiUtil.MakeButton(Se.Language.General.ExportDotDotDot, vm.ExportCommand).WithBindEnabled(nameof(vm.IsRegenerateEnabled));
         var buttonOk = UiUtil.MakeButtonOk(vm.OkCommand).WithBindEnabled(nameof(vm.IsRegenerateEnabled));
         var buttonCancel = UiUtil.MakeButtonCancel(vm.CancelCommand).WithBindEnabled(nameof(vm.IsRegenerateEnabled));
-        var panelButtons = UiUtil.MakeButtonBar(buttonExport, buttonOk, buttonCancel);
+        var panelButtons = UiUtil.MakeButtonBar(buttonUndo, buttonExport, buttonOk, buttonCancel);
 
         var grid = new Grid
         {
@@ -151,6 +153,11 @@ public class ReviewSpeechWindow : Window
                 buttonHistory.CommandParameter = item;
                 buttonHistory.Bind(Button.OpacityProperty, new Binding(nameof(ReviewRow.HistoryButtonOpacity)));
 
+                // Split the line at the play-head / text caret into two regenerated rows.
+                var buttonSplit = UiUtil.MakeButton(vm.SplitLineCommand, IconNames.ContentCut, Se.Language.General.SplitLineAtVideoAndTextBoxPosition)
+                    .WithBindEnabled(nameof(item.IsPlayingEnabled));
+                buttonSplit.CommandParameter = item;
+
                 var buttonPlay = UiUtil.MakeButton(vm.PlayRowCommand,"fa-solid fa-play")
                 .WithBindIsVisible(nameof(item.IsPlaying), InverseBooleanConverter.Instance)
                 .WithBindEnabled(nameof(item.IsPlayingEnabled));
@@ -169,12 +176,13 @@ public class ReviewSpeechWindow : Window
                     {
                         buttonRegenerate,
                         buttonHistory,
+                        buttonSplit,
                         buttonPlay,
                         buttonStop,
                     }
                 };
             }),
-            Width = new GridLength(150),
+            Width = new GridLength(190),
         });
         lineGrid.Columns.Add(new SeTableViewColumn
         {
@@ -237,6 +245,19 @@ public class ReviewSpeechWindow : Window
             textBox.FontFamily = FontFamilyHelper.Make(Se.Settings.Appearance.SubtitleTextBoxAndGridFontName);
         }
         textBox.WithAccessibleName(Se.Language.General.Text); // edits the selected row's text; no visible label (#12087)
+        vm.EditTextBox = textBox; // split reads the caret from here
+
+        // Right-click in the text box splits at the caret + play-head, mirroring the main window.
+        // The caret (not a clicked row) is the text split point, so the menu belongs on the box.
+        var textBoxFlyout = new MenuFlyout { Placement = PlacementMode.Pointer };
+        var menuSplitAtCaret = new MenuItem
+        {
+            Header = Se.Language.General.SplitLineAtVideoAndTextBoxPosition,
+            Command = vm.SplitLineCommand,
+        };
+        textBoxFlyout.Items.Add(menuSplitAtCaret);
+        textBox.ContextFlyout = textBoxFlyout;
+        textBoxFlyout.Opening += (_, _) => menuSplitAtCaret.CommandParameter = vm.SelectedLine;
 
         var grid = new Grid
         {
@@ -666,10 +687,71 @@ public class ReviewSpeechWindow : Window
 
     private static Border MakeWaveform(ReviewSpeechViewModel vm)
     {
-        // Mirror the main window's waveform theme so the review waveform looks the same as the
-        // one users are already used to.
+        var audioVisualizer = CreateWaveformVisualizer();
+        var audioVisualizerTts = CreateWaveformVisualizer();
+
+        vm.AudioVisualizer = audioVisualizer;
+        vm.AudioVisualizerTts = audioVisualizerTts;
+
+        // Top waveform: the original video audio. Bottom: the generated speech of every row laid
+        // out at its cue start. Both share one time axis (see WireWaveform).
+        audioVisualizer.Bind(AudioVisualizer.WavePeaksProperty, new Binding(nameof(vm.WavePeakData)));
+        audioVisualizerTts.Bind(AudioVisualizer.WavePeaksProperty, new Binding(nameof(vm.WavePeakDataTts)));
+
+        WireWaveform(vm, audioVisualizer, audioVisualizerTts, isTts: false);
+        WireWaveform(vm, audioVisualizerTts, audioVisualizer, isTts: true);
+
+        var labelOriginal = MakeWaveformLabel(Se.Language.Video.TextToSpeech.WaveformOriginalAudio);
+        var labelTts = MakeWaveformLabel(Se.Language.Video.TextToSpeech.WaveformGeneratedAudio);
+
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            RowSpacing = 4,
+            ColumnSpacing = 6,
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        grid.Add(labelOriginal, 0, 0);
+        grid.Add(audioVisualizer, 0, 1);
+        grid.Add(labelTts, 1, 0);
+        grid.Add(audioVisualizerTts, 1, 1);
+
+        return new Border
+        {
+            Margin = new Thickness(2),
+            Height = 240,
+            Child = grid,
+        };
+    }
+
+    private static TextBlock MakeWaveformLabel(string text)
+    {
+        return new TextBlock
+        {
+            Text = text,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(4, 0, 0, 0),
+            Opacity = 0.75,
+        };
+    }
+
+    // Mirror the main window's waveform theme so the review waveforms look the same as the one
+    // users are already used to.
+    private static AudioVisualizer CreateWaveformVisualizer()
+    {
         var settings = Se.Settings.Waveform;
-        var audioVisualizer = new AudioVisualizer
+        return new AudioVisualizer
         {
             DrawGridLines = settings.DrawGridLines,
             WaveformColor = settings.WaveformColor.FromHexToColor(),
@@ -692,18 +774,29 @@ public class ReviewSpeechWindow : Window
             IsReadOnly = Se.Settings.General.LockTimeCodes,
             WaveformHeightPercentage = settings.SpectrogramCombinedWaveformHeight,
         };
+    }
 
-        vm.AudioVisualizer = audioVisualizer;
-        audioVisualizer.Bind(AudioVisualizer.WavePeaksProperty, new Binding(nameof(vm.WavePeakData)));
-
-        // Re-center on the selected paragraph whenever peaks arrive (e.g., async-loaded) or the
-        // user picks a different row. SelectedLine changes also call RefreshWaveformPosition via
-        // the VM's partial OnSelectedLineChanged.
-        audioVisualizer.PropertyChanged += (_, e) =>
+    // Wires one waveform and keeps it on the same time axis as the other: scrolling, zooming or
+    // seeking on either one is copied across, and both are handed the same blocks/selection.
+    private static void WireWaveform(ReviewSpeechViewModel vm, AudioVisualizer av, AudioVisualizer other, bool isTts)
+    {
+        av.PropertyChanged += (_, e) =>
         {
             if (e.Property == AudioVisualizer.WavePeaksProperty)
             {
-                vm.RefreshWaveformPosition();
+                // Re-center on the selected paragraph when the original peaks arrive (e.g.,
+                // async-loaded); the generated track keeps the current view so a late arrival
+                // does not yank the user away from where they are looking.
+                if (isTts)
+                {
+                    vm.ReloadWaveformParagraphs();
+                }
+                else
+                {
+                    vm.RefreshWaveformPosition();
+                }
+
+                vm.SyncWaveformView(av, other);
             }
             else if (e.Property == AudioVisualizer.CurrentVideoPositionSecondsProperty)
             {
@@ -711,51 +804,75 @@ public class ReviewSpeechWindow : Window
             }
             else if (e.Property == AudioVisualizer.StartPositionSecondsProperty ||
                      e.Property == AudioVisualizer.ZoomFactorProperty ||
-                     e.Property == BoundsProperty)
+                     e.Property == AudioVisualizer.VerticalZoomFactorProperty)
             {
-                // The control only draws the blocks around the view it was last handed, and
-                // nothing here feeds it on a timer like the main window does - so scrolling,
-                // zooming out or widening the window ran past them into empty waveform (#15102).
+                // Scrolling/zooming must show the other waveform at the same place, but rebuilding
+                // the block lists happens only on a user scroll (see NeedsParagraphReload) - the
+                // center-ease writes StartPositionSeconds on every frame and rebuilding there was
+                // what made the timeline stutter.
+                vm.SyncWaveformView(av, other);
+
+                if (e.Property != AudioVisualizer.StartPositionSecondsProperty || av.NeedsParagraphReload())
+                {
+                    vm.ReloadWaveformParagraphs();
+                }
+            }
+            else if (e.Property == BoundsProperty)
+            {
                 vm.ReloadWaveformParagraphs();
             }
+
+            // CurrentVideoPositionSeconds is deliberately absent: SetWaveformPlayhead writes it on
+            // both controls itself, and reacting to it here only re-invalidated them every frame.
         };
 
         // Clicking or grabbing a block selects its row (#14000). The control only raises
         // OnPrimarySingleClicked when something listens to OnVideoPositionChanged, hence the
         // empty playhead handler. OnDragStarted fires on press so the row is selected before a
         // move/resize mutates it; OnSelectRequested covers right-click-selects.
-        audioVisualizer.OnVideoPositionChanged += (_, _) => { };
-        audioVisualizer.OnPrimarySingleClicked += (_, e) =>
+        av.OnVideoPositionChanged += (_, _) => { };
+        av.OnPrimarySingleClicked += (_, e) =>
         {
             vm.SelectFromWaveform(e.Paragraph);
             vm.OnWaveformPositionClicked(e.Seconds);
         };
-        audioVisualizer.OnDragStarted += (_, e) => vm.SelectFromWaveform(e.Paragraph);
-        audioVisualizer.OnSelectRequested += (_, e) => vm.SelectFromWaveform(e.Paragraph);
+        av.OnDragStarted += (_, e) => vm.SelectFromWaveform(e.Paragraph);
+        av.OnSelectRequested += (_, e) => vm.SelectFromWaveform(e.Paragraph);
+
+        // A drag moved a cue: rebuild the generated track so its clip follows the cue.
+        av.OnDragEnded += (_, _) => vm.ScheduleTtsWaveformRebuild();
 
         // Generated-clip length bar under each block (green fits / red overrun).
-        audioVisualizer.ParagraphAudioLengthProvider = vm.GetWaveformParagraphAudioLength;
+        av.ParagraphAudioLengthProvider = vm.GetWaveformParagraphAudioLength;
 
-        // Context menu: the row actions from the grid plus the two timing fixes that only make
-        // sense here. The target is the row under the pointer (selected on open), so the items
-        // take it as CommandParameter rather than relying on SelectedLine.
+        av.MenuFlyout = MakeWaveformMenu(vm, av);
+    }
+
+    // Context menu: the row actions from the grid plus the two timing fixes that only make sense
+    // here. The target is the row under the pointer (selected on open), so the items take it as
+    // CommandParameter rather than relying on SelectedLine.
+    private static MenuFlyout MakeWaveformMenu(ReviewSpeechViewModel vm, AudioVisualizer av)
+    {
         var menuPlay = new MenuItem { Header = Se.Language.Video.TextToSpeech.PlayLine, Command = vm.PlayRowCommand };
         var menuRegenerate = new MenuItem { Header = Se.Language.Video.TextToSpeech.RegenerateAudio, Command = vm.RegenerateAudioCommand };
         var menuHistory = new MenuItem { Header = Se.Language.General.ShowHistory, Command = vm.ShowHistoryCommand };
         var menuFit = new MenuItem { Header = Se.Language.Video.TextToSpeech.FitDurationToGeneratedAudio, Command = vm.FitDurationToAudioCommand };
         var menuReset = new MenuItem { Header = Se.Language.Video.TextToSpeech.ResetTiming, Command = vm.ResetTimingCommand };
+        var menuSplit = new MenuItem { Header = Se.Language.General.SplitLineAtVideoAndTextBoxPosition, Command = vm.SplitLineCommand };
         var flyout = new MenuFlyout();
-        flyout.Items.Add(menuPlay);
+        // Regenerate first: it is the most used action on this menu.
         flyout.Items.Add(menuRegenerate);
+        flyout.Items.Add(menuPlay);
         flyout.Items.Add(menuHistory);
         flyout.Items.Add(new Separator());
         flyout.Items.Add(menuFit);
         flyout.Items.Add(menuReset);
-        audioVisualizer.MenuFlyout = flyout;
-        audioVisualizer.FlyoutMenuOpening += (_, e) =>
+        flyout.Items.Add(new Separator());
+        flyout.Items.Add(menuSplit);
+        av.FlyoutMenuOpening += (_, e) =>
         {
             var row = vm.SelectRowAtWaveformPosition(e.PositionInSeconds);
-            foreach (var item in new[] { menuPlay, menuRegenerate, menuHistory, menuFit, menuReset })
+            foreach (var item in new[] { menuPlay, menuRegenerate, menuHistory, menuFit, menuReset, menuSplit })
             {
                 item.CommandParameter = row;
                 item.IsEnabled = row != null;
@@ -766,17 +883,13 @@ public class ReviewSpeechWindow : Window
                 menuPlay.IsEnabled = row.IsPlayingEnabled && !row.IsPlaying;
                 menuRegenerate.IsEnabled = vm.IsRegenerateEnabled && row.IsPlayingEnabled;
                 menuHistory.IsEnabled = row.HasHistory;
-                menuFit.IsEnabled = vm.GetGeneratedAudioLengthSeconds(row) > 0 && !audioVisualizer.IsReadOnly;
-                menuReset.IsEnabled = !audioVisualizer.IsReadOnly;
+                menuFit.IsEnabled = vm.GetGeneratedAudioLengthSeconds(row) > 0 && !av.IsReadOnly;
+                menuReset.IsEnabled = !av.IsReadOnly;
+                menuSplit.IsEnabled = vm.IsRegenerateEnabled;
             }
         };
 
-        return new Border
-        {
-            Margin = new Thickness(2),
-            Height = 120,
-            Child = audioVisualizer,
-        };
+        return flyout;
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
