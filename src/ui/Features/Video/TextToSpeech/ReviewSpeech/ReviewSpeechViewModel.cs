@@ -114,6 +114,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // and rebuilt whenever clips or cue times change.
     [ObservableProperty] private WavePeakData2? _wavePeakDataTts;
 
+    // End of the loaded video in seconds (0 = unknown). Drawn as a red line on both waveform tracks
+    // so a clip that runs past the last frame is visible; the merge trims that tail, which can cut
+    // speech, so the user can drag the line's end back first.
+    [ObservableProperty] private double _videoEndSeconds;
+
     // Each ReviewRow's paragraph projected as a SubtitleLineViewModel so AudioVisualizer drag
     // logic (which writes to SubtitleLineViewModel.StartTime/EndTime) works unchanged. The
     // canonical link is ReviewRow.WaveformParagraph (set in Initialize); this list is the
@@ -482,12 +487,34 @@ public partial class ReviewSpeechViewModel : ObservableObject
         _videoFileName = videoFileName;
         _waveFolder = waveFolder;
 
+        // End-of-video marker for the waveform (red line). Read once - it does not change for the
+        // session. 0 when there is no video or ffmpeg cannot read it (no line is drawn).
+        VideoEndSeconds = GetVideoDurationSeconds();
+
         if (Lines.Count > 0)
         {
             SelectedLine = Lines[0];
             LineGrid.SelectedIndex = 0;
             LineGrid.ScrollIntoView(Lines[0]);
         }
+    }
+
+    // Duration of the loaded video in seconds, 0 when there is no video or it cannot be read.
+    private double GetVideoDurationSeconds()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(_videoFileName) && File.Exists(_videoFileName))
+            {
+                return FfmpegMediaInfo2.Parse(_videoFileName).Duration?.TotalSeconds ?? 0;
+            }
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, $"ReviewSpeech: cannot read the video duration of \"{_videoFileName}\"");
+        }
+
+        return 0;
     }
 
     // Drag/edit done on the waveform mutates the SubtitleLineViewModel mirror; this writes the

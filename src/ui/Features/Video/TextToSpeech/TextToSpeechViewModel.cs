@@ -3378,12 +3378,17 @@ public partial class TextToSpeechViewModel : ObservableObject
             return null;
         }
 
-        // Length is the last cue end, exactly like the linear merge produces (its base silence is
-        // built from the same value, and it never pads out to the video). Padding to the video here
-        // would add a tail of silence the linear path does not have.
+        // Length is the last cue end, capped at the video's own length: never pad out to the video
+        // (that would add a tail of silence), and never run past it (a clip whose end is after the
+        // last frame would be trimmed anyway - doing it here keeps the merge to one pass).
         var totalSeconds = stepResults.Length > 0
             ? (float)stepResults.Max(r => r.Paragraph.EndTime.TotalSeconds)
             : 0f;
+        var videoSecondsForCap = GetVideoDurationSeconds();
+        if (videoSecondsForCap > 0 && totalSeconds > videoSecondsForCap)
+        {
+            totalSeconds = (float)videoSecondsForCap;
+        }
 
         var outputFileName = Path.Combine(_waveFolder, $"fastmerge_{Guid.NewGuid():N}.wav");
         ProgressText = $"Merging audio: 1 pass, {clips.Count} clips";

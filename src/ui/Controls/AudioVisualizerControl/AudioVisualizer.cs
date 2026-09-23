@@ -213,6 +213,20 @@ public class AudioVisualizer : Control
     /// </summary>
     public int FallbackSampleRate { get; set; }
 
+    /// <summary>
+    /// End of the loaded video, in seconds (0 = unknown/none). Drawn as a red vertical line so the
+    /// review window can show that a clip runs past the last frame - the merge then trims the tail,
+    /// which could cut speech. A red line the user can drag a line's end back behind.
+    /// </summary>
+    public static readonly StyledProperty<double> VideoEndSecondsProperty =
+        AvaloniaProperty.Register<AudioVisualizer, double>(nameof(VideoEndSeconds));
+
+    public double VideoEndSeconds
+    {
+        get => GetValue(VideoEndSecondsProperty);
+        set => SetValue(VideoEndSecondsProperty, value);
+    }
+
     public double MinGapSeconds { get; set; } = 0.1;
 
     /// <summary>Fallback capture distance when the pixel distance cannot be converted (no peaks yet).</summary>
@@ -472,6 +486,7 @@ public class AudioVisualizer : Control
     private readonly Pen _paintShotChangeParagraphStartPen = new Pen(new SolidColorBrush(Color.FromArgb(175, 0, 100, 0)), 2, dashStyle: DashStyle.Dash);
     private readonly Pen _paintShotChangeParagraphEndPen = new Pen(new SolidColorBrush(Color.FromArgb(175, 110, 10, 10)), 2, dashStyle: DashStyle.Dash);
     private readonly Pen _centerLinePen = new Pen(Brushes.DarkGray, 0.5);
+    private readonly Pen _videoEndPen = new Pen(new SolidColorBrush(Color.FromArgb(255, 230, 30, 30)), 2);
     private readonly HashSet<int> _paragraphStartPositions = new();
     private readonly HashSet<int> _paragraphEndPositions = new();
     private readonly HashSet<SubtitleLineViewModel> _selectedParagraphsRenderSet = new();
@@ -689,6 +704,7 @@ public class AudioVisualizer : Control
             ZoomFactorProperty,
             VerticalZoomFactorProperty,
             CurrentVideoPositionSecondsProperty,
+            VideoEndSecondsProperty,
             AllSelectedParagraphsProperty);
 
         PointerMoved += OnPointerMoved;
@@ -2403,6 +2419,7 @@ public class AudioVisualizer : Control
             DrawParagraphs(context, ref renderCtx);
             DrawShotChanges(context, ref renderCtx);
             DrawChapters(context, ref renderCtx);
+            DrawVideoEndMarker(context, ref renderCtx);
             DrawCurrentVideoPosition(context, ref renderCtx);
             DrawNewParagraph(context, ref renderCtx);
 
@@ -4116,6 +4133,31 @@ public class AudioVisualizer : Control
     // Same dash pattern as DashStyle.Dash (2 on, 2 off, offset 1) in an immutable pen.
     private static readonly IPen _paintPenCursorOnShotChange =
         new ImmutablePen(Brushes.LightCyan, 1.5, new ImmutableDashStyle(new[] { 2.0, 2.0 }, 1));
+
+    // Red vertical line at the end of the video, so the review window shows when a clip runs past
+    // the last frame (the merge then trims the tail, which can cut speech).
+    private void DrawVideoEndMarker(DrawingContext context, ref RenderContext renderCtx)
+    {
+        if (VideoEndSeconds <= 0)
+        {
+            return;
+        }
+
+        var sampleRate = renderCtx.SampleRate > 0 ? renderCtx.SampleRate : FallbackSampleRate;
+        if (sampleRate <= 0)
+        {
+            return;
+        }
+
+        var x = SecondsToXPositionOptimized(VideoEndSeconds - renderCtx.StartPositionSeconds, sampleRate, renderCtx.ZoomFactor);
+        if (x < 0 || x >= renderCtx.Width)
+        {
+            return;
+        }
+
+        var clampedX = Math.Max(x, _videoEndPen.Thickness / 2);
+        context.DrawLine(_videoEndPen, new Point(clampedX, 0), new Point(clampedX, renderCtx.Height));
+    }
 
     private void DrawCurrentVideoPosition(DrawingContext context, ref RenderContext renderCtx)
     {

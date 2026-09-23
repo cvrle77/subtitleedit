@@ -152,6 +152,7 @@ public class SkiaAudioVisualizer : AudioVisualizer
         // has to draw the shared playhead, and that is the whole point of FallbackSampleRate.
         f.CursorSeconds = CurrentVideoPositionSeconds;
         f.CursorOnShotChange = f.CursorSeconds >= 0 && GetShotChangeIndex(f.CursorSeconds) >= 0;
+        f.VideoEndSeconds = VideoEndSeconds;
 
         if (f.SampleRate == 0)
         {
@@ -505,6 +506,7 @@ internal sealed class SkiaWaveformFrame
 
     public double CursorSeconds = -1;
     public bool CursorOnShotChange;
+    public double VideoEndSeconds;
 
     public bool HasNewSelection;
     public double NewSelectionStartSeconds;
