@@ -161,6 +161,12 @@ public partial class TextToSpeechViewModel : ObservableObject
 
     // Reference clip per paragraph for the per-line clone voice, cut before generation starts.
     private Dictionary<Paragraph, string> _perLineCloneClips = new();
+
+    // The last engine output (before "adjust speed"), kept so the adjust-speed step can be re-run on
+    // the already-generated clips without calling the engine again. Set by GenerateSpeech and by
+    // Import.
+    private TtsStepResult[]? _lastGeneratedResults;
+
     private readonly IFileHelper _fileHelper;
     private readonly IFolderHelper _folderHelper;
     private readonly IAceStepAudioCppDownloadService _aceStepDownloadService;
@@ -1419,6 +1425,71 @@ public partial class TextToSpeechViewModel : ObservableObject
 
     private static void StopAllCrispAsrServers() => StopOtherCrispAsrServers(null);
 
+    /// <summary>
+    /// Re-runs the post-generation pipeline ("adjust speed" + post-processing + merge) on the clips
+    /// of the last generation or import, WITHOUT calling the TTS engine. Lets the speed step be
+    /// tested and re-tuned without spending API credits. Falls back with a message when there is
+    /// nothing generated/imported yet.
+    /// </summary>
+    [RelayCommand]
+    private async Task ReRunAdjustSpeed()
+    {
+        if (_lastGeneratedResults == null || _lastGeneratedResults.Length == 0)
+        {
+            if (Window != null)
+            {
+                await MessageBox.Show(Window, Se.Language.General.Information,
+                    "Nothing to re-run yet: generate speech or import a TTS session first.",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            return;
+        }
+
+        IsGenerating = true;
+        ProgressOpacity = 1.0;
+        _cancellationTokenSource = new CancellationTokenSource();
+        _cancellationToken = _cancellationTokenSource.Token;
+
+        var sw = Stopwatch.StartNew();
+        try
+        {
+            var fixSpeedResult = await FixSpeed(_lastGeneratedResults, _cancellationToken);
+            if (fixSpeedResult == null)
+            {
+                ResetGeneratingUiState();
+                return;
+            }
+
+            var postProcessResult = await ApplyPostProcessing(fixSpeedResult, _cancellationToken);
+            if (postProcessResult == null)
+            {
+                ResetGeneratingUiState();
+                return;
+            }
+
+            sw.Stop();
+            Se.WriteToolsLog($"TTS re-run adjust speed: {_lastGeneratedResults.Length} segments in {sw.Elapsed.TotalSeconds:0.0}s " +
+                $"(parallelism {Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism})");
+
+            await MergeAndAddToVideo(postProcessResult);
+        }
+        catch (OperationCanceledException)
+        {
+            ResetGeneratingUiState();
+        }
+        catch (Exception ex)
+        {
+            SeLogger.Error(ex, "Text-to-speech: re-run adjust speed failed");
+            ResetGeneratingUiState();
+            if (Window != null)
+            {
+                await MessageBox.Show(Window, Se.Language.General.Error,
+                    "Re-running adjust speed failed: " + ex.Message,
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+    }
+
     [RelayCommand]
     public async Task GenerateTts()
     {
@@ -1547,6 +1618,8 @@ public partial class TextToSpeechViewModel : ObservableObject
                 ResetGeneratingUiState();
                 return;
             }
+
+            _lastGeneratedResults = generateSpeechResult;
 
             // Fix speed
             var fixSpeedResult = await FixSpeed(generateSpeechResult, _cancellationToken);
@@ -2595,6 +2668,9 @@ public partial class TextToSpeechViewModel : ObservableObject
         // If the cache miss, GenerateWavePeaksIfNeededAsync below kicks off a background ffmpeg
         // job and pushes the result into the review VM once ready.
         var peaksForReview = TryLoadWavePeaksFromDisk(videoFileNameForReview) ?? _wavePeakData;
+
+        // Keep the imported clips so "re-run adjust speed" can run on them without the engine.
+        _lastGeneratedResults = stepResults.ToArray();
 
         var result = await _windowService.ShowDialogAsync<ReviewSpeechWindow, ReviewSpeechViewModel>(Window, vm =>
         {

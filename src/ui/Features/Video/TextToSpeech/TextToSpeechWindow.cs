@@ -118,9 +118,19 @@ public class TextToSpeechWindow : Window
             .WithBindIsEnabled("!" + nameof(vm.IsGenerating));
         buttonGenerate.Classes.Add("accent");
 
+        // Re-run the adjust-speed/post-process/merge stages on the last generated or imported clips,
+        // with no engine call - so the speed settings can be tested without spending API credits.
+        var buttonReRunAdjustSpeed = UiUtil.MakeButton(vm.ReRunAdjustSpeedCommand, IconNames.Restore, "Re-run adjust speed")
+            .WithBindIsEnabled("!" + nameof(vm.IsGenerating));
+        if (Se.Settings.Appearance.ShowHints)
+        {
+            ToolTip.SetTip(buttonReRunAdjustSpeed, "Re-run \"adjust speed\" + merge on the last clips, without calling the engine");
+        }
+
         var buttonPanel = UiUtil.MakeButtonBar(
             buttonCast,
             UiUtil.MakeButton(Se.Language.General.ImportDotDotDot, vm.ImportCommand).WithBindIsEnabled("!" + nameof(vm.IsGenerating)),
+            buttonReRunAdjustSpeed,
             buttonOk,
             buttonCancel,
             buttonGenerate
