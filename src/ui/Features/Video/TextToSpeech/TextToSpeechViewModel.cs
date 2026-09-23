@@ -3896,6 +3896,19 @@ public partial class TextToSpeechViewModel : ObservableObject
         return Math.Max(1, Se.Settings.Video.TextToSpeech.ElevenLabsMaxConcurrency);
     }
 
+    // Status for the parallel path: "segment X of Y done (N in parallel)". The plain percentage
+    // the linear path shows tells nothing about parallelism, so the counter and the in-flight count
+    // are shown alongside it. Marshalled to the UI thread - callers run on thread-pool threads.
+    private void UpdateParallelProgress(int done, int total, int concurrency)
+    {
+        var inFlight = Math.Min(concurrency, Math.Max(0, total - done));
+        Dispatcher.UIThread.Post(() =>
+        {
+            ProgressText = $"Generating speech (parallel): {done} of {total} done, {inFlight} running";
+            ProgressValue = total > 0 ? (double)done / total * 100.0 : 0;
+        });
+    }
+
     /// <summary>
     /// Synthesises every (non-skipped) line through a bounded pool of ElevenLabs requests, sized to
     /// the account's plan concurrency. Results come back in line order; a failed line is recorded
@@ -3918,6 +3931,10 @@ public partial class TextToSpeechViewModel : ObservableObject
 
         Se.WriteToolsLog($"TTS generation: parallel mode with {concurrency} concurrent ElevenLabs request(s) for {total} lines");
 
+        // Say up front how many run at once, so the status shows this is the parallel path even
+        // before the first request finishes (#parallel visibility).
+        UpdateParallelProgress(0, total, concurrency);
+
         using var throttler = new SemaphoreSlim(concurrency);
         var tasks = new List<Task>();
         try
@@ -3934,7 +3951,8 @@ public partial class TextToSpeechViewModel : ObservableObject
                 // Skip the lines the user chose to leave silent, exactly like the linear path.
                 if (_skipNoiseParagraphs.Contains(paragraph))
                 {
-                    Interlocked.Increment(ref completed);
+                    var skippedDone = Interlocked.Increment(ref completed);
+                    UpdateParallelProgress(skippedDone, total, concurrency);
                     continue;
                 }
 
@@ -3988,7 +4006,7 @@ public partial class TextToSpeechViewModel : ObservableObject
                     {
                         throttler.Release();
                         var done = Interlocked.Increment(ref completed);
-                        ProgressValue = (double)done / total * 100.0;
+                        UpdateParallelProgress(done, total, concurrency);
                     }
                 }, cancellationToken));
             }
