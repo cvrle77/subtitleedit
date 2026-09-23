@@ -698,6 +698,10 @@ public class ReviewSpeechWindow : Window
         audioVisualizer.Bind(AudioVisualizer.WavePeaksProperty, new Binding(nameof(vm.WavePeakData)));
         audioVisualizerTts.Bind(AudioVisualizer.WavePeaksProperty, new Binding(nameof(vm.WavePeakDataTts)));
 
+        // Red end-of-video line on both tracks: a clip past it will be trimmed by the merge.
+        audioVisualizer.Bind(AudioVisualizer.VideoEndSecondsProperty, new Binding(nameof(vm.VideoEndSeconds)));
+        audioVisualizerTts.Bind(AudioVisualizer.VideoEndSecondsProperty, new Binding(nameof(vm.VideoEndSeconds)));
+
         WireWaveform(vm, audioVisualizer, audioVisualizerTts, isTts: false);
         WireWaveform(vm, audioVisualizerTts, audioVisualizer, isTts: true);
 
