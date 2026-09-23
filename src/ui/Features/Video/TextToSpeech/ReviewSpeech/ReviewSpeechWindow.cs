@@ -801,7 +801,7 @@ public class ReviewSpeechWindow : Window
             }
             else if (e.Property == AudioVisualizer.CurrentVideoPositionSecondsProperty)
             {
-                vm.UpdatePositionText(audioVisualizer.CurrentVideoPositionSeconds);
+                vm.UpdatePositionText(av.CurrentVideoPositionSeconds);
             }
             else if (e.Property == AudioVisualizer.StartPositionSecondsProperty ||
                      e.Property == AudioVisualizer.ZoomFactorProperty ||
