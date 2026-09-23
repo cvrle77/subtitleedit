@@ -1,5 +1,6 @@
 using Nikse.SubtitleEdit.Logic.Media;
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -72,11 +73,81 @@ public static partial class TtsSilenceThreshold
     }
 
     /// <summary>
-    /// Peak level of an audio file in dBFS via ffmpeg's volumedetect, or null when ffmpeg failed
-    /// or printed no peak (callers then fall back to the legacy threshold).
+    /// Peak level in dBFS of a 16-bit PCM WAV, read straight from its samples - no ffmpeg process.
+    /// Returns null for anything else (float/non-WAV), so the caller falls back to ffmpeg. Used by
+    /// the adjust-speed step, where one ffmpeg spawn per segment for this probe was a large share of
+    /// the runtime. The dBFS value matches volumedetect's convention: 20*log10(peak/32768).
+    /// </summary>
+    public static double? MeasurePeakDbfsFromWav(string fileName)
+    {
+        try
+        {
+            if (!File.Exists(fileName))
+            {
+                return null;
+            }
+
+            using var stream = File.OpenRead(fileName);
+            var header = new WaveHeader2(stream);
+            if (header.ChunkId != "RIFF" || header.Format != "WAVE" ||
+                header.AudioFormat != WaveHeader2.AudioFormatPcm || header.BitsPerSample != 16 ||
+                header.NumberOfChannels <= 0 || header.LengthInSamples <= 0)
+            {
+                return null;
+            }
+
+            stream.Position = header.DataStartPosition;
+            const int bufferSamples = 65536;
+            var buffer = new byte[bufferSamples * 2];
+            var remaining = (long)header.LengthInSamples * header.BlockAlign;
+            var maxAbs = 0;
+            while (remaining > 0)
+            {
+                var want = (int)Math.Min(remaining, buffer.Length);
+                var read = stream.Read(buffer, 0, want);
+                if (read <= 0)
+                {
+                    break;
+                }
+
+                remaining -= read;
+                for (var i = 0; i + 1 < read; i += 2)
+                {
+                    var v = BitConverter.ToInt16(buffer, i);
+                    var abs = v >= 0 ? v : -v; // -short.MinValue == 32768, fits an int
+                    if (abs > maxAbs)
+                    {
+                        maxAbs = abs;
+                    }
+                }
+            }
+
+            if (maxAbs <= 0)
+            {
+                return double.NegativeInfinity; // digital silence
+            }
+
+            return 20.0 * Math.Log10(maxAbs / 32768.0);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Peak level of an audio file in dBFS: read from a 16-bit PCM WAV's samples directly (no
+    /// process), else via ffmpeg's volumedetect. Null when neither works (callers then fall back to
+    /// the legacy threshold).
     /// </summary>
     public static async Task<double?> MeasurePeakDbfsAsync(string fileName, CancellationToken cancellationToken, TimeSpan? timeout = null)
     {
+        var fromWav = MeasurePeakDbfsFromWav(fileName);
+        if (fromWav != null)
+        {
+            return fromWav;
+        }
+
         var lines = new List<string>();
         var gate = new object();
 
