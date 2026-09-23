@@ -28,6 +28,17 @@ public static class TtsInstructionSwap
     // whatever `speak` returns. Settings are always restored, even when `speak` throws.
     public static async Task<T> RunAsync<T>(ITtsEngine? engine, string? instruction, Func<Task<T>> speak)
     {
+        // Only the engines that actually have an instruction field to swap need to be serialised.
+        // Taking the gate for every engine serialised the whole run - including ElevenLabs, whose
+        // Swap/Restore are no-ops - so a parallel ElevenLabs pool still came out one request at a
+        // time. Engines that do swap a global field must stay under the gate.
+        if (!UsesInstructionSwap(engine))
+        {
+            // Same Task.Run rationale as below: keep the engine's synchronous start-up work off
+            // the UI thread.
+            return await Task.Run(speak);
+        }
+
         await Gate.WaitAsync();
         var previous = Swap(engine, instruction);
         try
@@ -44,6 +55,11 @@ public static class TtsInstructionSwap
             Restore(engine, previous);
             Gate.Release();
         }
+    }
+
+    private static bool UsesInstructionSwap(ITtsEngine? engine)
+    {
+        return engine is Qwen3TtsCpp or Qwen3TtsCrispAsr or OmniVoiceTtsCpp;
     }
 
     private static string? Swap(ITtsEngine? engine, string? instruction)
