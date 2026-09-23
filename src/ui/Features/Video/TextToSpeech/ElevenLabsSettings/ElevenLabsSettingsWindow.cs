@@ -89,27 +89,9 @@ public class ElevenLabsSettingsWindow : Window
         var labelStyleExaggerationValue = UiUtil.MakeLabel().WithBindText(vm, nameof(ElevenLabsSettingsViewModel.StyleExaggeration), new DoubleToTwoDecimalConverter());
         var buttonStyleExaggeration = UiUtil.MakeButton(vm.ShowStyleExaggerationHelpCommand, IconNames.Help, $"{Se.Language.General.StyleExaggeration} - {Se.Language.General.Help}");
 
-        // Parallel generation: a single switch between the existing linear mode (off, the default)
-        // and a plan-sized parallel pool (on). The plan is detected from the API key, not entered.
-        var checkBoxParallel = new CheckBox
-        {
-            Content = Se.Language.Video.TextToSpeech.ElevenLabsParallelGeneration,
-            Margin = new Thickness(0, 5, 0, 0),
-            [!CheckBox.IsCheckedProperty] = new Binding(nameof(ElevenLabsSettingsViewModel.GenerateInParallel)) { Mode = BindingMode.TwoWay },
-        };
-        var labelParallelInfo = new TextBlock
-        {
-            Margin = new Thickness(5, 0, 0, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-            Opacity = 0.75,
-            [!TextBlock.TextProperty] = new Binding(nameof(ElevenLabsSettingsViewModel.ParallelInfo)),
-        };
-        var panelParallel = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Children = { checkBoxParallel, labelParallelInfo },
-        };
-
+        // The parallel-generation switch lives in Settings > cvrle77 (all of this fork's options are
+        // grouped there). Detecting the plan still happens here on open so the tier is cached for
+        // that checkbox to display, and again lazily at generation time if it is still unknown.
         var buttonWeb = UiUtil.MakeButton(Se.Language.General.MoreInfo, vm.ShowMoreOnWebCommand).WithIconLeft(IconNames.Web);
         var buttonReset = UiUtil.MakeButton(Se.Language.General.Reset, vm.ResetCommand).WithIconLeft(IconNames.Repeat);
         var buttonOk = UiUtil.MakeButtonOk(vm.OkCommand);
@@ -120,8 +102,6 @@ public class ElevenLabsSettingsWindow : Window
         {
             RowDefinitions =
             {
-                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
-                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
@@ -167,9 +147,7 @@ public class ElevenLabsSettingsWindow : Window
         grid.Add(labelStyleExaggerationValue, 4, 2);
         grid.Add(buttonStyleExaggeration, 4, 3);
 
-        grid.Add(panelParallel, 5, 0, 1, 4);
-
-        grid.Add(panelButtons, 6, 0, 1, 3);
+        grid.Add(panelButtons, 5, 0, 1, 3);
 
         Content = grid;
 

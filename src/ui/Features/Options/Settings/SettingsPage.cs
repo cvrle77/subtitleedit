@@ -921,7 +921,6 @@ public class SettingsPage : UserControl
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechPromptMergeContinuationLines, nameof(_vm.TextToSpeechPromptMergeContinuationLines)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechPromptSkipNoiseLines, nameof(_vm.TextToSpeechPromptSkipNoiseLines)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechPromptDetectSpeakers, nameof(_vm.TextToSpeechPromptDetectSpeakers)),
-            MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechFastMerge, nameof(_vm.TextToSpeechFastMerge)),
             MakeCheckboxSetting(Se.Language.Options.Settings.FixCommonErrorsSkipStep1, nameof(_vm.FixCommonErrorsSkipStep1)),
             MakeCheckboxSetting(Se.Language.Options.Settings.FixShortDisplayTimesAllowMoveStartTime, nameof(_vm.FixShortDisplayTimesAllowMoveStartTime)),
             new SettingsItem(Se.Language.Options.Settings.MusicSymbol,
@@ -1153,6 +1152,20 @@ public class SettingsPage : UserControl
             MakeGroupHeader("Waveform centering"),
             new SettingsItem(Se.Language.Options.Settings.WaveformCenterSmoothSeconds, () => UiUtil.MakeNumericUpDownOneDecimal(
                 0, 10, 120, _vm, nameof(_vm.WaveformCenterSmoothSeconds), defaultValue: 2.0m)),
+
+            MakeSeparator(),
+            MakeGroupHeader("Text to speech"),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechFastMerge, nameof(_vm.TextToSpeechFastMerge)),
+            MakeCheckboxSetting(Se.Language.Video.TextToSpeech.ElevenLabsParallelGeneration, nameof(_vm.TextToSpeechElevenLabsParallel)),
+
+            // Detected plan, shown under the parallel checkbox once the API key has been read.
+            new SettingsItem(string.Empty, () => new TextBlock
+            {
+                DataContext = _vm,
+                [!TextBlock.TextProperty] = new Binding(nameof(_vm.TextToSpeechElevenLabsPlan)),
+                Opacity = 0.75,
+                Margin = new Thickness(4, 0, 0, 0),
+            }),
         ]));
 
 

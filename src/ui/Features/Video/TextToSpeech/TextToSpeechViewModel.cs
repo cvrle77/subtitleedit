@@ -164,6 +164,7 @@ public partial class TextToSpeechViewModel : ObservableObject
     private readonly IFileHelper _fileHelper;
     private readonly IFolderHelper _folderHelper;
     private readonly IAceStepAudioCppDownloadService _aceStepDownloadService;
+    private readonly ITtsDownloadService _ttsDownloadService;
 
     /// <summary>
     /// Music generated in this window's session (from the background music settings or a previous
@@ -189,6 +190,7 @@ public partial class TextToSpeechViewModel : ObservableObject
         _fileHelper = fileHelper;
         _folderHelper = folderHelper;
         _aceStepDownloadService = aceStepDownloadService;
+        _ttsDownloadService = ttsDownloadService;
 
         Engines = new ObservableCollection<ITtsEngine>();
         Voices = new ObservableCollection<Voice>();
@@ -3557,7 +3559,20 @@ public partial class TextToSpeechViewModel : ObservableObject
             // Parallel mode: a bounded pool of ElevenLabs requests instead of one-at-a-time. Only
             // when the whole run is ElevenLabs (a per-actor cast can mix engines, and the local
             // CrispASR servers can't take concurrent calls). Off by default, so the linear path
-            // below stays exactly as it was.
+            // below stays exactly as it was. The plan tier is read from the API once and cached; if
+            // it is still unknown here (key added after the dialog was last opened), fetch it now.
+            if (Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel &&
+                engine is ElevenLabs &&
+                Se.Settings.Video.TextToSpeech.ElevenLabsMaxConcurrency <= 0)
+            {
+                var tier = await _ttsDownloadService.GetElevenLabsSubscriptionTier(cancellationToken);
+                if (!string.IsNullOrEmpty(tier))
+                {
+                    Se.Settings.Video.TextToSpeech.ElevenLabsTier = tier;
+                    Se.Settings.Video.TextToSpeech.ElevenLabsMaxConcurrency = ElevenLabs.ConcurrencyForTier(tier);
+                }
+            }
+
             var parallelConcurrency = GetElevenLabsParallelConcurrency(castContext, engine);
             if (parallelConcurrency > 1)
             {

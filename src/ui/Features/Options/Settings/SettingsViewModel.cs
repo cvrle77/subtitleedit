@@ -126,6 +126,19 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _moveLinesShortenNeighbor;
     [ObservableProperty] private bool _promptBeforeDelete;
     [ObservableProperty] private bool _minimalContextMenus;
+    [ObservableProperty] private bool _textToSpeechElevenLabsParallel;
+    [ObservableProperty] private string _textToSpeechElevenLabsPlan = string.Empty;
+
+    // Detected plan shown next to the parallel checkbox. The tier is read from the API once, in the
+    // ElevenLabs engine dialog (or on the first parallel run); this just reports it.
+    private static string BuildElevenLabsPlanText()
+    {
+        var tier = Se.Settings.Video.TextToSpeech.ElevenLabsTier;
+        var concurrency = Se.Settings.Video.TextToSpeech.ElevenLabsMaxConcurrency;
+        return string.IsNullOrEmpty(tier) || concurrency <= 0
+            ? string.Empty
+            : $"detected plan: {tier} ({concurrency} parallel)";
+    }
     [ObservableProperty] private bool _trimSilenceAfterSplit;
     [ObservableProperty] private bool _splitTrimUseVoiceDetection;
     [ObservableProperty] private decimal _vadThreshold;
@@ -805,6 +818,8 @@ public partial class SettingsViewModel : ObservableObject
         MoveLinesShortenNeighbor = general.MoveLinesShortenNeighbor;
         PromptBeforeDelete = general.PromptBeforeDelete;
         MinimalContextMenus = general.MinimalContextMenus;
+        TextToSpeechElevenLabsParallel = Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel;
+        TextToSpeechElevenLabsPlan = BuildElevenLabsPlanText();
         TrimSilenceAfterSplit = general.TrimSilenceAfterSplit;
         SplitTrimUseVoiceDetection = general.SplitTrimUseVoiceDetection;
         VadThreshold = (decimal)general.VadThreshold;
@@ -1710,6 +1725,7 @@ public partial class SettingsViewModel : ObservableObject
         general.MoveLinesShortenNeighbor = MoveLinesShortenNeighbor;
         general.PromptBeforeDelete = PromptBeforeDelete;
         general.MinimalContextMenus = MinimalContextMenus;
+        Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel = TextToSpeechElevenLabsParallel;
         general.TrimSilenceAfterSplit = TrimSilenceAfterSplit;
         general.SplitTrimUseVoiceDetection = SplitTrimUseVoiceDetection;
         general.VadThreshold = (double)VadThreshold;
