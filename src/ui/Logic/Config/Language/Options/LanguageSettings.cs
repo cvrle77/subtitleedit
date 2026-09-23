@@ -320,6 +320,7 @@ public class LanguageSettings
     public string TextToSpeechPromptDetectSpeakers { get; set; }
     public string TextToSpeechFastMerge { get; set; }
     public string AdjustSpeedParallelism { get; set; }
+    public string ShowTestingTools { get; set; }
     public string UseFocusedButtonBackgroundColor { get; set; }
     public string FocusedButtonBackgroundColor { get; set; }
     public string ForceCrLfOnSave { get; set; }
@@ -675,6 +676,7 @@ public class LanguageSettings
         TextToSpeechPromptDetectSpeakers = "Text to speech: prompt to detect speaker names in the text";
         TextToSpeechFastMerge = "Text to speech: fast merge (one ffmpeg pass instead of one per line)";
         AdjustSpeedParallelism = "Text to speech: segments processed at once when adjusting speed";
+        ShowTestingTools = "Text to speech: show testing tools (re-run adjust speed button)";
         UseFocusedButtonBackgroundColor = "Use focused button background color";
         FocusedButtonBackgroundColor = "Focused button background color";
         ForceCrLfOnSave = "Force CR+LF on save (text subtitle files)";

@@ -3345,6 +3345,7 @@
       "textToSpeechPromptDetectSpeakers": "Text to speech: prompt to detect speaker names in the text",
       "textToSpeechFastMerge": "Text to speech: fast merge (one ffmpeg pass instead of one per line)",
       "adjustSpeedParallelism": "Text to speech: segments processed at once when adjusting speed",
+      "showTestingTools": "Text to speech: show testing tools (re-run adjust speed button)",
       "useFocusedButtonBackgroundColor": "Use focused button background color",
       "focusedButtonBackgroundColor": "Focused button background color",
       "forceCrLfOnSave": "Force CR+LF on save (text subtitle files)",

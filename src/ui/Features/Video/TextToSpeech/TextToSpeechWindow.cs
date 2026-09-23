@@ -120,8 +120,10 @@ public class TextToSpeechWindow : Window
 
         // Re-run the adjust-speed/post-process/merge stages on the last generated or imported clips,
         // with no engine call - so the speed settings can be tested without spending API credits.
+        // Hidden unless "show testing tools" is on in Settings > cvrle77.
         var buttonReRunAdjustSpeed = UiUtil.MakeButton(vm.ReRunAdjustSpeedCommand, IconNames.Restore, "Re-run adjust speed")
             .WithBindIsEnabled("!" + nameof(vm.IsGenerating));
+        buttonReRunAdjustSpeed.IsVisible = Se.Settings.Video.TextToSpeech.ShowTestingTools;
         if (Se.Settings.Appearance.ShowHints)
         {
             ToolTip.SetTip(buttonReRunAdjustSpeed, "Re-run \"adjust speed\" + merge on the last clips, without calling the engine");

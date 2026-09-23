@@ -170,6 +170,10 @@ public class SeVideoTextToSpeech
     // one-at-a-time behaviour.
     public int AdjustSpeedParallelism { get; set; }
 
+    // Show the "Re-run adjust speed" testing button in the TTS window (reruns the speed + merge
+    // stages on the last clips without calling the engine). Off by default - it is a test tool.
+    public bool ShowTestingTools { get; set; }
+
     // Base folder the generation clips are written into while a run is in progress. Empty = the
     // system temp folder. Each run still gets its own "se-tts-<guid>" subfolder inside it, so
     // pointing this at the subtitle folder keeps the clips next to the work instead of buried in
@@ -282,6 +286,7 @@ public class SeVideoTextToSpeech
         OutputSampleRate = 0;
         FastMerge = false;
         AdjustSpeedParallelism = 4;
+        ShowTestingTools = false;
         GenerationFolder = string.Empty;
         DeleteTempFiles = true;
         LastActorVoiceMappings = new List<ActorVoiceMapping>();

@@ -1158,6 +1158,7 @@ public class SettingsPage : UserControl
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechFastMerge, nameof(_vm.TextToSpeechFastMerge)),
             new SettingsItem(Se.Language.Options.Settings.AdjustSpeedParallelism, () => UiUtil.MakeNumericUpDownInt(
                 1, 32, 4, 120, _vm, nameof(_vm.AdjustSpeedParallelism))),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowTestingTools, nameof(_vm.ShowTestingTools)),
             MakeCheckboxSetting(Se.Language.Video.TextToSpeech.ElevenLabsParallelGeneration, nameof(_vm.TextToSpeechElevenLabsParallel)),
 
             // Detected plan, shown under the parallel checkbox once the API key has been read.
