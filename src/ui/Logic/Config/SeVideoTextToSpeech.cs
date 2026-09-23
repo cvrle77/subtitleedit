@@ -165,6 +165,11 @@ public class SeVideoTextToSpeech
     // output format, same clip start times; vastly faster on a long session.
     public bool FastMerge { get; set; }
 
+    // How many segments the "adjust speed" step processes at once. Each segment is still handled by
+    // its own ffmpeg calls, so the output is unchanged - they just run in parallel. 1 = the old
+    // one-at-a-time behaviour.
+    public int AdjustSpeedParallelism { get; set; }
+
     // Base folder the generation clips are written into while a run is in progress. Empty = the
     // system temp folder. Each run still gets its own "se-tts-<guid>" subfolder inside it, so
     // pointing this at the subtitle folder keeps the clips next to the work instead of buried in
@@ -276,6 +281,7 @@ public class SeVideoTextToSpeech
         SilencePaddingMs = 0;
         OutputSampleRate = 0;
         FastMerge = false;
+        AdjustSpeedParallelism = 4;
         GenerationFolder = string.Empty;
         DeleteTempFiles = true;
         LastActorVoiceMappings = new List<ActorVoiceMapping>();

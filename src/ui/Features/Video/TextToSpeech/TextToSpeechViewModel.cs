@@ -4493,212 +4493,74 @@ public partial class TextToSpeechViewModel : ObservableObject
 
         try
         {
-            var resultList = new List<TtsStepResult>();
+            // Each segment is independent (its own ffmpeg calls on its own files), so they run in a
+            // bounded pool. Results are written back by index so the order and every per-segment
+            // decision match the old one-at-a-time loop exactly - only the wall-clock time changes.
+            var parallelism = Math.Max(1, Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism);
+            var total = previousStepResult.Length;
+            var results = new TtsStepResult?[total];
+            var completed = 0;
+            var progressGate = new object();
+
             ProgressValue = 0;
-            for (var index = 0; index < previousStepResult.Length; index++)
+            Se.WriteToolsLog($"TTS FixSpeed: adjusting speed with parallelism {parallelism} for {total} segments");
+
+            if (parallelism <= 1)
             {
-                ProgressText = $"Adjusting speed: segment {index + 1} of {_subtitle.Paragraphs.Count}";
-                ProgressValue = (double)index / _subtitle.Paragraphs.Count * 100;
-
-                var item = previousStepResult[index];
-                var p = item.Paragraph;
-                var next = index + 1 < previousStepResult.Length ? previousStepResult[index + 1] : null;
-
-                if (string.IsNullOrEmpty(item.CurrentFileName) || !File.Exists(item.CurrentFileName))
+                for (var index = 0; index < total; index++)
                 {
-                    skippedNoAudioCount++;
-                    SeLogger.Error($"TextToSpeech: skipping segment {index + 1} in FixSpeed - upstream produced no audio file");
-                    continue;
-                }
-
-                // A single bad segment (corrupt audio, wedged/failed ffmpeg call) must not kill the
-                // whole run: keep its audio at original speed, log it, and continue with the rest -
-                // same policy as the generation step. Cancellation still aborts the run.
-                try
-                {
-                    // Silence is judged relative to this clip's own peak: a fixed -40 dBFS trimmed
-                    // the soft final consonant off quiet voice-clone output, cutting the last word
-                    // of the line (#14480). Null (unreadable file) falls back to the old threshold.
-                    var peakDbfs = await TtsSilenceThreshold.MeasurePeakDbfsAsync(item.CurrentFileName, cancellationToken, segmentOperationTimeout);
-                    Se.WriteToolsLog($"TTS FixSpeed: segment {index + 1} peak {FormatDb(peakDbfs)} - silence threshold {TtsSilenceThreshold.DbLiteral(peakDbfs)}");
-
-                    // Step 1: Trim silence from start and end
-                    var outputFileName1 = Path.Combine(Path.GetDirectoryName(item.CurrentFileName)!, Guid.NewGuid() + ".wav");
-                    var trimProcess = FfmpegGenerator.TrimSilenceStartAndEnd(item.CurrentFileName, outputFileName1, TtsSilenceThreshold.Amplitude(peakDbfs));
-                    await trimProcess.StartAndWaitAsync(cancellationToken, segmentOperationTimeout);
-
-                    var currentFile = outputFileName1;
-
-                    // Step 2: VAD-based internal silence compression
-                    // Compress pauses between words/phrases before touching tempo.
-                    // This preserves phoneme quality by only removing redundant silence.
-                    if (doVad)
-                    {
-                        var vadOutput = Path.Combine(Path.GetDirectoryName(item.CurrentFileName)!, $"vad_{Guid.NewGuid()}.wav");
-                        var vadProcess = FfmpegGenerator.CompressInternalSilence(currentFile, vadOutput, vadMaxSilence, TtsSilenceThreshold.DbLiteral(peakDbfs));
-                        await vadProcess.StartAndWaitAsync(cancellationToken, segmentOperationTimeout);
-
-                        if (File.Exists(vadOutput) && new FileInfo(vadOutput).Length > 0)
-                        {
-                            currentFile = vadOutput;
-                        }
-                    }
-
-                    var addDuration = 0d;
-                    if (next != null && p.EndTime.TotalMilliseconds < next.Paragraph.StartTime.TotalMilliseconds)
-                    {
-                        var diff = next.Paragraph.StartTime.TotalMilliseconds - p.EndTime.TotalMilliseconds;
-                        addDuration = Math.Min(1000, diff);
-                        if (addDuration < 0)
-                        {
-                            addDuration = 0;
-                        }
-                    }
-
-                    var mediaInfo = FfmpegMediaInfo.Parse(currentFile);
-                    if (mediaInfo.Duration == null)
-                    {
-                        // The trim/VAD output is missing or unreadable (ffmpeg problem). Keep the
-                        // engine's original audio at original speed - same policy as the other
-                        // failure paths - instead of silently dropping the line from the output.
-                        skippedNoDurationCount++;
-                        Se.WriteToolsLog($"TTS FixSpeed: segment {index + 1} - could not read duration of \"{currentFile}\" (trim output missing or unreadable; ffmpeg problem?) - keeping original audio", true);
-                        resultList.Add(new TtsStepResult
-                        {
-                            Paragraph = p,
-                            Text = item.Text,
-                            CurrentFileName = item.CurrentFileName,
-                            SpeedFactor = 1.0f,
-                            Voice = item.Voice,
-                            EngineName = item.EngineName,
-                            Model = item.Model,
-                            Instruction = item.Instruction,
-                        });
-                        continue;
-                    }
-
-                    // If audio already fits after silence removal/compression, no time-stretching needed
-                    if (mediaInfo.Duration.TotalMilliseconds <= p.DurationTotalMilliseconds + addDuration)
-                    {
-                        resultList.Add(new TtsStepResult
-                        {
-                            Paragraph = p,
-                            Text = item.Text,
-                            CurrentFileName = currentFile,
-                            SpeedFactor = 1.0f,
-                            Voice = item.Voice,
-                            EngineName = item.EngineName,
-                            Model = item.Model,
-                            Instruction = item.Instruction,
-                        });
-                        continue;
-                    }
-
-                    var divisor = (decimal)(p.DurationTotalMilliseconds + addDuration);
-                    if (divisor <= 0)
-                    {
-                        resultList.Add(new TtsStepResult
-                        {
-                            Paragraph = p,
-                            Text = item.Text,
-                            CurrentFileName = item.CurrentFileName,
-                            SpeedFactor = 1.0f,
-                            Voice = item.Voice,
-                            EngineName = item.EngineName,
-                            Model = item.Model,
-                            Instruction = item.Instruction,
-                        });
-
-                        SeLogger.Error($"TextToSpeech: Duration is zero (skipping): {item.CurrentFileName}, {p}");
-                        continue;
-                    }
-
-                    // Step 3: Time-stretching (only for audio that still exceeds subtitle duration)
-                    var ext = ".wav";
-                    var factor = (decimal)mediaInfo.Duration.TotalMilliseconds / divisor;
-                    var outputFileName2 = Path.Combine(_waveFolder, $"{index}_{Guid.NewGuid()}{ext}");
-                    var overrideFileName = string.Empty;
-                    if (!string.IsNullOrEmpty(overrideFileName) && File.Exists(Path.Combine(_waveFolder, overrideFileName)))
-                    {
-                        outputFileName2 = Path.Combine(_waveFolder, $"{Path.GetFileNameWithoutExtension(overrideFileName)}_{Guid.NewGuid()}{ext}");
-                    }
-
-                    resultList.Add(new TtsStepResult
-                    {
-                        Paragraph = p,
-                        Text = item.Text,
-                        CurrentFileName = outputFileName2,
-                        SpeedFactor = (float)factor,
-                        Voice = item.Voice,
-                        EngineName = item.EngineName,
-                        Model = item.Model,
-                        Instruction = item.Instruction,
-                    });
-
-                    // Use rubberband (WSOLA) for high-quality pitch-preserving stretch, or atempo as fallback
-                    Process speedProcess;
-                    if (doHighQualityStretch)
-                    {
-                        speedProcess = FfmpegGenerator.ChangeSpeedHighQuality(currentFile, outputFileName2, (float)factor);
-                    }
-                    else
-                    {
-                        speedProcess = FfmpegGenerator.ChangeSpeed(currentFile, outputFileName2, (float)factor);
-                    }
-                    await speedProcess.StartAndWaitAsync(cancellationToken, segmentOperationTimeout);
-
-                    // Fallback: if rubberband failed (not available in FFmpeg build), retry with atempo
-                    if (doHighQualityStretch && (!File.Exists(outputFileName2) || new FileInfo(outputFileName2).Length == 0))
-                    {
-                        var fallbackProcess = FfmpegGenerator.ChangeSpeed(currentFile, outputFileName2, (float)factor);
-                        await fallbackProcess.StartAndWaitAsync(cancellationToken, segmentOperationTimeout);
-                    }
-
-                    if (!File.Exists(outputFileName2) || new FileInfo(outputFileName2).Length == 0)
-                    {
-                        // Speed change produced nothing - fall back to the un-stretched audio so the
-                        // segment is not lost (it may overlap the next line slightly).
-                        failedCount++;
-                        resultList[resultList.Count - 1].CurrentFileName = currentFile;
-                        resultList[resultList.Count - 1].SpeedFactor = 1.0f;
-                        Se.WriteToolsLog($"TTS FixSpeed: segment {index + 1} speed change (factor {factor:0.###}) produced no output - keeping original speed", true);
-                    }
-                    else
-                    {
-                        stretchedCount++;
-                    }
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    // Keep the segment at original speed and continue with the rest.
-                    failedCount++;
-                    SeLogger.Error(ex, $"TextToSpeech: FixSpeed failed for segment {index + 1} - keeping original audio");
-                    Se.WriteToolsLog($"TTS FixSpeed: segment {index + 1} failed ({ex.Message}) - keeping original audio", true);
-
-                    // The stretch path adds its result entry before running ffmpeg, so this
-                    // segment may already be in the list - point that entry back at the original
-                    // audio instead of adding a duplicate.
-                    if (resultList.Count > 0 && ReferenceEquals(resultList[resultList.Count - 1].Paragraph, p))
-                    {
-                        resultList[resultList.Count - 1].CurrentFileName = item.CurrentFileName;
-                        resultList[resultList.Count - 1].SpeedFactor = 1.0f;
-                    }
-                    else
-                    {
-                        resultList.Add(new TtsStepResult
-                        {
-                            Paragraph = p,
-                            Text = item.Text,
-                            CurrentFileName = item.CurrentFileName,
-                            SpeedFactor = 1.0f,
-                            Voice = item.Voice,
-                            EngineName = item.EngineName,
-                            Model = item.Model,
-                            Instruction = item.Instruction,
-                        });
-                    }
+                    ProgressText = $"Adjusting speed: segment {index + 1} of {_subtitle.Paragraphs.Count}";
+                    ProgressValue = (double)index / _subtitle.Paragraphs.Count * 100;
+                    var outcome = await FixSpeedSegmentAsync(previousStepResult, index, cancellationToken);
+                    results[index] = outcome.Result;
+                    RecordFixSpeedOutcome(outcome, ref skippedNoAudioCount, ref skippedNoDurationCount, ref stretchedCount, ref failedCount);
                 }
             }
+            else
+            {
+                using var throttler = new SemaphoreSlim(parallelism);
+                var tasks = new List<Task>();
+                for (var index = 0; index < total; index++)
+                {
+                    var i = index;
+                    await throttler.WaitAsync(cancellationToken);
+                    tasks.Add(Task.Run(async () =>
+                    {
+                        try
+                        {
+                            var outcome = await FixSpeedSegmentAsync(previousStepResult, i, cancellationToken);
+                            results[i] = outcome.Result;
+                            lock (progressGate)
+                            {
+                                RecordFixSpeedOutcome(outcome, ref skippedNoAudioCount, ref skippedNoDurationCount, ref stretchedCount, ref failedCount);
+                            }
+
+                            var done = Interlocked.Increment(ref completed);
+                            Dispatcher.UIThread.Post(() =>
+                            {
+                                ProgressText = $"Adjusting speed (parallel {parallelism}): {done} of {total} done";
+                                ProgressValue = total > 0 ? (double)done / total * 100 : 0;
+                            });
+                        }
+                        finally
+                        {
+                            throttler.Release();
+                        }
+                    }, cancellationToken));
+                }
+
+                await Task.WhenAll(tasks);
+            }
+
+            var resultList = new List<TtsStepResult>(total);
+            foreach (var r in results)
+            {
+                if (r != null)
+                {
+                    resultList.Add(r);
+                }
+            }
+
             ProgressValue = 100;
 
             Se.WriteToolsLog(
@@ -4736,6 +4598,199 @@ public partial class TextToSpeechViewModel : ObservableObject
             });
             return null;
         }
+    }
+
+    // What one "adjust speed" segment produced, plus which summary counter it bumps. Kept separate
+    // from the result so the parallel runner can tally counters under a lock while the segment work
+    // itself stays lock-free.
+    private enum FixSpeedOutcome
+    {
+        Stretched,
+        SkippedNoAudio,
+        SkippedNoDuration,
+        Failed,
+    }
+
+    private static void RecordFixSpeedOutcome(
+        (TtsStepResult? Result, FixSpeedOutcome Outcome) outcome,
+        ref int skippedNoAudioCount, ref int skippedNoDurationCount, ref int stretchedCount, ref int failedCount)
+    {
+        switch (outcome.Outcome)
+        {
+            case FixSpeedOutcome.Stretched: stretchedCount++; break;
+            case FixSpeedOutcome.SkippedNoAudio: skippedNoAudioCount++; break;
+            case FixSpeedOutcome.SkippedNoDuration: skippedNoDurationCount++; break;
+            case FixSpeedOutcome.Failed: failedCount++; break;
+        }
+    }
+
+    /// <summary>
+    /// The per-segment "adjust speed" work: trim silence (relative to the clip's own peak), optional
+    /// VAD pause compression, then time-stretch only if the audio still exceeds the cue. Returns the
+    /// segment's result and the counter it affects; never throws for a bad segment (it is kept at
+    /// original speed and reported as failed). Thread-safe: touches only its own files.
+    /// </summary>
+    private async Task<(TtsStepResult? Result, FixSpeedOutcome Outcome)> FixSpeedSegmentAsync(
+        TtsStepResult[] previousStepResult, int index, CancellationToken cancellationToken)
+    {
+        var item = previousStepResult[index];
+        var p = item.Paragraph;
+        var next = index + 1 < previousStepResult.Length ? previousStepResult[index + 1] : null;
+
+        var doVad = Se.Settings.Video.TextToSpeech.VadSilenceCompressionEnabled;
+        var vadMaxSilence = Se.Settings.Video.TextToSpeech.VadMaxSilenceSeconds;
+        var doHighQualityStretch = Se.Settings.Video.TextToSpeech.HighQualityTimeStretchEnabled;
+        var segmentOperationTimeout = TimeSpan.FromMinutes(5);
+
+        if (string.IsNullOrEmpty(item.CurrentFileName) || !File.Exists(item.CurrentFileName))
+        {
+            SeLogger.Error($"TextToSpeech: skipping segment {index + 1} in FixSpeed - upstream produced no audio file");
+            return (null, FixSpeedOutcome.SkippedNoAudio);
+        }
+
+        // A single bad segment (corrupt audio, wedged/failed ffmpeg call) must not kill the whole
+        // run: keep its audio at original speed, log it, and continue with the rest.
+        try
+        {
+            // Silence is judged relative to this clip's own peak: a fixed -40 dBFS trimmed the soft
+            // final consonant off quiet voice-clone output, cutting the last word (#14480).
+            var peakDbfs = await TtsSilenceThreshold.MeasurePeakDbfsAsync(item.CurrentFileName, cancellationToken, segmentOperationTimeout);
+            Se.WriteToolsLog($"TTS FixSpeed: segment {index + 1} peak {FormatDb(peakDbfs)} - silence threshold {TtsSilenceThreshold.DbLiteral(peakDbfs)}");
+
+            // Step 1: Trim silence from start and end.
+            var outputFileName1 = Path.Combine(Path.GetDirectoryName(item.CurrentFileName)!, Guid.NewGuid() + ".wav");
+            var trimProcess = FfmpegGenerator.TrimSilenceStartAndEnd(item.CurrentFileName, outputFileName1, TtsSilenceThreshold.Amplitude(peakDbfs));
+            await trimProcess.StartAndWaitAsync(cancellationToken, segmentOperationTimeout);
+
+            var currentFile = outputFileName1;
+
+            // Step 2: VAD-based internal silence compression (before touching tempo).
+            if (doVad)
+            {
+                var vadOutput = Path.Combine(Path.GetDirectoryName(item.CurrentFileName)!, $"vad_{Guid.NewGuid()}.wav");
+                var vadProcess = FfmpegGenerator.CompressInternalSilence(currentFile, vadOutput, vadMaxSilence, TtsSilenceThreshold.DbLiteral(peakDbfs));
+                await vadProcess.StartAndWaitAsync(cancellationToken, segmentOperationTimeout);
+
+                if (File.Exists(vadOutput) && new FileInfo(vadOutput).Length > 0)
+                {
+                    currentFile = vadOutput;
+                }
+            }
+
+            var addDuration = 0d;
+            if (next != null && p.EndTime.TotalMilliseconds < next.Paragraph.StartTime.TotalMilliseconds)
+            {
+                var diff = next.Paragraph.StartTime.TotalMilliseconds - p.EndTime.TotalMilliseconds;
+                addDuration = Math.Min(1000, diff);
+                if (addDuration < 0)
+                {
+                    addDuration = 0;
+                }
+            }
+
+            var mediaInfo = FfmpegMediaInfo.Parse(currentFile);
+            if (mediaInfo.Duration == null)
+            {
+                Se.WriteToolsLog($"TTS FixSpeed: segment {index + 1} - could not read duration of \"{currentFile}\" (trim output missing or unreadable; ffmpeg problem?) - keeping original audio", true);
+                return (MakeUnchangedResult(item), FixSpeedOutcome.SkippedNoDuration);
+            }
+
+            // Already fits after silence removal/compression: no time-stretching needed.
+            if (mediaInfo.Duration.TotalMilliseconds <= p.DurationTotalMilliseconds + addDuration)
+            {
+                return (new TtsStepResult
+                {
+                    Paragraph = p,
+                    Text = item.Text,
+                    CurrentFileName = currentFile,
+                    SpeedFactor = 1.0f,
+                    Voice = item.Voice,
+                    EngineName = item.EngineName,
+                    Model = item.Model,
+                    Instruction = item.Instruction,
+                }, FixSpeedOutcome.Stretched);
+            }
+
+            var divisor = (decimal)(p.DurationTotalMilliseconds + addDuration);
+            if (divisor <= 0)
+            {
+                SeLogger.Error($"TextToSpeech: Duration is zero (skipping): {item.CurrentFileName}, {p}");
+                return (MakeUnchangedResult(item), FixSpeedOutcome.SkippedNoDuration);
+            }
+
+            // Step 3: Time-stretching (only for audio that still exceeds subtitle duration).
+            var factor = (decimal)mediaInfo.Duration.TotalMilliseconds / divisor;
+            var outputFileName2 = Path.Combine(_waveFolder, $"{index}_{Guid.NewGuid()}.wav");
+
+            Process speedProcess;
+            if (doHighQualityStretch)
+            {
+                speedProcess = FfmpegGenerator.ChangeSpeedHighQuality(currentFile, outputFileName2, (float)factor);
+            }
+            else
+            {
+                speedProcess = FfmpegGenerator.ChangeSpeed(currentFile, outputFileName2, (float)factor);
+            }
+            await speedProcess.StartAndWaitAsync(cancellationToken, segmentOperationTimeout);
+
+            // Fallback: if rubberband failed (not available in the build), retry with atempo.
+            if (doHighQualityStretch && (!File.Exists(outputFileName2) || new FileInfo(outputFileName2).Length == 0))
+            {
+                var fallbackProcess = FfmpegGenerator.ChangeSpeed(currentFile, outputFileName2, (float)factor);
+                await fallbackProcess.StartAndWaitAsync(cancellationToken, segmentOperationTimeout);
+            }
+
+            if (!File.Exists(outputFileName2) || new FileInfo(outputFileName2).Length == 0)
+            {
+                // Speed change produced nothing - keep the un-stretched audio so the segment is not
+                // lost (it may overlap the next line slightly).
+                Se.WriteToolsLog($"TTS FixSpeed: segment {index + 1} speed change (factor {factor:0.###}) produced no output - keeping original speed", true);
+                return (new TtsStepResult
+                {
+                    Paragraph = p,
+                    Text = item.Text,
+                    CurrentFileName = currentFile,
+                    SpeedFactor = 1.0f,
+                    Voice = item.Voice,
+                    EngineName = item.EngineName,
+                    Model = item.Model,
+                    Instruction = item.Instruction,
+                }, FixSpeedOutcome.Failed);
+            }
+
+            return (new TtsStepResult
+            {
+                Paragraph = p,
+                Text = item.Text,
+                CurrentFileName = outputFileName2,
+                SpeedFactor = (float)factor,
+                Voice = item.Voice,
+                EngineName = item.EngineName,
+                Model = item.Model,
+                Instruction = item.Instruction,
+            }, FixSpeedOutcome.Stretched);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            SeLogger.Error(ex, $"TextToSpeech: FixSpeed failed for segment {index + 1} - keeping original audio");
+            Se.WriteToolsLog($"TTS FixSpeed: segment {index + 1} failed ({ex.Message}) - keeping original audio", true);
+            return (MakeUnchangedResult(item), FixSpeedOutcome.Failed);
+        }
+    }
+
+    private static TtsStepResult MakeUnchangedResult(TtsStepResult item)
+    {
+        return new TtsStepResult
+        {
+            Paragraph = item.Paragraph,
+            Text = item.Text,
+            CurrentFileName = item.CurrentFileName,
+            SpeedFactor = 1.0f,
+            Voice = item.Voice,
+            EngineName = item.EngineName,
+            Model = item.Model,
+            Instruction = item.Instruction,
+        };
     }
 
     private async Task<TtsStepResult[]?> ApplyPostProcessing(TtsStepResult[] previousStepResult, CancellationToken cancellationToken)
