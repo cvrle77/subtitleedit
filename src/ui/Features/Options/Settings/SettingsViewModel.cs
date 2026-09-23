@@ -130,6 +130,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _moveLinesShortenNeighbor;
     [ObservableProperty] private bool _promptBeforeDelete;
     [ObservableProperty] private bool _minimalContextMenus;
+    [ObservableProperty] private int _adjustSpeedParallelism;
     [ObservableProperty] private bool _textToSpeechElevenLabsParallel;
     [ObservableProperty] private string _textToSpeechElevenLabsPlan = string.Empty;
 
@@ -866,6 +867,7 @@ public partial class SettingsViewModel : ObservableObject
         MoveLinesShortenNeighbor = general.MoveLinesShortenNeighbor;
         PromptBeforeDelete = general.PromptBeforeDelete;
         MinimalContextMenus = general.MinimalContextMenus;
+        AdjustSpeedParallelism = Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism;
         TextToSpeechElevenLabsParallel = Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel;
         TextToSpeechElevenLabsPlan = BuildElevenLabsPlanText();
         TrimSilenceAfterSplit = general.TrimSilenceAfterSplit;
@@ -1792,6 +1794,7 @@ public partial class SettingsViewModel : ObservableObject
         general.MoveLinesShortenNeighbor = MoveLinesShortenNeighbor;
         general.PromptBeforeDelete = PromptBeforeDelete;
         general.MinimalContextMenus = MinimalContextMenus;
+        Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism = AdjustSpeedParallelism < 1 ? 1 : AdjustSpeedParallelism;
         Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel = TextToSpeechElevenLabsParallel;
         general.TrimSilenceAfterSplit = TrimSilenceAfterSplit;
         general.SplitTrimUseVoiceDetection = SplitTrimUseVoiceDetection;
