@@ -6,6 +6,7 @@ Subtitle Edit Changelog
 v5.3.0-beta11 (cvrle77 fork)
 
 * TTS ElevenLabs: optional parallel generation (a checkbox in the ElevenLabs settings) that synthesizes lines through a pool sized to your account's plan - the tier is read from the API key automatically, no manual entry; the default linear mode is unchanged - thx cvrle77
+* TTS: the parallel generation status shows "X of Y done, N running" instead of a bare percentage, so it is visible that the requests really run in parallel - thx cvrle77
 * TTS: pin the merged audio to the video's own duration, so a cue that ends past the last frame no longer makes the exported wav longer than the video - thx cvrle77
 * Fix common errors: add a "Split/rebalance long lines" rule that re-wraps every line using the settings that tool remembers (falls back to the general line-length settings when it was never run); it is listed last and runs last, after the wording fixes - thx cvrle77
 * TTS review window: show two waveforms - the original video audio on top and the generated speech of every line on the bottom, on one shared time axis (scrolling, zoom and the play-head stay in sync) - thx cvrle77
