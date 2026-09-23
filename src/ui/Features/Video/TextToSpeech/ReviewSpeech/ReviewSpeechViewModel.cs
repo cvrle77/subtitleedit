@@ -114,10 +114,14 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // and rebuilt whenever clips or cue times change.
     [ObservableProperty] private WavePeakData2? _wavePeakDataTts;
 
-    // End of the loaded video in seconds (0 = unknown). Drawn as a red line on both waveform tracks
-    // so a clip that runs past the last frame is visible; the merge trims that tail, which can cut
+    // End of the loaded video in seconds (0 = unknown). Drawn as a line on both waveform tracks so
+    // a clip that runs past the last frame is visible; the merge trims that tail, which can cut
     // speech, so the user can drag the line's end back first.
     [ObservableProperty] private double _videoEndSeconds;
+
+    // True when some cue ends after the video does - the end-of-video line turns red (a clip will be
+    // trimmed), green when everything fits.
+    [ObservableProperty] private bool _videoEndOverrun;
 
     // Each ReviewRow's paragraph projected as a SubtitleLineViewModel so AudioVisualizer drag
     // logic (which writes to SubtitleLineViewModel.StartTime/EndTime) works unchanged. The
@@ -487,9 +491,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
         _videoFileName = videoFileName;
         _waveFolder = waveFolder;
 
-        // End-of-video marker for the waveform (red line). Read once - it does not change for the
-        // session. 0 when there is no video or ffmpeg cannot read it (no line is drawn).
+        // End-of-video marker for the waveform. Read once - it does not change for the session.
+        // 0 when there is no video or ffmpeg cannot read it (no line is drawn).
         VideoEndSeconds = GetVideoDurationSeconds();
+        UpdateVideoEndOverrun();
 
         if (Lines.Count > 0)
         {
@@ -729,10 +734,37 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private void InvalidateWaveforms()
     {
+        UpdateVideoEndOverrun();
         foreach (var av in WaveformControls())
         {
             av.InvalidateVisual();
         }
+    }
+
+    // Recomputes whether any cue ends after the video, so the end-of-video line's colour can turn
+    // red (overrun) or green. Tracks the row times, not the generated clip length (the clip is
+    // what gets placed and trimmed).
+    private void UpdateVideoEndOverrun()
+    {
+        var videoEnd = VideoEndSeconds;
+        if (videoEnd <= 0)
+        {
+            VideoEndOverrun = false;
+            return;
+        }
+
+        var overrun = false;
+        foreach (var row in Lines)
+        {
+            var paragraph = row.StepResult.Paragraph;
+            if (paragraph.EndTime.TotalSeconds > videoEnd + 0.001)
+            {
+                overrun = true;
+                break;
+            }
+        }
+
+        VideoEndOverrun = overrun;
     }
 
     // Length of each row's generated clip, keyed by file name: a regenerate always writes a new

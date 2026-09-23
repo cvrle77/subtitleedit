@@ -1012,7 +1012,9 @@ internal sealed class SkiaWaveformRenderer
             return;
         }
 
-        VerticalLine(canvas, Math.Max(x, 1f), 0, f.Height, 2, new SKColor(230, 30, 30));
+        // Traffic light: red when a clip runs past the line, green when everything fits.
+        var color = f.VideoEndOverrun ? new SKColor(230, 30, 30) : new SKColor(40, 200, 60);
+        VerticalLine(canvas, Math.Max(x, 1f), 0, f.Height, 2, color);
     }
 
     private void DrawCursor(SKCanvas canvas, SkiaWaveformFrame f)

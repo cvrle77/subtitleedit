@@ -5,7 +5,7 @@ Subtitle Edit Changelog
 
 v5.3.0-beta11 (cvrle77 fork)
 
-* TTS review window: draw a red vertical line at the end of the video, so a clip that runs past the last frame is visible and can be dragged back before the export silently trims it; the merged audio is now never longer than the video - thx cvrle77
+* TTS review window: draw a line at the end of the video that is green when every clip fits and red when a clip runs past the last frame (it will be trimmed), so the line's end can be dragged back first; the merged audio is now never longer than the video - thx cvrle77
 * TTS: add a "Re-run adjust speed" button that reruns the speed + merge stages on the last generated or imported clips without calling the engine, so the speed step can be tested without spending API credits - thx cvrle77
 * TTS: "adjusting speed" now processes several segments in parallel (Settings > cvrle77, default 4, adjustable up to 32) instead of one at a time; each segment is still handled by the same ffmpeg calls, so the output is unchanged - thx cvrle77
 * TTS: optional "fast merge" (Settings > General) that places every clip on the timeline in a single ffmpeg pass (adelay + amix) instead of re-encoding the whole growing track once per line - same output format, same clip start times, far faster on a long session - thx cvrle77

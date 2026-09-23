@@ -227,6 +227,19 @@ public class AudioVisualizer : Control
         set => SetValue(VideoEndSecondsProperty, value);
     }
 
+    /// <summary>
+    /// Whether some cue runs past the end of the video. The end-of-video line is drawn red when
+    /// true (a clip will be trimmed), green when false (everything fits).
+    /// </summary>
+    public static readonly StyledProperty<bool> VideoEndOverrunProperty =
+        AvaloniaProperty.Register<AudioVisualizer, bool>(nameof(VideoEndOverrun));
+
+    public bool VideoEndOverrun
+    {
+        get => GetValue(VideoEndOverrunProperty);
+        set => SetValue(VideoEndOverrunProperty, value);
+    }
+
     public double MinGapSeconds { get; set; } = 0.1;
 
     /// <summary>Fallback capture distance when the pixel distance cannot be converted (no peaks yet).</summary>
@@ -486,7 +499,8 @@ public class AudioVisualizer : Control
     private readonly Pen _paintShotChangeParagraphStartPen = new Pen(new SolidColorBrush(Color.FromArgb(175, 0, 100, 0)), 2, dashStyle: DashStyle.Dash);
     private readonly Pen _paintShotChangeParagraphEndPen = new Pen(new SolidColorBrush(Color.FromArgb(175, 110, 10, 10)), 2, dashStyle: DashStyle.Dash);
     private readonly Pen _centerLinePen = new Pen(Brushes.DarkGray, 0.5);
-    private readonly Pen _videoEndPen = new Pen(new SolidColorBrush(Color.FromArgb(255, 230, 30, 30)), 2);
+    private readonly Pen _videoEndPenOverrun = new Pen(new SolidColorBrush(Color.FromArgb(255, 230, 30, 30)), 2);
+    private readonly Pen _videoEndPenOk = new Pen(new SolidColorBrush(Color.FromArgb(255, 40, 200, 60)), 2);
     private readonly HashSet<int> _paragraphStartPositions = new();
     private readonly HashSet<int> _paragraphEndPositions = new();
     private readonly HashSet<SubtitleLineViewModel> _selectedParagraphsRenderSet = new();
@@ -705,6 +719,7 @@ public class AudioVisualizer : Control
             VerticalZoomFactorProperty,
             CurrentVideoPositionSecondsProperty,
             VideoEndSecondsProperty,
+            VideoEndOverrunProperty,
             AllSelectedParagraphsProperty);
 
         PointerMoved += OnPointerMoved;
@@ -4155,8 +4170,12 @@ public class AudioVisualizer : Control
             return;
         }
 
-        var clampedX = Math.Max(x, _videoEndPen.Thickness / 2);
-        context.DrawLine(_videoEndPen, new Point(clampedX, 0), new Point(clampedX, renderCtx.Height));
+        // Traffic light: red when a clip runs past the line (it will be trimmed), green when fine.
+        var pen = VideoEndOverrun
+            ? _videoEndPenOverrun
+            : _videoEndPenOk;
+        var clampedX = Math.Max(x, pen.Thickness / 2);
+        context.DrawLine(pen, new Point(clampedX, 0), new Point(clampedX, renderCtx.Height));
     }
 
     private void DrawCurrentVideoPosition(DrawingContext context, ref RenderContext renderCtx)
