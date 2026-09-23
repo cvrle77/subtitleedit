@@ -3343,6 +3343,7 @@
       "textToSpeechPromptMergeContinuationLines": "Text to speech: prompt to merge continuation lines",
       "textToSpeechPromptSkipNoiseLines": "Text to speech: prompt to skip sound/music lines",
       "textToSpeechPromptDetectSpeakers": "Text to speech: prompt to detect speaker names in the text",
+      "textToSpeechFastMerge": "Text to speech: fast merge (one ffmpeg pass instead of one per line)",
       "useFocusedButtonBackgroundColor": "Use focused button background color",
       "focusedButtonBackgroundColor": "Focused button background color",
       "forceCrLfOnSave": "Force CR+LF on save (text subtitle files)",

@@ -217,6 +217,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _textToSpeechPromptMergeContinuationLines;
     [ObservableProperty] private bool _textToSpeechPromptSkipNoiseLines;
     [ObservableProperty] private bool _textToSpeechPromptDetectSpeakers;
+    [ObservableProperty] private bool _textToSpeechFastMerge;
     [ObservableProperty] private bool _openAiCompatibleSttAutoTranscribeOnAudioSelection;
 
     [ObservableProperty] private ObservableCollection<string> _spellCheckEngines;
@@ -899,6 +900,7 @@ public partial class SettingsViewModel : ObservableObject
         TextToSpeechPromptMergeContinuationLines = Se.Settings.Tools.TextToSpeechPromptMergeContinuationLines;
         TextToSpeechPromptSkipNoiseLines = Se.Settings.Tools.TextToSpeechPromptSkipNoiseLines;
         TextToSpeechPromptDetectSpeakers = Se.Settings.Tools.TextToSpeechPromptDetectSpeakers;
+        TextToSpeechFastMerge = Se.Settings.Video.TextToSpeech.FastMerge;
         OpenAiCompatibleSttAutoTranscribeOnAudioSelection = Se.Settings.Tools.OpenAiCompatibleSttAutoTranscribeOnAudioSelection;
         FixCommonErrorsSkipStep1 = Se.Settings.Tools.FixCommonErrors.SkipStep1;
         MusicSymbol = Se.Settings.Tools.MusicSymbol;
@@ -1774,6 +1776,7 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Tools.TextToSpeechPromptMergeContinuationLines = TextToSpeechPromptMergeContinuationLines;
         Se.Settings.Tools.TextToSpeechPromptSkipNoiseLines = TextToSpeechPromptSkipNoiseLines;
         Se.Settings.Tools.TextToSpeechPromptDetectSpeakers = TextToSpeechPromptDetectSpeakers;
+        Se.Settings.Video.TextToSpeech.FastMerge = TextToSpeechFastMerge;
         Se.Settings.Tools.FixCommonErrors.SkipStep1 = FixCommonErrorsSkipStep1;
         Se.Settings.Tools.WriteToolsLog = WriteToolsLog;
         Se.Settings.Tools.OpenAiCompatibleSttAutoTranscribeOnAudioSelection = OpenAiCompatibleSttAutoTranscribeOnAudioSelection;

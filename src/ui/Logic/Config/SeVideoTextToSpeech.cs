@@ -160,6 +160,11 @@ public class SeVideoTextToSpeech
     // Output sample rate (0 = default)
     public int OutputSampleRate { get; set; }
 
+    // Merge every clip onto the timeline in ONE ffmpeg pass (adelay per clip + amix) instead of
+    // the running concat+amix chain that re-encodes the whole growing track once per line. Same
+    // output format, same clip start times; vastly faster on a long session.
+    public bool FastMerge { get; set; }
+
     // Base folder the generation clips are written into while a run is in progress. Empty = the
     // system temp folder. Each run still gets its own "se-tts-<guid>" subfolder inside it, so
     // pointing this at the subtitle folder keeps the clips next to the work instead of buried in
@@ -270,6 +275,7 @@ public class SeVideoTextToSpeech
         HighQualityTimeStretchEnabled = false;
         SilencePaddingMs = 0;
         OutputSampleRate = 0;
+        FastMerge = false;
         GenerationFolder = string.Empty;
         DeleteTempFiles = true;
         LastActorVoiceMappings = new List<ActorVoiceMapping>();

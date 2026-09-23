@@ -80,6 +80,163 @@ public class FfmpegGenerator
         return processMakeVideo;
     }
 
+    /// <summary>Max inputs per fast-merge ffmpeg call; larger runs are merged in groups then mixed.</summary>
+    private const int FastMergeMaxInputsPerPass = 96;
+
+    /// <summary>
+    /// Merges every clip onto one timeline in a single ffmpeg pass: each clip is delayed to its
+    /// absolute start with <c>adelay</c> and all clips are summed with <c>amix</c> over a silent
+    /// base of <paramref name="totalSeconds"/>. Overlapping clips add up, like the running
+    /// concat+amix chain this replaces, but without re-encoding the whole growing track once per
+    /// line - so a long session merges in one pass instead of N. Output is the same format as the
+    /// chain (stereo when <paramref name="forceStereo"/>).
+    /// </summary>
+    /// <param name="clips">(file, start-milliseconds) pairs, in any order.</param>
+    public static List<Process> MergeAudioTracksFast(
+        IReadOnlyList<(string FileName, int StartMs)> clips,
+        string outputFileName,
+        float totalSeconds,
+        bool forceStereo,
+        out List<string> intermediateFiles)
+    {
+        intermediateFiles = new List<string>();
+        var processes = new List<Process>();
+        if (clips.Count == 0)
+        {
+            return processes;
+        }
+
+        var channelSuffix = forceStereo ? ",aformat=channel_layouts=stereo" : string.Empty;
+        var outputMap = forceStereo ? new[] { "-ac", "2" } : Array.Empty<string>();
+        var total = totalSeconds.ToString(CultureInfo.InvariantCulture);
+
+        // Few enough inputs for one call: delay each clip and mix them all at once.
+        if (clips.Count <= FastMergeMaxInputsPerPass)
+        {
+            var args = new List<string> { "-nostdin", "-y" };
+            foreach (var (fileName, _) in clips)
+            {
+                args.Add("-i");
+                args.Add(fileName);
+            }
+
+            args.Add("-filter_complex");
+            args.Add(BuildFastMergeFilter(clips, channelSuffix));
+            args.Add("-map");
+            args.Add("[aout]");
+            args.AddRange(outputMap);
+            args.Add("-t");
+            args.Add(total);
+            args.Add(outputFileName);
+
+            processes.Add(MakeFfmpegProcess(args));
+            return processes;
+        }
+
+        // Large run: merge in groups (each group is already placed at absolute times), then mix
+        // the group outputs together with amix - again no re-encoding of a growing track.
+        var groupFiles = new List<(string FileName, int StartMs)>();
+        var outputDir = Path.GetDirectoryName(outputFileName) ?? ".";
+        for (var offset = 0; offset < clips.Count; offset += FastMergeMaxInputsPerPass)
+        {
+            var group = clips.Skip(offset).Take(FastMergeMaxInputsPerPass).ToList();
+            var groupFile = Path.Combine(outputDir, $"fastmerge_{Guid.NewGuid():N}.wav");
+            intermediateFiles.Add(groupFile);
+
+            var args = new List<string> { "-nostdin", "-y" };
+            foreach (var (fileName, _) in group)
+            {
+                args.Add("-i");
+                args.Add(fileName);
+            }
+
+            args.Add("-filter_complex");
+            args.Add(BuildFastMergeFilter(group, channelSuffix));
+            args.Add("-map");
+            args.Add("[aout]");
+            args.AddRange(outputMap);
+            args.Add("-t");
+            args.Add(total);
+            args.Add(groupFile);
+
+            processes.Add(MakeFfmpegProcess(args));
+            groupFiles.Add((groupFile, 0));
+        }
+
+        // Final mix of the group files. They already carry absolute timing, so they are summed at
+        // offset 0 (no adelay).
+        {
+            var args = new List<string> { "-nostdin", "-y" };
+            foreach (var (fileName, _) in groupFiles)
+            {
+                args.Add("-i");
+                args.Add(fileName);
+            }
+
+            args.Add("-filter_complex");
+            args.Add(BuildAmixFilter(groupFiles.Count, channelSuffix));
+            args.Add("-map");
+            args.Add("[aout]");
+            args.AddRange(outputMap);
+            args.Add("-t");
+            args.Add(total);
+            args.Add(outputFileName);
+
+            processes.Add(MakeFfmpegProcess(args));
+        }
+
+        return processes;
+    }
+
+    private static string BuildFastMergeFilter(IReadOnlyList<(string FileName, int StartMs)> clips, string channelSuffix)
+    {
+        var parts = new List<string>(clips.Count);
+        var mixInputs = new System.Text.StringBuilder();
+        for (var i = 0; i < clips.Count; i++)
+        {
+            var ms = clips[i].StartMs;
+            parts.Add($"[{i}:a]adelay={ms}|{ms}[a{i}]");
+            mixInputs.Append($"[a{i}]");
+        }
+
+        parts.Add($"{mixInputs}amix=inputs={clips.Count}:normalize=false:dropout_transition=0{channelSuffix}[aout]");
+        return string.Join(";", parts);
+    }
+
+    private static string BuildAmixFilter(int inputCount, string channelSuffix)
+    {
+        var mixInputs = new System.Text.StringBuilder();
+        for (var i = 0; i < inputCount; i++)
+        {
+            mixInputs.Append($"[{i}:a]");
+        }
+
+        return $"{mixInputs}amix=inputs={inputCount}:normalize=false:dropout_transition=0{channelSuffix}[aout]";
+    }
+
+    private static Process MakeFfmpegProcess(IEnumerable<string> args)
+    {
+        var process = new Process
+        {
+            StartInfo =
+            {
+                FileName = GetFfmpegLocation(),
+                Arguments = string.Join(" ", args.Select(QuoteArgument)),
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            }
+        };
+
+        return process;
+    }
+
+    private static string QuoteArgument(string arg)
+    {
+        return arg.Contains(' ') || arg.Contains(';') || arg.Contains(',')
+            ? "\"" + arg.Replace("\"", "\\\"") + "\""
+            : arg;
+    }
+
     private static void SetupDataReceiveHandler(DataReceivedEventHandler? dataReceivedHandler, Process processMakeVideo)
     {
         if (dataReceivedHandler != null)

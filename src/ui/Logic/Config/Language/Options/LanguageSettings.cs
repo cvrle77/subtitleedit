@@ -318,6 +318,7 @@ public class LanguageSettings
     public string TextToSpeechPromptMergeContinuationLines { get; set; }
     public string TextToSpeechPromptSkipNoiseLines { get; set; }
     public string TextToSpeechPromptDetectSpeakers { get; set; }
+    public string TextToSpeechFastMerge { get; set; }
     public string UseFocusedButtonBackgroundColor { get; set; }
     public string FocusedButtonBackgroundColor { get; set; }
     public string ForceCrLfOnSave { get; set; }
@@ -671,6 +672,7 @@ public class LanguageSettings
         TextToSpeechPromptMergeContinuationLines = "Text to speech: prompt to merge continuation lines";
         TextToSpeechPromptSkipNoiseLines = "Text to speech: prompt to skip sound/music lines";
         TextToSpeechPromptDetectSpeakers = "Text to speech: prompt to detect speaker names in the text";
+        TextToSpeechFastMerge = "Text to speech: fast merge (one ffmpeg pass instead of one per line)";
         UseFocusedButtonBackgroundColor = "Use focused button background color";
         FocusedButtonBackgroundColor = "Focused button background color";
         ForceCrLfOnSave = "Force CR+LF on save (text subtitle files)";

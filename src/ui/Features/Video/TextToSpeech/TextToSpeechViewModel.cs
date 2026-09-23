@@ -3192,6 +3192,19 @@ public partial class TextToSpeechViewModel : ObservableObject
                 forceStereo = true;
             }
 
+            // Fast merge: place every clip on the timeline in ONE ffmpeg pass (adelay + amix)
+            // instead of the running concat+amix chain that re-encodes the whole growing track once
+            // per line. Same output format and the same clip start times; one pass over the audio.
+            if (Se.Settings.Video.TextToSpeech.FastMerge)
+            {
+                var fastResult = await MergeAudioParagraphsFast(previousStepResult, forceStereo, cancellationToken);
+                if (fastResult != null)
+                {
+                    return fastResult;
+                }
+                // Fall through to the linear chain if the fast merge produced nothing.
+            }
+
             var silenceFileName = await GenerateSilenceWaveFile(previousStepResult, cancellationToken);
 
             var inputFileName = silenceFileName;
@@ -3250,40 +3263,128 @@ public partial class TextToSpeechViewModel : ObservableObject
             }
             ProgressValue = 100;
 
-            // Pin the result to the video's own length when it is known: the silence base is built
-            // from the subtitle's last cue end (there is no reliable media-info field on this VM -
-            // _mediaInfo is never populated), so a cue whose end runs past the video - a line
-            // extending beyond the last frame, or a review split whose right half was moved later -
-            // made the exported wav longer than the video it belongs to. Only trim when the track
-            // really is longer; an audio-only session with no video keeps the length its lines need.
-            var videoSeconds = GetVideoDurationSeconds();
-            if (videoSeconds > 0)
-            {
-                var mergedSeconds = GetWaveFileDurationSeconds(inputFileName);
-                if (mergedSeconds > videoSeconds + 0.01)
-                {
-                    var trimmedFileName = Path.Combine(_waveFolder, $"silence_trim_{Guid.NewGuid()}.wav");
-                    var trimProcess = FfmpegGenerator.TrimAudioToDuration(inputFileName, trimmedFileName, (float)videoSeconds);
-                    await trimProcess.StartAndWaitAsync(cancellationToken);
-
-                    if (File.Exists(trimmedFileName) && new FileInfo(trimmedFileName).Length > 0)
-                    {
-                        DeleteFileNoError(inputFileName);
-                        inputFileName = trimmedFileName;
-                    }
-                }
-            }
-
             // The chain head is the fully merged track (or the bare silence track if every
             // segment was skipped - still a valid, if empty, result the user gets told about
-            // via the forced tools-log entries above).
-            return inputFileName;
+            // via the forced tools-log entries above). Pinned to the video's length when known.
+            return await TrimMergedAudioToVideoAsync(inputFileName, cancellationToken);
         }
         catch (OperationCanceledException)
         {
             ProgressText = Se.Language.General.Cancelled; ;
             return null;
         }
+    }
+
+    // Fast merge: one ffmpeg pass (adelay per clip + amix) over a silence base of the session's
+    // length, with the same stereo format and clip start times as the linear chain. Returns null on
+    // failure so the caller can fall back to the chain.
+    private async Task<string?> MergeAudioParagraphsFast(TtsStepResult[] stepResults, bool forceStereo, CancellationToken cancellationToken)
+    {
+        // Only clips that exist are placed; a missing one is silence anyway, so it is simply left
+        // out - exactly like the chain, which leaves silence for it.
+        var clips = new List<(string FileName, int StartMs)>();
+        foreach (var item in stepResults)
+        {
+            if (!string.IsNullOrEmpty(item.CurrentFileName) && File.Exists(item.CurrentFileName))
+            {
+                var startMs = (int)Math.Round(item.Paragraph.StartTime.TotalMilliseconds, MidpointRounding.AwayFromZero);
+                clips.Add((item.CurrentFileName, startMs));
+            }
+            else
+            {
+                Se.WriteToolsLog($"TTS fast merge: a segment has no audio file - leaving silence", true);
+            }
+        }
+
+        if (clips.Count == 0)
+        {
+            return null;
+        }
+
+        // Base length: same rule as GenerateSilenceWaveFile (last cue end, or the video length when
+        // that is longer), so the fast result covers every clip.
+        var totalSeconds = stepResults.Length > 0
+            ? (float)stepResults.Max(r => r.Paragraph.EndTime.TotalSeconds)
+            : 0f;
+        var videoSeconds = GetVideoDurationSeconds();
+        if (videoSeconds > totalSeconds)
+        {
+            totalSeconds = (float)videoSeconds;
+        }
+
+        var outputFileName = Path.Combine(_waveFolder, $"fastmerge_{Guid.NewGuid():N}.wav");
+        ProgressText = $"Merging audio: 1 pass, {clips.Count} clips";
+        ProgressValue = 50;
+
+        var processes = FfmpegGenerator.MergeAudioTracksFast(clips, outputFileName, totalSeconds, forceStereo, out var intermediates);
+        Se.WriteToolsLog($"TTS fast merge: {clips.Count} clips in {processes.Count} ffmpeg pass(es)");
+
+        try
+        {
+            foreach (var process in processes)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                await process.StartAndWaitAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            foreach (var intermediate in intermediates)
+            {
+                DeleteFileNoError(intermediate);
+            }
+            throw;
+        }
+        finally
+        {
+            foreach (var intermediate in intermediates)
+            {
+                DeleteFileNoError(intermediate);
+            }
+        }
+
+        if (!File.Exists(outputFileName) || new FileInfo(outputFileName).Length == 0)
+        {
+            SeLogger.Error("TextToSpeech: fast merge produced no output");
+            Se.WriteToolsLog("TTS fast merge: produced no output - falling back to the linear merge", true);
+            DeleteFileNoError(outputFileName);
+            return null;
+        }
+
+        ProgressValue = 100;
+        return await TrimMergedAudioToVideoAsync(outputFileName, cancellationToken);
+    }
+
+    // Pin a merged track to the video's own length when it is known: a cue whose end runs past the
+    // video - a line extending beyond the last frame, or a review split whose right half was moved
+    // later - would otherwise make the exported wav longer than the video. Shared by the linear
+    // chain and the fast merge so both produce the same length. An audio-only session keeps the
+    // length its lines need.
+    private async Task<string> TrimMergedAudioToVideoAsync(string inputFileName, CancellationToken cancellationToken)
+    {
+        var videoSeconds = GetVideoDurationSeconds();
+        if (videoSeconds <= 0)
+        {
+            return inputFileName;
+        }
+
+        var mergedSeconds = GetWaveFileDurationSeconds(inputFileName);
+        if (mergedSeconds <= videoSeconds + 0.01)
+        {
+            return inputFileName;
+        }
+
+        var trimmedFileName = Path.Combine(_waveFolder, $"merged_trim_{Guid.NewGuid()}.wav");
+        var trimProcess = FfmpegGenerator.TrimAudioToDuration(inputFileName, trimmedFileName, (float)videoSeconds);
+        await trimProcess.StartAndWaitAsync(cancellationToken);
+
+        if (File.Exists(trimmedFileName) && new FileInfo(trimmedFileName).Length > 0)
+        {
+            DeleteFileNoError(inputFileName);
+            return trimmedFileName;
+        }
+
+        return inputFileName;
     }
 
     // The loaded video's duration, read once from the file (the VM has no media-info field that is
