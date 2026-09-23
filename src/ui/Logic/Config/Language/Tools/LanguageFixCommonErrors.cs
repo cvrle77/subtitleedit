@@ -40,6 +40,7 @@ public class LanguageFixCommonErrors
     public string BreakDialogsOnOneLine { get; set; }
     public string RemoveDialogFirstInNonDialogs { get; set; }
     public string NormalizeStrings { get; set; }
+    public string RebalanceLongLines { get; set; }
     public string FixTurkishAnsi { get; set; }
     public string FixDanishLetterI { get; set; }
     public string FixSpanishInvertedQuestionAndExclamationMarks { get; set; }
@@ -164,6 +165,7 @@ public class LanguageFixCommonErrors
         BreakDialogsOnOneLine = "Split dialogs on one line";
         RemoveDialogFirstInNonDialogs = "Remove start dash in first line for non-dialogs";
         NormalizeStrings = "Normalize strings";
+        RebalanceLongLines = "Split/rebalance long lines";
         FixLowercaseIToUppercaseI = "Fix alone lowercase 'i' to 'I' (English)";
         FixCommonOcrErrors = "Fix common OCR errors";
         FixOcrErrorExample = "D0n't -> Don't";

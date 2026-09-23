@@ -890,6 +890,24 @@ public partial class FixCommonErrorsViewModel : ObservableObject, IFixCallbacks
 
         NormalizeStrings.Language.NormalizeStrings = language.NormalizeStrings;
 
+        FixSplitRebalanceLongLines.Language.RebalanceLongLine = language.BreakLongLine;
+        FixSplitRebalanceLongLines.Language.RebalanceLongLines = language.RebalanceLongLines;
+
+        // Resolve the "split/rebalance long lines" tool's remembered settings here (they live in
+        // Se.Settings) and hand the effective values to the libse fix, with the same fallbacks to
+        // the general settings the tool itself uses.
+        var rebalanceSingleLineMaxLength = Se.Settings.Tools.SplitRebalanceLongLinesSingleLineMaxLength > 0
+            ? Se.Settings.Tools.SplitRebalanceLongLinesSingleLineMaxLength
+            : Se.Settings.General.SubtitleLineMaximumLength;
+        var unbreakLinesShorterThan = Se.Settings.Tools.SplitRebalanceLongLinesUnbreakShorterThan > 0
+            ? Se.Settings.Tools.SplitRebalanceLongLinesUnbreakShorterThan
+            : Se.Settings.General.UnbreakLinesShorterThan;
+
+        FixSplitRebalanceLongLines.SingleLineMaxLength = rebalanceSingleLineMaxLength;
+        FixSplitRebalanceLongLines.MergeLinesShorterThan = unbreakLinesShorterThan >= rebalanceSingleLineMaxLength
+            ? rebalanceSingleLineMaxLength + 1
+            : unbreakLinesShorterThan;
+
         return new List<FixRuleDisplayItem>
         {
             new(language.RemovedEmptyLinesUnusedLineBreaks, language.RemovedEmptyLinesUnusedLineBreaksExample, 1, true, nameof(FixEmptyLines)),
@@ -931,6 +949,9 @@ public partial class FixCommonErrorsViewModel : ObservableObject, IFixCallbacks
             new(language.RemoveSpaceBetweenNumber, language.FixSpaceBetweenNumbersExample, 1, true, nameof(RemoveSpaceBetweenNumbers)),
             new(language.RemoveDialogFirstInNonDialogs, language.RemoveDialogFirstInNonDialogsExample, 1, true, nameof(RemoveDialogFirstLineInNonDialogs)),
             new(language.NormalizeStrings, string.Empty, 1, true, nameof(NormalizeStrings)),
+            // Last on purpose: it re-wraps every line's breaks, so it must run after the rules
+            // that add/remove text (spaces, periods, dialogs, OCR) have settled the wording.
+            new(language.RebalanceLongLines, string.Empty, 1, true, nameof(FixSplitRebalanceLongLines)),
         };
     }
 

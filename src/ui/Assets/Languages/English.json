@@ -1741,6 +1741,7 @@
       "breakDialogsOnOneLine": "Split dialogs on one line",
       "removeDialogFirstInNonDialogs": "Remove start dash in first line for non-dialogs",
       "normalizeStrings": "Normalize strings",
+      "rebalanceLongLines": "Split/rebalance long lines",
       "fixTurkishAnsi": "Fix Turkish ANSI (Icelandic) letters to Unicode",
       "fixDanishLetterI": "Fix Danish letter 'i'",
       "fixSpanishInvertedQuestionAndExclamationMarks": "Fix Spanish inverted question and exclamation marks",
