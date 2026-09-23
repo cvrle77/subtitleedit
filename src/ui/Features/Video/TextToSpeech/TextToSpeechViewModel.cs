@@ -3187,12 +3187,11 @@ public partial class TextToSpeechViewModel : ObservableObject
                 return null;
             }
 
-            bool forceStereo = false;
-            var useCustomAudioEncoding = !string.IsNullOrEmpty(Se.Settings.Video.TextToSpeech.CustomAudioEncoding);
-            if (Se.Settings.Video.TextToSpeech.CustomAudioStereo && useCustomAudioEncoding)
-            {
-                forceStereo = true;
-            }
+            // Stereo unless the user explicitly turned it off. The merged track is what gets dropped
+            // into a video editor, so it must be stereo by default - the old code only made it
+            // stereo when a custom audio encoding string was also set, which left the common
+            // "CustomAudioStereo on, custom encoding empty" case producing a mono file.
+            var forceStereo = Se.Settings.Video.TextToSpeech.CustomAudioStereo;
 
             // Fast merge: place every clip on the timeline in ONE ffmpeg pass (adelay + amix)
             // instead of the running concat+amix chain that re-encodes the whole growing track once
