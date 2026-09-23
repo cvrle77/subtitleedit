@@ -445,21 +445,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
             row.StartHistory();
             Lines.Add(row);
 
-            // Mirror this row's paragraph as a SubtitleLineViewModel so the AudioVisualizer can
-            // draw + drag it. The visualizer's drag handlers mutate StartTime/EndTime on the VM,
-            // so OnWaveformParagraphChanged below forwards those edits back to row.StepResult.Paragraph.
-            var waveformParagraph = new SubtitleLineViewModel
-            {
-                Number = p.Paragraph.Number,
-                Text = p.Text,
-                StartTime = TimeSpan.FromMilliseconds(p.Paragraph.StartTime.TotalMilliseconds),
-                EndTime = TimeSpan.FromMilliseconds(p.Paragraph.EndTime.TotalMilliseconds),
-            };
-            waveformParagraph.UpdateDuration();
-            waveformParagraph.PropertyChanged += OnWaveformParagraphChanged;
-            row.WaveformParagraph = waveformParagraph;
-            WaveformParagraphs.Add(waveformParagraph);
-            _waveformParagraphToRow[waveformParagraph] = row;
+            AttachWaveformMirror(row);
         }
 
         // The caller passes either real peaks of the source video, an empty placeholder (when
@@ -2340,20 +2326,56 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         foreach (var row in Lines)
         {
-            var result = row.StepResult;
-            var waveformParagraph = new SubtitleLineViewModel
-            {
-                Number = result.Paragraph.Number,
-                Text = result.Text,
-                StartTime = TimeSpan.FromMilliseconds(result.Paragraph.StartTime.TotalMilliseconds),
-                EndTime = TimeSpan.FromMilliseconds(result.Paragraph.EndTime.TotalMilliseconds),
-            };
-            waveformParagraph.UpdateDuration();
-            waveformParagraph.PropertyChanged += OnWaveformParagraphChanged;
-            row.WaveformParagraph = waveformParagraph;
-            WaveformParagraphs.Add(waveformParagraph);
-            _waveformParagraphToRow[waveformParagraph] = row;
+            AttachWaveformMirror(row);
         }
+    }
+
+    // Builds the visualizer mirror for a row and wires both feedback directions:
+    //  - drag/edit on the waveform mutates the mirror's times  -> OnWaveformParagraphChanged writes
+    //    them back to StepResult.Paragraph;
+    //  - editing the row's text in the grid/text box             -> OnRowPropertyChanged writes it to
+    //    the mirror, so the text drawn inside the block follows the edit immediately.
+    // The mirror's Text starts from the row's live text (which may already differ from
+    // StepResult.Text after an edit).
+    private void AttachWaveformMirror(ReviewRow row)
+    {
+        var paragraph = row.StepResult.Paragraph;
+        var waveformParagraph = new SubtitleLineViewModel
+        {
+            Number = paragraph.Number,
+            Text = row.Text,
+            StartTime = TimeSpan.FromMilliseconds(paragraph.StartTime.TotalMilliseconds),
+            EndTime = TimeSpan.FromMilliseconds(paragraph.EndTime.TotalMilliseconds),
+        };
+        waveformParagraph.UpdateDuration();
+        waveformParagraph.PropertyChanged += OnWaveformParagraphChanged;
+
+        // Subscribe once per row - a re-attach (rebuild) must not stack handlers.
+        row.PropertyChanged -= OnRowPropertyChanged;
+        row.PropertyChanged += OnRowPropertyChanged;
+
+        row.WaveformParagraph = waveformParagraph;
+        WaveformParagraphs.Add(waveformParagraph);
+        _waveformParagraphToRow[waveformParagraph] = row;
+    }
+
+    // Keeps the waveform block's drawn text in step with the row's text: editing a line in the
+    // review window used to leave the text inside the block showing the old wording forever.
+    private void OnRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not ReviewRow row || e.PropertyName != nameof(ReviewRow.Text))
+        {
+            return;
+        }
+
+        var waveformParagraph = row.WaveformParagraph;
+        if (waveformParagraph == null || waveformParagraph.Text == row.Text)
+        {
+            return;
+        }
+
+        waveformParagraph.Text = row.Text;
+        InvalidateWaveforms();
     }
 
     private void RenumberRows()
