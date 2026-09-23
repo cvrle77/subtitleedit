@@ -1015,6 +1015,7 @@ public partial class TextToSpeechViewModel : ObservableObject
 
         _videoFileName = videoFileName;
         _wavePeakData = wavePeakData;
+        _videoDurationSeconds = -1; // re-read for the new video
 
         // Context line under the title: what is about to be spoken, and whether a video is
         // loaded (the add-to-video option depends on it).
@@ -3249,6 +3250,30 @@ public partial class TextToSpeechViewModel : ObservableObject
             }
             ProgressValue = 100;
 
+            // Pin the result to the video's own length when it is known: the silence base is built
+            // from the subtitle's last cue end (there is no reliable media-info field on this VM -
+            // _mediaInfo is never populated), so a cue whose end runs past the video - a line
+            // extending beyond the last frame, or a review split whose right half was moved later -
+            // made the exported wav longer than the video it belongs to. Only trim when the track
+            // really is longer; an audio-only session with no video keeps the length its lines need.
+            var videoSeconds = GetVideoDurationSeconds();
+            if (videoSeconds > 0)
+            {
+                var mergedSeconds = GetWaveFileDurationSeconds(inputFileName);
+                if (mergedSeconds > videoSeconds + 0.01)
+                {
+                    var trimmedFileName = Path.Combine(_waveFolder, $"silence_trim_{Guid.NewGuid()}.wav");
+                    var trimProcess = FfmpegGenerator.TrimAudioToDuration(inputFileName, trimmedFileName, (float)videoSeconds);
+                    await trimProcess.StartAndWaitAsync(cancellationToken);
+
+                    if (File.Exists(trimmedFileName) && new FileInfo(trimmedFileName).Length > 0)
+                    {
+                        DeleteFileNoError(inputFileName);
+                        inputFileName = trimmedFileName;
+                    }
+                }
+            }
+
             // The chain head is the fully merged track (or the bare silence track if every
             // segment was skipped - still a valid, if empty, result the user gets told about
             // via the forced tools-log entries above).
@@ -3258,6 +3283,59 @@ public partial class TextToSpeechViewModel : ObservableObject
         {
             ProgressText = Se.Language.General.Cancelled; ;
             return null;
+        }
+    }
+
+    // The loaded video's duration, read once from the file (the VM has no media-info field that is
+    // ever populated). 0 when there is no video or ffmpeg cannot read it, which turns the merged-
+    // track trim into a no-op - an audio-only session keeps its own length.
+    private double _videoDurationSeconds = -1;
+
+    private double GetVideoDurationSeconds()
+    {
+        if (_videoDurationSeconds >= 0)
+        {
+            return _videoDurationSeconds;
+        }
+
+        _videoDurationSeconds = 0;
+        if (!string.IsNullOrEmpty(_videoFileName) && File.Exists(_videoFileName))
+        {
+            try
+            {
+                var duration = FfmpegMediaInfo2.Parse(_videoFileName).Duration?.TotalSeconds ?? 0;
+                _videoDurationSeconds = duration > 0 ? duration : 0;
+            }
+            catch (Exception exception)
+            {
+                SeLogger.Error(exception, $"TextToSpeech: cannot read the video duration of \"{_videoFileName}\"");
+            }
+        }
+
+        return _videoDurationSeconds;
+    }
+
+    // Length of a wav from its header, 0 when it cannot be read. Used to decide whether the merged
+    // track actually overran the video before trimming it.
+    private static double GetWaveFileDurationSeconds(string fileName)
+    {
+        try
+        {
+            if (!File.Exists(fileName))
+            {
+                return 0;
+            }
+
+            using var stream = File.OpenRead(fileName);
+            var header = new WaveHeader2(stream);
+            return header.ChunkId == "RIFF" && header.Format == "WAVE" && header.BytesPerSecond > 0
+                ? header.LengthInSeconds
+                : 0;
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, $"TextToSpeech: cannot read merged wav duration of \"{fileName}\"");
+            return 0;
         }
     }
 

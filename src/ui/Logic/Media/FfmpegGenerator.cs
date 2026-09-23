@@ -35,6 +35,30 @@ public class FfmpegGenerator
         return processMakeVideo;
     }
 
+    /// <summary>
+    /// Cuts audio down to <paramref name="seconds"/>, leaving it untouched when it is already
+    /// shorter. Used to pin the merged TTS track to the video's own length: the merge chain only
+    /// ever grows (silence base + concatenated clips), so a cue whose end runs past the video
+    /// used to make the exported wav longer than the video it belongs to.
+    /// </summary>
+    public static Process TrimAudioToDuration(string inputFileName, string outputFileName, float seconds, DataReceivedEventHandler? dataReceivedHandler = null)
+    {
+        var processMakeVideo = new Process
+        {
+            StartInfo =
+            {
+                FileName = GetFfmpegLocation(),
+                Arguments = $"-nostdin -y -i \"{inputFileName}\" -t {seconds.ToString(CultureInfo.InvariantCulture)} \"{outputFileName}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true
+            }
+        };
+
+        SetupDataReceiveHandler(dataReceivedHandler, processMakeVideo);
+
+        return processMakeVideo;
+    }
+
     public static Process MergeAudioTracks(string inputFileName1, string inputFileName2, string outputFileName, float startSeconds, bool forceStereo, DataReceivedEventHandler? dataReceivedHandler = null)
     {
         var filterSuffix = forceStereo ? ",aformat=channel_layouts=stereo" : string.Empty;
