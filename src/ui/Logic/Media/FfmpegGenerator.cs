@@ -84,12 +84,13 @@ public class FfmpegGenerator
     private const int FastMergeMaxInputsPerPass = 96;
 
     /// <summary>
-    /// Merges every clip onto one timeline in a single ffmpeg pass: each clip is delayed to its
-    /// absolute start with <c>adelay</c> and all clips are summed with <c>amix</c> over a silent
-    /// base of <paramref name="totalSeconds"/>. Overlapping clips add up, like the running
-    /// concat+amix chain this replaces, but without re-encoding the whole growing track once per
-    /// line - so a long session merges in one pass instead of N. Output is the same format as the
-    /// chain (stereo when <paramref name="forceStereo"/>).
+    /// Merges every clip onto one timeline in a single ffmpeg pass: a silent base of
+    /// <paramref name="totalSeconds"/> (so the output always spans the whole session, even when the
+    /// last clip ends before it), each clip delayed to its absolute start with <c>adelay</c>, and
+    /// everything summed with <c>amix</c>. Overlapping clips add up, like the running concat+amix
+    /// chain this replaces, but without re-encoding the whole growing track once per line - so a
+    /// long session merges in one pass instead of N. Output is the same format as the chain (stereo
+    /// when <paramref name="forceStereo"/>).
     /// </summary>
     /// <param name="clips">(file, start-milliseconds) pairs, in any order.</param>
     public static List<Process> MergeAudioTracksFast(
@@ -106,35 +107,18 @@ public class FfmpegGenerator
             return processes;
         }
 
-        var channelSuffix = forceStereo ? ",aformat=channel_layouts=stereo" : string.Empty;
         var outputMap = forceStereo ? new[] { "-ac", "2" } : Array.Empty<string>();
         var total = totalSeconds.ToString(CultureInfo.InvariantCulture);
 
-        // Few enough inputs for one call: delay each clip and mix them all at once.
+        // Few enough inputs for one call: the silent base plus every clip, mixed at once.
         if (clips.Count <= FastMergeMaxInputsPerPass)
         {
-            var args = new List<string> { "-nostdin", "-y" };
-            foreach (var (fileName, _) in clips)
-            {
-                args.Add("-i");
-                args.Add(fileName);
-            }
-
-            args.Add("-filter_complex");
-            args.Add(BuildFastMergeFilter(clips, channelSuffix));
-            args.Add("-map");
-            args.Add("[aout]");
-            args.AddRange(outputMap);
-            args.Add("-t");
-            args.Add(total);
-            args.Add(outputFileName);
-
-            processes.Add(MakeFfmpegProcess(args));
+            processes.Add(MakeFfmpegProcess(BuildFastMergeArgs(clips, outputFileName, total, outputMap)));
             return processes;
         }
 
-        // Large run: merge in groups (each group is already placed at absolute times), then mix
-        // the group outputs together with amix - again no re-encoding of a growing track.
+        // Large run: merge in groups (each group already spans the full length on the silent base),
+        // then mix the group outputs together with amix - again no re-encoding of a growing track.
         var groupFiles = new List<(string FileName, int StartMs)>();
         var outputDir = Path.GetDirectoryName(outputFileName) ?? ".";
         for (var offset = 0; offset < clips.Count; offset += FastMergeMaxInputsPerPass)
@@ -143,29 +127,15 @@ public class FfmpegGenerator
             var groupFile = Path.Combine(outputDir, $"fastmerge_{Guid.NewGuid():N}.wav");
             intermediateFiles.Add(groupFile);
 
-            var args = new List<string> { "-nostdin", "-y" };
-            foreach (var (fileName, _) in group)
-            {
-                args.Add("-i");
-                args.Add(fileName);
-            }
-
-            args.Add("-filter_complex");
-            args.Add(BuildFastMergeFilter(group, channelSuffix));
-            args.Add("-map");
-            args.Add("[aout]");
-            args.AddRange(outputMap);
-            args.Add("-t");
-            args.Add(total);
-            args.Add(groupFile);
-
-            processes.Add(MakeFfmpegProcess(args));
+            processes.Add(MakeFfmpegProcess(BuildFastMergeArgs(group, groupFile, total, outputMap)));
             groupFiles.Add((groupFile, 0));
         }
 
         // Final mix of the group files. They already carry absolute timing, so they are summed at
         // offset 0 (no adelay).
         {
+            // The group files already span the full length, so the final mix is just their sum (no
+            // silent base needed - each group carries one).
             var args = new List<string> { "-nostdin", "-y" };
             foreach (var (fileName, _) in groupFiles)
             {
@@ -174,7 +144,7 @@ public class FfmpegGenerator
             }
 
             args.Add("-filter_complex");
-            args.Add(BuildAmixFilter(groupFiles.Count, channelSuffix));
+            args.Add(BuildAmixFilter(groupFiles.Count, forceStereo ? ",aformat=channel_layouts=stereo" : string.Empty));
             args.Add("-map");
             args.Add("[aout]");
             args.AddRange(outputMap);
@@ -188,21 +158,63 @@ public class FfmpegGenerator
         return processes;
     }
 
-    private static string BuildFastMergeFilter(IReadOnlyList<(string FileName, int StartMs)> clips, string channelSuffix)
+    // The clip clips onto a silent base of the full session length: input 0 is the base silence,
+    // inputs 1..N are the clips delayed to their starts, all summed. The base is what makes the
+    // output span the whole session even when the last clip ends before it (amix alone would stop
+    // at the longest clip).
+    private static IEnumerable<string> BuildFastMergeArgs(
+        IReadOnlyList<(string FileName, int StartMs)> clips,
+        string outputFileName,
+        string totalSeconds,
+        string[] outputMap)
     {
-        var parts = new List<string>(clips.Count);
+        var args = new List<string>
+        {
+            "-nostdin", "-y",
+            // Input option: -t before -i caps the lavfi source itself, so the base is exactly the
+            // session length (as an output option it would truncate the mix instead).
+            "-f", "lavfi",
+            "-t", totalSeconds,
+            "-i", "anullsrc=r=44100:cl=stereo",
+        };
+        foreach (var (fileName, _) in clips)
+        {
+            args.Add("-i");
+            args.Add(fileName);
+        }
+
+        args.Add("-filter_complex");
+        args.Add(BuildFastMergeFilter(clips));
+        args.Add("-map");
+        args.Add("[aout]");
+        args.AddRange(outputMap);
+        args.Add("-t");
+        args.Add(totalSeconds);
+        args.Add(outputFileName);
+        return args;
+    }
+
+    private static string BuildFastMergeFilter(IReadOnlyList<(string FileName, int StartMs)> clips)
+    {
+        // Input 0 is the silent base; clips are inputs 1..N. amix sums them all; the base keeps the
+        // output at the full length and aformat keeps everything stereo.
+        var parts = new List<string>(clips.Count + 1);
         var mixInputs = new System.Text.StringBuilder();
+        parts.Add("[0:a]aformat=channel_layouts=stereo[base]");
+        mixInputs.Append("[base]");
         for (var i = 0; i < clips.Count; i++)
         {
             var ms = clips[i].StartMs;
-            parts.Add($"[{i}:a]adelay={ms}|{ms}[a{i}]");
+            parts.Add($"[{i + 1}:a]adelay={ms}|{ms},aformat=channel_layouts=stereo[a{i}]");
             mixInputs.Append($"[a{i}]");
         }
 
-        parts.Add($"{mixInputs}amix=inputs={clips.Count}:normalize=false:dropout_transition=0{channelSuffix}[aout]");
+        parts.Add($"{mixInputs}amix=inputs={clips.Count + 1}:normalize=false:dropout_transition=0[aout]");
         return string.Join(";", parts);
     }
 
+    // Sums already-placed inputs (group outputs) without a leading silent base - unlike
+    // BuildFastMergeFilter, every input here already spans the full length.
     private static string BuildAmixFilter(int inputCount, string channelSuffix)
     {
         var mixInputs = new System.Text.StringBuilder();
