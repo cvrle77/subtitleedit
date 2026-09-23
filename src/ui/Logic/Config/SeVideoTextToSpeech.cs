@@ -30,6 +30,17 @@ public class SeVideoTextToSpeech
     public double ElevenLabsSpeakerBoost { get; set; }
     public double ElevenLabsSpeed { get; set; }
     public double ElevenLabsStyleeExaggeration { get; set; }
+
+    // When true, ElevenLabs lines are synthesized in parallel with a bounded pool sized to the
+    // account's plan (read from the API). Off by default: the linear one-at-a-time generation
+    // stays exactly as it was.
+    public bool ElevenLabsGenerateInParallel { get; set; }
+
+    // Last tier read from the API ("creator", "pro", ...) and the concurrency it maps to. Cached so
+    // the settings dialog can show the detected plan without a network call each time.
+    public string ElevenLabsTier { get; set; }
+    public int ElevenLabsMaxConcurrency { get; set; }
+
     public string MurfApiKey { get; set; }
     public string MurfStyle { get; set; }
     [Obsolete("Use Se.Settings.Providers.MistralApiKey - kept only so old settings files can be migrated.")]
@@ -208,6 +219,9 @@ public class SeVideoTextToSpeech
         ElevenLabsSpeakerBoost = 0;
         ElevenLabsStyleeExaggeration = 0;
         ElevenLabsSpeed = 1.0;
+        ElevenLabsGenerateInParallel = false;
+        ElevenLabsTier = string.Empty;
+        ElevenLabsMaxConcurrency = 0;
         ReviewAudioClips = true;
         CustomAudio = false;
         CustomAudioStereo = true;
