@@ -89,6 +89,27 @@ public class ElevenLabsSettingsWindow : Window
         var labelStyleExaggerationValue = UiUtil.MakeLabel().WithBindText(vm, nameof(ElevenLabsSettingsViewModel.StyleExaggeration), new DoubleToTwoDecimalConverter());
         var buttonStyleExaggeration = UiUtil.MakeButton(vm.ShowStyleExaggerationHelpCommand, IconNames.Help, $"{Se.Language.General.StyleExaggeration} - {Se.Language.General.Help}");
 
+        // Parallel generation: a single switch between the existing linear mode (off, the default)
+        // and a plan-sized parallel pool (on). The plan is detected from the API key, not entered.
+        var checkBoxParallel = new CheckBox
+        {
+            Content = Se.Language.Video.TextToSpeech.ElevenLabsParallelGeneration,
+            Margin = new Thickness(0, 5, 0, 0),
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(ElevenLabsSettingsViewModel.GenerateInParallel)) { Mode = BindingMode.TwoWay },
+        };
+        var labelParallelInfo = new TextBlock
+        {
+            Margin = new Thickness(5, 0, 0, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+            Opacity = 0.75,
+            [!TextBlock.TextProperty] = new Binding(nameof(ElevenLabsSettingsViewModel.ParallelInfo)),
+        };
+        var panelParallel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children = { checkBoxParallel, labelParallelInfo },
+        };
+
         var buttonWeb = UiUtil.MakeButton(Se.Language.General.MoreInfo, vm.ShowMoreOnWebCommand).WithIconLeft(IconNames.Web);
         var buttonReset = UiUtil.MakeButton(Se.Language.General.Reset, vm.ResetCommand).WithIconLeft(IconNames.Repeat);
         var buttonOk = UiUtil.MakeButtonOk(vm.OkCommand);
@@ -99,6 +120,7 @@ public class ElevenLabsSettingsWindow : Window
         {
             RowDefinitions =
             {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
@@ -145,11 +167,20 @@ public class ElevenLabsSettingsWindow : Window
         grid.Add(labelStyleExaggerationValue, 4, 2);
         grid.Add(buttonStyleExaggeration, 4, 3);
 
-        grid.Add(panelButtons, 5, 0, 1, 3);
+        grid.Add(panelParallel, 5, 0, 1, 4);
+
+        grid.Add(panelButtons, 6, 0, 1, 3);
 
         Content = grid;
 
         UiUtil.FocusOnFirstActivation(this, sliderStability); // initial focus on an input, not an action button - a focused button clicks on bare Space
+
+        // Detect the plan from the API key when the dialog opens if it is not known yet, so the
+        // "N parallel requests" line is populated without the user doing anything.
+        if (string.IsNullOrEmpty(Se.Settings.Video.TextToSpeech.ElevenLabsTier))
+        {
+            _ = _vm.DetectPlanCommand.ExecuteAsync(null);
+        }
     }
 
     protected override void OnKeyDown(KeyEventArgs e)

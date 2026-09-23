@@ -14,6 +14,28 @@ namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech.Engines;
 
 public class ElevenLabs : ITtsEngine
 {
+    /// <summary>
+    /// Concurrent-request limit for a subscription tier, per the ElevenLabs docs:
+    /// https://help.elevenlabs.io/hc/en-us/articles/14312733311761
+    /// The table's lower column ("all other models", e.g. eleven_multilingual_v2 / eleven_v3) is
+    /// used, because that is what a subtitle dub runs by default. Unknown/absent tiers fall back to
+    /// 2 - the free-tier "other models" figure - so a failed subscription lookup can never exceed
+    /// what even a free plan allows.
+    /// </summary>
+    public static int ConcurrencyForTier(string? tier)
+    {
+        return tier?.ToLowerInvariant() switch
+        {
+            "free" or "trial" or "grant" or "grant_tier_1_2025_07_23" or "grant_tier_2_2025_07_23" => 2,
+            "starter" or "go" => 3,
+            "creator" => 5,
+            "pro" => 10,
+            "scale" or "scale_2024_08_10" or "growing_business" or "business" => 15,
+            "enterprise" => 15, // elevated in reality; 15 is the highest published figure
+            _ => 2,
+        };
+    }
+
     public string Name => "ElevenLabs";
     public string Description => "pay/fast/good";
     public bool HasLanguageParameter => true;
