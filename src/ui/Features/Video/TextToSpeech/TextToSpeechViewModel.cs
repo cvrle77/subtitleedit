@@ -4688,15 +4688,19 @@ public partial class TextToSpeechViewModel : ObservableObject
                 }
             }
 
-            var mediaInfo = FfmpegMediaInfo.Parse(currentFile);
-            if (mediaInfo.Duration == null)
+            // Duration read from the WAV header instead of spawning ffmpeg again: the trim/VAD
+            // outputs are always WAV, and each ffmpeg start is ~22 ms - one of the three or four
+            // spawns per segment that made this step slow. Non-WAV (an untrimmed engine clip) falls
+            // back to ffmpeg.
+            var durationMs = GetAudioDurationMs(currentFile);
+            if (durationMs == null)
             {
                 Se.WriteToolsLog($"TTS FixSpeed: segment {index + 1} - could not read duration of \"{currentFile}\" (trim output missing or unreadable; ffmpeg problem?) - keeping original audio", true);
                 return (MakeUnchangedResult(item), FixSpeedOutcome.SkippedNoDuration);
             }
 
             // Already fits after silence removal/compression: no time-stretching needed.
-            if (mediaInfo.Duration.TotalMilliseconds <= p.DurationTotalMilliseconds + addDuration)
+            if (durationMs.Value <= p.DurationTotalMilliseconds + addDuration)
             {
                 return (new TtsStepResult
                 {
@@ -4719,7 +4723,7 @@ public partial class TextToSpeechViewModel : ObservableObject
             }
 
             // Step 3: Time-stretching (only for audio that still exceeds subtitle duration).
-            var factor = (decimal)mediaInfo.Duration.TotalMilliseconds / divisor;
+            var factor = (decimal)durationMs.Value / divisor;
             var outputFileName2 = Path.Combine(_waveFolder, $"{index}_{Guid.NewGuid()}.wav");
 
             Process speedProcess;
@@ -4776,6 +4780,23 @@ public partial class TextToSpeechViewModel : ObservableObject
             Se.WriteToolsLog($"TTS FixSpeed: segment {index + 1} failed ({ex.Message}) - keeping original audio", true);
             return (MakeUnchangedResult(item), FixSpeedOutcome.Failed);
         }
+    }
+
+    /// <summary>
+    /// Duration of an audio file in milliseconds, read from the WAV header when possible (no ffmpeg
+    /// process) and otherwise via ffmpeg. Null when neither works. Used by the adjust-speed step,
+    /// whose inputs are almost always WAV, so the common path spawns no extra process.
+    /// </summary>
+    private static double? GetAudioDurationMs(string fileName)
+    {
+        var wavSeconds = GetWaveFileDurationSeconds(fileName);
+        if (wavSeconds > 0)
+        {
+            return wavSeconds * 1000.0;
+        }
+
+        var mediaInfo = FfmpegMediaInfo.Parse(fileName);
+        return mediaInfo.Duration?.TotalMilliseconds;
     }
 
     private static TtsStepResult MakeUnchangedResult(TtsStepResult item)
