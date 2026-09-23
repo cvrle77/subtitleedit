@@ -28,6 +28,7 @@ public class LanguageTextToSpeech
     public string VideoEncodingSettings { get; set; }
     public string ElevenLabsSettings { get; set; }
     public string ElevenLabsSettingsResetHint { get; set; }
+    public string ElevenLabsParallelGeneration { get; set; }
     public string RegenerateAudio { get; set; }
     public string AutoContinuePlaying { get; set; }
     public string PlayLine { get; set; }
@@ -239,6 +240,7 @@ public class LanguageTextToSpeech
         VideoEncodingSettings = "TTS - Video encoding settings";
         ElevenLabsSettings = "TTS - ElevenLabs settings";
         ElevenLabsSettingsResetHint = "Reset ElevenLabs settings to default values";
+        ElevenLabsParallelGeneration = "Generate in parallel (faster; uses your plan's concurrency limit)";
         RegenerateAudio = "Regenerate audio";
         AutoContinuePlaying = "Auto-continue playing";
         PlayLine = "Play line";

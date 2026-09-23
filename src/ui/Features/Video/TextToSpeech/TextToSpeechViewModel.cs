@@ -3453,6 +3453,31 @@ public partial class TextToSpeechViewModel : ObservableObject
             _speakRetryFailures = 0;
             var skippedNoiseCount = 0;
 
+            // Parallel mode: a bounded pool of ElevenLabs requests instead of one-at-a-time. Only
+            // when the whole run is ElevenLabs (a per-actor cast can mix engines, and the local
+            // CrispASR servers can't take concurrent calls). Off by default, so the linear path
+            // below stays exactly as it was.
+            var parallelConcurrency = GetElevenLabsParallelConcurrency(castContext, engine);
+            if (parallelConcurrency > 1)
+            {
+                var parallelResults = await GenerateSpeechElevenLabsParallel(parallelConcurrency, castContext, engine,
+                    voice, errorMessages, cancellationToken);
+                if (parallelResults == null)
+                {
+                    return null; // cancelled
+                }
+
+                resultList.AddRange(parallelResults);
+                ProgressValue = 100;
+
+                if (skippedNoiseCount > 0)
+                {
+                    Se.WriteToolsLog($"TTS generation: left {skippedNoiseCount} sound/music lines silent (skipped by user choice)");
+                }
+
+                return await FinishGenerateSpeech(resultList, errorMessages);
+            }
+
             for (var index = 0; index < _subtitle.Paragraphs.Count; index++)
             {
                 ProgressText = $"Generating speech: segment {index + 1} of {_subtitle.Paragraphs.Count}";
@@ -3543,66 +3568,7 @@ public partial class TextToSpeechViewModel : ObservableObject
                 Se.WriteToolsLog($"TTS generation: left {skippedNoiseCount} sound/music lines silent (skipped by user choice)");
             }
 
-            var failedCount = resultList.Count(r => string.IsNullOrEmpty(r.CurrentFileName));
-            // First engine-reported failure reason, e.g. the ElevenLabs 429 text. The generic
-            // rate/pitch hint only applies when no engine said anything more specific.
-            var firstError = errorMessages.Count > 0
-                ? errorMessages[0]
-                : "Check the engine settings (rate/pitch/volume must be a signed integer, e.g. \"+10\") and try again.";
-            if (failedCount == resultList.Count && resultList.Count > 0)
-            {
-                var msg = $"Text-to-speech failed for all {failedCount} segments." +
-                          Environment.NewLine + Environment.NewLine + firstError;
-                SeLogger.Error(msg);
-                await Dispatcher.UIThread.InvokeAsync(async () =>
-                {
-                    if (Window != null)
-                    {
-                        await MessageBox.Show(Window, Se.Language.General.Error, msg, MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    }
-                });
-                return null;
-            }
-
-            if (failedCount > 0)
-            {
-                // Failed segments were silent before (log only), so users ended up with audio
-                // missing lines and no idea why (#12093) - tell them and let them stop the run.
-                SeLogger.Error($"TextToSpeech: {failedCount} of {resultList.Count} segments failed to generate; continuing with the rest.");
-                Se.WriteToolsLog($"TTS generation: {failedCount} of {resultList.Count} segments failed - see error-log.txt for the engine errors", true);
-
-                var proceed = await Dispatcher.UIThread.InvokeAsync(async () =>
-                {
-                    if (Window == null)
-                    {
-                        return true;
-                    }
-
-                    var detail = errorMessages.Count > 0
-                        ? Environment.NewLine + Environment.NewLine + errorMessages[0]
-                        : string.Empty;
-                    var answer = await MessageBox.Show(
-                        Window,
-                        Se.Language.General.Warning,
-                        $"{failedCount} of {resultList.Count} segments failed to generate (see error-log.txt in the Subtitle Edit data folder).{detail}" +
-                        Environment.NewLine + Environment.NewLine +
-                        "Continue with the remaining segments? The failed lines will be missing from the audio.",
-                        MessageBoxButtons.YesNo,
-                        MessageBoxIcon.Warning);
-                    return answer == MessageBoxResult.Yes;
-                });
-
-                if (!proceed)
-                {
-                    return null;
-                }
-            }
-            else
-            {
-                Se.WriteToolsLog($"TTS generation done: all {resultList.Count} segments generated");
-            }
-
-            return resultList.ToArray();
+            return await FinishGenerateSpeech(resultList, errorMessages);
         }
         catch (OperationCanceledException)
         {
@@ -3644,6 +3610,216 @@ public partial class TextToSpeechViewModel : ObservableObject
             });
             return null;
         }
+    }
+
+    /// <summary>
+    /// The shared tail of <see cref="GenerateSpeech"/>: reports failures and decides whether the run
+    /// continues or aborts. Both the linear loop and the parallel pool end here so the failure UX is
+    /// identical in either mode.
+    /// </summary>
+    private async Task<TtsStepResult[]?> FinishGenerateSpeech(List<TtsStepResult> resultList, List<string> errorMessages)
+    {
+        var failedCount = resultList.Count(r => string.IsNullOrEmpty(r.CurrentFileName));
+        // First engine-reported failure reason, e.g. the ElevenLabs 429 text. The generic
+        // rate/pitch hint only applies when no engine said anything more specific.
+        var firstError = errorMessages.Count > 0
+            ? errorMessages[0]
+            : "Check the engine settings (rate/pitch/volume must be a signed integer, e.g. \"+10\") and try again.";
+        if (failedCount == resultList.Count && resultList.Count > 0)
+        {
+            var msg = $"Text-to-speech failed for all {failedCount} segments." +
+                      Environment.NewLine + Environment.NewLine + firstError;
+            SeLogger.Error(msg);
+            await Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                if (Window != null)
+                {
+                    await MessageBox.Show(Window, Se.Language.General.Error, msg, MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            });
+            return null;
+        }
+
+        if (failedCount > 0)
+        {
+            // Failed segments were silent before (log only), so users ended up with audio
+            // missing lines and no idea why (#12093) - tell them and let them stop the run.
+            SeLogger.Error($"TextToSpeech: {failedCount} of {resultList.Count} segments failed to generate; continuing with the rest.");
+            Se.WriteToolsLog($"TTS generation: {failedCount} of {resultList.Count} segments failed - see error-log.txt for the engine errors", true);
+
+            var proceed = await Dispatcher.UIThread.InvokeAsync(async () =>
+            {
+                if (Window == null)
+                {
+                    return true;
+                }
+
+                var detail = errorMessages.Count > 0
+                    ? Environment.NewLine + Environment.NewLine + errorMessages[0]
+                    : string.Empty;
+                var answer = await MessageBox.Show(
+                    Window,
+                    Se.Language.General.Warning,
+                    $"{failedCount} of {resultList.Count} segments failed to generate (see error-log.txt in the Subtitle Edit data folder).{detail}" +
+                    Environment.NewLine + Environment.NewLine +
+                    "Continue with the remaining segments? The failed lines will be missing from the audio.",
+                    MessageBoxButtons.YesNo,
+                    MessageBoxIcon.Warning);
+                return answer == MessageBoxResult.Yes;
+            });
+
+            if (!proceed)
+            {
+                return null;
+            }
+        }
+        else
+        {
+            Se.WriteToolsLog($"TTS generation done: all {resultList.Count} segments generated");
+        }
+
+        return resultList.ToArray();
+    }
+
+    // Parallel mode is offered only when it is switched on, the run is entirely ElevenLabs (a cast
+    // can mix engines, and the local CrispASR servers cannot take concurrent calls), and a plan
+    // concurrency is known. 1 means "use the linear path".
+    private int GetElevenLabsParallelConcurrency(CastContext castContext, ITtsEngine engine)
+    {
+        if (!Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel || engine is not ElevenLabs)
+        {
+            return 1;
+        }
+
+        // A per-actor cast can target other engines per line, so keep that run linear.
+        if (castContext.ByActor.Count > 0)
+        {
+            return 1;
+        }
+
+        return Math.Max(1, Se.Settings.Video.TextToSpeech.ElevenLabsMaxConcurrency);
+    }
+
+    /// <summary>
+    /// Synthesises every (non-skipped) line through a bounded pool of ElevenLabs requests, sized to
+    /// the account's plan concurrency. Results come back in line order; a failed line is recorded
+    /// with an empty file name exactly like the linear path, so <see cref="FinishGenerateSpeech"/>
+    /// reports it the same way.
+    /// </summary>
+    private async Task<List<TtsStepResult>?> GenerateSpeechElevenLabsParallel(
+        int concurrency,
+        CastContext castContext,
+        ITtsEngine engine,
+        Voice voice,
+        List<string> errorMessages,
+        CancellationToken cancellationToken)
+    {
+        var paragraphs = _subtitle.Paragraphs;
+        var results = new TtsStepResult?[paragraphs.Count];
+        var errorLock = new Lock();
+        var completed = 0;
+        var total = paragraphs.Count;
+
+        Se.WriteToolsLog($"TTS generation: parallel mode with {concurrency} concurrent ElevenLabs request(s) for {total} lines");
+
+        using var throttler = new SemaphoreSlim(concurrency);
+        var tasks = new List<Task>();
+        try
+        {
+            for (var index = 0; index < paragraphs.Count; index++)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return null;
+                }
+
+                var paragraph = paragraphs[index];
+
+                // Skip the lines the user chose to leave silent, exactly like the linear path.
+                if (_skipNoiseParagraphs.Contains(paragraph))
+                {
+                    Interlocked.Increment(ref completed);
+                    continue;
+                }
+
+                var i = index;
+                await throttler.WaitAsync(cancellationToken);
+                tasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        var resolution = ResolveVoiceForParagraph(paragraph, castContext, engine, voice);
+                        var isCrossEngine = !ReferenceEquals(resolution.Engine, engine);
+                        var language = isCrossEngine ? null : SelectedLanguage;
+                        var region = isCrossEngine ? null : SelectedRegion;
+                        var model = resolution.Model ?? (isCrossEngine ? null : SelectedModel);
+
+                        var speakResult = await SpeakOneParagraphAsync(resolution, language, region, model, cancellationToken);
+                        if (speakResult.Error || string.IsNullOrEmpty(speakResult.FileName))
+                        {
+                            var swapped = await SpeakWithFallbackReferenceAsync(resolution, i, language, region, model, cancellationToken);
+                            if (swapped != null)
+                            {
+                                resolution = swapped.Value.Resolution;
+                                speakResult = swapped.Value.Result;
+                            }
+                        }
+
+                        if (speakResult.Error && !string.IsNullOrEmpty(speakResult.ErrorMessage))
+                        {
+                            lock (errorLock)
+                            {
+                                if (!errorMessages.Contains(speakResult.ErrorMessage))
+                                {
+                                    errorMessages.Add(speakResult.ErrorMessage);
+                                }
+                            }
+                        }
+
+                        results[i] = new TtsStepResult
+                        {
+                            Text = resolution.Text,
+                            CurrentFileName = speakResult.FileName,
+                            Paragraph = paragraph,
+                            SpeedFactor = 1.0f,
+                            Voice = resolution.Voice,
+                            EngineName = resolution.Engine.Name,
+                            Model = model ?? string.Empty,
+                            Instruction = resolution.Instruction,
+                        };
+                    }
+                    finally
+                    {
+                        throttler.Release();
+                        var done = Interlocked.Increment(ref completed);
+                        ProgressValue = (double)done / total * 100.0;
+                    }
+                }, cancellationToken));
+            }
+
+            await Task.WhenAll(tasks);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+
+        // Line order, skipping the silent lines that were never synthesised.
+        var list = new List<TtsStepResult>(paragraphs.Count);
+        foreach (var result in results)
+        {
+            if (result != null)
+            {
+                list.Add(result);
+            }
+        }
+
+        return list;
     }
 
     /// <summary>

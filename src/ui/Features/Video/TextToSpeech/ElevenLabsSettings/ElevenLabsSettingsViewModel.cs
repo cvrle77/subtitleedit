@@ -1,11 +1,14 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Nikse.SubtitleEdit.Features.Shared;
+using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Engines;
 using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Download;
 using Nikse.SubtitleEdit.Logic;
 
 namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech.ElevenLabsSettings;
@@ -17,13 +20,20 @@ public partial class ElevenLabsSettingsViewModel : ObservableObject
     [ObservableProperty] private double _speakerBoost;
     [ObservableProperty] private double _speed;
     [ObservableProperty] private double _styleExaggeration;
+    [ObservableProperty] private bool _generateInParallel;
+    [ObservableProperty] private string _parallelInfo = string.Empty;
+    [ObservableProperty] private bool _isDetectingPlan;
 
     public Window? Window { get; set; }
 
     public bool OkPressed { get; private set; }
 
-    public ElevenLabsSettingsViewModel()
+    private readonly ITtsDownloadService _ttsDownloadService;
+
+    public ElevenLabsSettingsViewModel(ITtsDownloadService ttsDownloadService)
     {
+        _ttsDownloadService = ttsDownloadService;
+
         Stability = 0.5;
         Similarity = 0.5;
         SpeakerBoost = 0;
@@ -40,6 +50,8 @@ public partial class ElevenLabsSettingsViewModel : ObservableObject
         SpeakerBoost = Se.Settings.Video.TextToSpeech.ElevenLabsSpeakerBoost;
         Speed = Se.Settings.Video.TextToSpeech.ElevenLabsSpeed;
         StyleExaggeration = Se.Settings.Video.TextToSpeech.ElevenLabsStyleeExaggeration;
+        GenerateInParallel = Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel;
+        UpdateParallelInfo();
     }
 
     public void SaveSettings()
@@ -49,7 +61,54 @@ public partial class ElevenLabsSettingsViewModel : ObservableObject
         Se.Settings.Video.TextToSpeech.ElevenLabsSpeakerBoost = SpeakerBoost;
         Se.Settings.Video.TextToSpeech.ElevenLabsSpeed = Speed;
         Se.Settings.Video.TextToSpeech.ElevenLabsStyleeExaggeration = StyleExaggeration;
+        Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel = GenerateInParallel;
         Se.SaveSettings();
+    }
+
+    // Detects the account's plan from the API key and caches the tier + the concurrency it maps to.
+    // Called when the dialog opens and whenever the checkbox is ticked, so the user sees which plan
+    // (and how many parallel requests) the parallel mode will use - no manual entry.
+    [RelayCommand]
+    private async Task DetectPlan()
+    {
+        IsDetectingPlan = true;
+        UpdateParallelInfo();
+        try
+        {
+            var tier = await _ttsDownloadService.GetElevenLabsSubscriptionTier(CancellationToken.None);
+            if (!string.IsNullOrEmpty(tier))
+            {
+                Se.Settings.Video.TextToSpeech.ElevenLabsTier = tier;
+                Se.Settings.Video.TextToSpeech.ElevenLabsMaxConcurrency = ElevenLabs.ConcurrencyForTier(tier);
+                Se.SaveSettings();
+            }
+        }
+        finally
+        {
+            IsDetectingPlan = false;
+            UpdateParallelInfo();
+        }
+    }
+
+    private void UpdateParallelInfo()
+    {
+        var tier = Se.Settings.Video.TextToSpeech.ElevenLabsTier;
+        var concurrency = Se.Settings.Video.TextToSpeech.ElevenLabsMaxConcurrency;
+        if (string.IsNullOrEmpty(tier) || concurrency <= 0)
+        {
+            ParallelInfo = "Plan: not detected yet - tick to detect it from the API key.";
+            return;
+        }
+
+        ParallelInfo = $"Plan: {tier} - {concurrency} parallel request(s).";
+    }
+
+    partial void OnGenerateInParallelChanged(bool value)
+    {
+        if (value && string.IsNullOrEmpty(Se.Settings.Video.TextToSpeech.ElevenLabsTier))
+        {
+            _ = DetectPlan();
+        }
     }
 
     [RelayCommand]

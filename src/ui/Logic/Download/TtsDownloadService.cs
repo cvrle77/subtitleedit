@@ -29,6 +29,7 @@ public interface ITtsDownloadService
     Task<string> AllTalkVoiceSpeak(string text, AllTalkVoice voice, string language, CancellationToken cancellationToken);
     Task<bool> AllTalkIsInstalled();
     Task DownloadElevenLabsVoiceList(Stream stream, IProgress<float>? progress, CancellationToken cancellationToken);
+    Task<string?> GetElevenLabsSubscriptionTier(CancellationToken cancellationToken);
     Task DownloadAzureVoiceList(Stream stream, IProgress<float>? progress, CancellationToken cancellationToken);
     Task DownloadMurfVoiceList(MemoryStream stream, IProgress<float>? progress, CancellationToken cancellationToken);
 
@@ -231,6 +232,47 @@ public class TtsDownloadService : ITtsDownloadService
         }
 
         await result.Content.CopyToAsync(ms, cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the subscription tier for the configured API key from GET /v1/user/subscription
+    /// ("tier"), so the parallel generation mode can size its concurrency to the plan without the
+    /// user entering anything. Returns null when the request fails (offline, invalid key, a key
+    /// without the user_read permission) - the caller then falls back to a safe default.
+    /// </summary>
+    public async Task<string?> GetElevenLabsSubscriptionTier(CancellationToken cancellationToken)
+    {
+        var apiKey = Se.Settings.Video.TextToSpeech.ElevenLabsApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return null;
+        }
+
+        var url = "https://api.elevenlabs.io/v1/user/subscription";
+        try
+        {
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Get, url);
+            requestMessage.Headers.TryAddWithoutValidation("Accept", "application/json");
+            requestMessage.Headers.TryAddWithoutValidation("xi-api-key", apiKey.Trim());
+
+            using var result = await _httpClient.SendAsync(requestMessage, cancellationToken);
+            if (!result.IsSuccessStatusCode)
+            {
+                Se.WriteToolsLog($"ElevenLabs: subscription lookup failed (HTTP {(int)result.StatusCode}) - using the default concurrency");
+                return null;
+            }
+
+            var json = await result.Content.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(json);
+            return document.RootElement.TryGetProperty("tier", out var tier) && tier.ValueKind == JsonValueKind.String
+                ? tier.GetString()
+                : null;
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, "ElevenLabs: could not read the subscription tier");
+            return null;
+        }
     }
 
     public async Task DownloadMurfVoiceList(MemoryStream ms, IProgress<float>? progress, CancellationToken cancellationToken)
