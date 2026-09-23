@@ -3302,16 +3302,12 @@ public partial class TextToSpeechViewModel : ObservableObject
             return null;
         }
 
-        // Base length: same rule as GenerateSilenceWaveFile (last cue end, or the video length when
-        // that is longer), so the fast result covers every clip.
+        // Length is the last cue end, exactly like the linear merge produces (its base silence is
+        // built from the same value, and it never pads out to the video). Padding to the video here
+        // would add a tail of silence the linear path does not have.
         var totalSeconds = stepResults.Length > 0
             ? (float)stepResults.Max(r => r.Paragraph.EndTime.TotalSeconds)
             : 0f;
-        var videoSeconds = GetVideoDurationSeconds();
-        if (videoSeconds > totalSeconds)
-        {
-            totalSeconds = (float)videoSeconds;
-        }
 
         var outputFileName = Path.Combine(_waveFolder, $"fastmerge_{Guid.NewGuid():N}.wav");
         ProgressText = $"Merging audio: 1 pass, {clips.Count} clips";
@@ -3353,7 +3349,7 @@ public partial class TextToSpeechViewModel : ObservableObject
         }
 
         ProgressValue = 100;
-        return await TrimMergedAudioToVideoAsync(outputFileName, cancellationToken);
+        return outputFileName;
     }
 
     // Pin a merged track to the video's own length when it is known: a cue whose end runs past the
