@@ -3958,6 +3958,7 @@ public partial class TextToSpeechViewModel : ObservableObject
 
                 var i = index;
                 await throttler.WaitAsync(cancellationToken);
+                Se.WriteToolsLog($"TTS generation: parallel request #{i + 1} started");
                 tasks.Add(Task.Run(async () =>
                 {
                     try
@@ -4006,6 +4007,7 @@ public partial class TextToSpeechViewModel : ObservableObject
                     {
                         throttler.Release();
                         var done = Interlocked.Increment(ref completed);
+                        Se.WriteToolsLog($"TTS generation: parallel request #{i + 1} finished ({done}/{total})");
                         UpdateParallelProgress(done, total, concurrency);
                     }
                 }, cancellationToken));
