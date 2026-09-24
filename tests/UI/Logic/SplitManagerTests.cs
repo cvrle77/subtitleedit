@@ -67,6 +67,73 @@ public class SplitManagerTests : IDisposable
     }
 
     [Fact]
+    public void Split_LeftEndsWithPeriodAndRightStartsLowercase_CapitalizesRight()
+    {
+        // Arrange
+        Se.Settings.General.MinimumBetweenLines.Milliseconds = 0;
+        var manager = new SplitManager();
+        var subtitle = MakeSubtitle($"Prva rečenica.{Environment.NewLine}druga rečenica", 1, 3);
+        var subtitles = new ObservableCollection<SubtitleLineViewModel> { subtitle };
+
+        // Act
+        manager.Split(subtitles, subtitle, languageCode: "en");
+
+        // Assert
+        Assert.Equal("Prva rečenica.", subtitles[0].Text);
+        Assert.Equal("Druga rečenica", subtitles[1].Text);
+    }
+
+    [Fact]
+    public void Split_LeftDoesNotEndWithPeriod_LeavesRightLowercase()
+    {
+        // Arrange
+        Se.Settings.General.MinimumBetweenLines.Milliseconds = 0;
+        var manager = new SplitManager();
+        var subtitle = MakeSubtitle($"Prva rečenica{Environment.NewLine}druga rečenica", 1, 3);
+        var subtitles = new ObservableCollection<SubtitleLineViewModel> { subtitle };
+
+        // Act
+        manager.Split(subtitles, subtitle, languageCode: "en");
+
+        // Assert
+        Assert.Equal("druga rečenica", subtitles[1].Text);
+    }
+
+    [Fact]
+    public void Split_LeftEndsWithPeriod_KeepsLeadingDialogDash()
+    {
+        // Arrange
+        Se.Settings.General.MinimumBetweenLines.Milliseconds = 0;
+        var manager = new SplitManager();
+        var subtitle = MakeSubtitle($"Prva rečenica.{Environment.NewLine}- druga rečenica", 1, 3);
+        var subtitles = new ObservableCollection<SubtitleLineViewModel> { subtitle };
+
+        // Act
+        manager.Split(subtitles, subtitle, languageCode: "en");
+
+        // Assert
+        // The two-line split already drops a dash that only one side has, so the result is the
+        // capitalized sentence without the marker.
+        Assert.Equal("Druga rečenica", subtitles[1].Text);
+    }
+
+    [Fact]
+    public void Split_LeftEndsWithPeriod_RightAlreadyUppercase_Unchanged()
+    {
+        // Arrange
+        Se.Settings.General.MinimumBetweenLines.Milliseconds = 0;
+        var manager = new SplitManager();
+        var subtitle = MakeSubtitle($"Prva rečenica.{Environment.NewLine}Druga rečenica", 1, 3);
+        var subtitles = new ObservableCollection<SubtitleLineViewModel> { subtitle };
+
+        // Act
+        manager.Split(subtitles, subtitle, languageCode: "en");
+
+        // Assert
+        Assert.Equal("Druga rečenica", subtitles[1].Text);
+    }
+
+    [Fact]
     public void Split_WithTextIndex_SplitsAtIndex()
     {
         // Arrange

@@ -280,7 +280,79 @@ public class SplitManager : ISplitManager
             }
         }
 
-        return FixTags(first, second);
+        var (fixedFirst, fixedSecond) = FixTags(first, second);
+
+        // If the left half ends a sentence (trailing ".") and the right half starts with a lower
+        // case letter, capitalize that letter - a sentence always starts with a capital.
+        fixedSecond = CapitalizeSentenceStart(fixedFirst, fixedSecond);
+
+        return (fixedFirst, fixedSecond);
+    }
+
+    // Returns 'second' with its first visible letter upper-cased, but only when 'first' ends with
+    // a period - i.e. the split landed on a sentence boundary. Leading whitespace, HTML/ASSA tags
+    // and a leading dialog dash are skipped so that "- drugi deo" becomes "- Drugi deo".
+    private static string CapitalizeSentenceStart(string first, string second)
+    {
+        if (string.IsNullOrEmpty(first) || string.IsNullOrEmpty(second))
+        {
+            return second;
+        }
+
+        if (!StrippedEndsWithPeriod(first))
+        {
+            return second;
+        }
+
+        for (var i = 0; i < second.Length; i++)
+        {
+            var c = second[i];
+
+            if (char.IsWhiteSpace(c) || c == '-')
+            {
+                continue;
+            }
+
+            // Skip markup: <i>, </i>, {\an8}, {\\i1}, ...
+            if (c == '<')
+            {
+                var close = second.IndexOf('>', i);
+                if (close < 0)
+                {
+                    return second;
+                }
+
+                i = close;
+                continue;
+            }
+
+            if (c == '{')
+            {
+                var close = second.IndexOf('}', i);
+                if (close < 0)
+                {
+                    return second;
+                }
+
+                i = close;
+                continue;
+            }
+
+            if (!char.IsLetter(c) || !char.IsLower(c))
+            {
+                return second;
+            }
+
+            return string.Concat(second.AsSpan(0, i), char.ToUpperInvariant(c).ToString(), second.AsSpan(i + 1));
+        }
+
+        return second;
+    }
+
+    private static bool StrippedEndsWithPeriod(string text)
+    {
+        var stripped = HtmlUtil.RemoveHtmlTags(text, true).TrimEnd();
+        return stripped.EndsWith('.');
     }
 
     // Strip HTML/ASSA tags and ALL line-break variants for length measurement.
