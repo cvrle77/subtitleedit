@@ -27715,6 +27715,32 @@ public partial class MainViewModel :
         }
     }
 
+    // Draws the same traffic-light "end of video" line the TTS review window has: green while every
+    // cue ends at or before the video, red when a cue runs past it. The main window never fed the
+    // visualizer before, so the line was simply absent here.
+    private void UpdateVideoEndMarker(AudioVisualizer av)
+    {
+        var videoEndSeconds = (double)(_mediaInfo?.Duration?.TotalSeconds ?? 0);
+        av.VideoEndSeconds = videoEndSeconds;
+        if (videoEndSeconds <= 0)
+        {
+            av.VideoEndOverrun = false;
+            return;
+        }
+
+        var overrun = false;
+        foreach (var line in Subtitles)
+        {
+            if (line.EndTime.TotalSeconds > videoEndSeconds + 0.001)
+            {
+                overrun = true;
+                break;
+            }
+        }
+
+        av.VideoEndOverrun = overrun;
+    }
+
     private void SetAssaResolution(bool checkSettings)
     {
         if (checkSettings && !Se.Settings.Assa.AutoSetResolution)
@@ -32584,6 +32610,7 @@ public partial class MainViewModel :
                 if (_updateAudioVisualizer && av != null)
                 {
                     UpdateWaveformOriginalSubtitleCues(av);
+                    UpdateVideoEndMarker(av);
                     av.InvalidateVisual();
                     _updateAudioVisualizer = false;
                 }
