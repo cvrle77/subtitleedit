@@ -134,6 +134,31 @@ public class SplitManagerTests : IDisposable
     }
 
     [Fact]
+    public void Split_CapitalizeAfterSplitDisabled_LeavesRightLowercase()
+    {
+        // Arrange
+        Se.Settings.General.MinimumBetweenLines.Milliseconds = 0;
+        var capitalize = Se.Settings.General.CapitalizeAfterSplit;
+        Se.Settings.General.CapitalizeAfterSplit = false;
+        try
+        {
+            var manager = new SplitManager();
+            var subtitle = MakeSubtitle($"Prva rečenica.{Environment.NewLine}druga rečenica", 1, 3);
+            var subtitles = new ObservableCollection<SubtitleLineViewModel> { subtitle };
+
+            // Act
+            manager.Split(subtitles, subtitle, languageCode: "en");
+
+            // Assert
+            Assert.Equal("druga rečenica", subtitles[1].Text);
+        }
+        finally
+        {
+            Se.Settings.General.CapitalizeAfterSplit = capitalize;
+        }
+    }
+
+    [Fact]
     public void Split_WithTextIndex_SplitsAtIndex()
     {
         // Arrange
