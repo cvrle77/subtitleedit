@@ -134,6 +134,13 @@ public class SeGeneral
     public double VadMinSilenceSeconds { get; set; }
 
     /// <summary>
+    /// When a split puts a sentence end (a ".") at the end of the left half and the right half then
+    /// starts with a lower case letter, upper case that letter - a sentence starts with a capital.
+    /// Applies to the main window and to the text-to-speech review split. Configurable in Settings.
+    /// </summary>
+    public bool CapitalizeAfterSplit { get; set; } = true;
+
+    /// <summary>
     /// SE4 parity: whether an original subtitle that does not line up 1:1 may be edited (and
     /// therefore saved back over its file). Off means it is shown read-only, which is what protects
     /// the lines with no counterpart here (#13449). Remembered from the import prompt.

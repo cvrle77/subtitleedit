@@ -143,6 +143,7 @@ public partial class SettingsViewModel : ObservableObject
     }
     [ObservableProperty] private bool _trimSilenceAfterSplit;
     [ObservableProperty] private bool _splitTrimUseVoiceDetection;
+    [ObservableProperty] private bool _capitalizeAfterSplit;
     [ObservableProperty] private decimal _vadThreshold;
     [ObservableProperty] private decimal _vadMinSpeechSeconds;
     [ObservableProperty] private decimal _vadMinSilenceSeconds;
@@ -826,6 +827,7 @@ public partial class SettingsViewModel : ObservableObject
         TextToSpeechElevenLabsPlan = BuildElevenLabsPlanText();
         TrimSilenceAfterSplit = general.TrimSilenceAfterSplit;
         SplitTrimUseVoiceDetection = general.SplitTrimUseVoiceDetection;
+        CapitalizeAfterSplit = general.CapitalizeAfterSplit;
         VadThreshold = (decimal)general.VadThreshold;
         VadMinSpeechSeconds = (decimal)general.VadMinSpeechSeconds;
         VadMinSilenceSeconds = (decimal)general.VadMinSilenceSeconds;
@@ -1734,6 +1736,7 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel = TextToSpeechElevenLabsParallel;
         general.TrimSilenceAfterSplit = TrimSilenceAfterSplit;
         general.SplitTrimUseVoiceDetection = SplitTrimUseVoiceDetection;
+        general.CapitalizeAfterSplit = CapitalizeAfterSplit;
         general.VadThreshold = (double)VadThreshold;
         general.VadMinSpeechSeconds = (double)VadMinSpeechSeconds;
         general.VadMinSilenceSeconds = (double)VadMinSilenceSeconds;

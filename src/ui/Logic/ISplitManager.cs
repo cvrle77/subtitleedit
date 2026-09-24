@@ -283,8 +283,11 @@ public class SplitManager : ISplitManager
         var (fixedFirst, fixedSecond) = FixTags(first, second);
 
         // If the left half ends a sentence (trailing ".") and the right half starts with a lower
-        // case letter, capitalize that letter - a sentence always starts with a capital.
-        fixedSecond = CapitalizeSentenceStart(fixedFirst, fixedSecond);
+        // case letter, capitalize that letter - a sentence always starts with a capital. Optional.
+        if (Se.Settings.General.CapitalizeAfterSplit)
+        {
+            fixedSecond = CapitalizeSentenceStart(fixedFirst, fixedSecond);
+        }
 
         return (fixedFirst, fixedSecond);
     }

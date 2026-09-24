@@ -3138,6 +3138,7 @@
       "minimalContextMenus": "Minimal right-click menus (text box, subtitle grid, waveform)",
       "trimSilenceAfterSplit": "Trim leading silence of the line after a split",
       "splitTrimUseVoiceDetection": "Use voice detection (Silero VAD) for the split trim",
+      "capitalizeAfterSplit": "Split: capitalize the second half when the first ends a sentence",
       "sileroVadModel": "Silero VAD model",
       "sileroVadInstalled": "Installed",
       "sileroVadNotInstalled": "Not installed",

@@ -104,6 +104,7 @@ public class LanguageSettings
     public string MinimalContextMenus { get; set; }
     public string TrimSilenceAfterSplit { get; set; }
     public string SplitTrimUseVoiceDetection { get; set; }
+    public string CapitalizeAfterSplit { get; set; }
     public string SileroVadModel { get; set; }
     public string SileroVadInstalled { get; set; }
     public string SileroVadNotInstalled { get; set; }
@@ -461,6 +462,7 @@ public class LanguageSettings
         MinimalContextMenus = "Minimal right-click menus (text box, subtitle grid, waveform)";
         TrimSilenceAfterSplit = "Trim leading silence of the line after a split";
         SplitTrimUseVoiceDetection = "Use voice detection (Silero VAD) for the split trim";
+        CapitalizeAfterSplit = "Split: capitalize the second half when the first ends a sentence";
         SileroVadModel = "Silero VAD model";
         SileroVadInstalled = "Installed";
         SileroVadNotInstalled = "Not installed";
