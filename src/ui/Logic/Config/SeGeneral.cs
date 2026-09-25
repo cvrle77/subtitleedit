@@ -141,6 +141,12 @@ public class SeGeneral
     public bool CapitalizeAfterSplit { get; set; } = true;
 
     /// <summary>
+    /// Draw the "end of video" line on the waveform (green while every cue fits inside the video,
+    /// red when a cue runs past it). Applies to the main window and the text-to-speech review.
+    /// </summary>
+    public bool ShowVideoEndLine { get; set; } = true;
+
+    /// <summary>
     /// SE4 parity: whether an original subtitle that does not line up 1:1 may be edited (and
     /// therefore saved back over its file). Off means it is shown read-only, which is what protects
     /// the lines with no counterpart here (#13449). Remembered from the import prompt.
