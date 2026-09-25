@@ -148,6 +148,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _trimSilenceAfterSplit;
     [ObservableProperty] private bool _splitTrimUseVoiceDetection;
     [ObservableProperty] private bool _capitalizeAfterSplit;
+    [ObservableProperty] private bool _showVideoEndLine;
     [ObservableProperty] private decimal _vadThreshold;
     [ObservableProperty] private decimal _vadMinSpeechSeconds;
     [ObservableProperty] private decimal _vadMinSilenceSeconds;
@@ -863,6 +864,7 @@ public partial class SettingsViewModel : ObservableObject
         TrimSilenceAfterSplit = general.TrimSilenceAfterSplit;
         SplitTrimUseVoiceDetection = general.SplitTrimUseVoiceDetection;
         CapitalizeAfterSplit = general.CapitalizeAfterSplit;
+        ShowVideoEndLine = general.ShowVideoEndLine;
         VadThreshold = (decimal)general.VadThreshold;
         VadMinSpeechSeconds = (decimal)general.VadMinSpeechSeconds;
         VadMinSilenceSeconds = (decimal)general.VadMinSilenceSeconds;
@@ -1790,6 +1792,7 @@ public partial class SettingsViewModel : ObservableObject
         general.TrimSilenceAfterSplit = TrimSilenceAfterSplit;
         general.SplitTrimUseVoiceDetection = SplitTrimUseVoiceDetection;
         general.CapitalizeAfterSplit = CapitalizeAfterSplit;
+        general.ShowVideoEndLine = ShowVideoEndLine;
         general.VadThreshold = (double)VadThreshold;
         general.VadMinSpeechSeconds = (double)VadMinSpeechSeconds;
         general.VadMinSilenceSeconds = (double)VadMinSilenceSeconds;
