@@ -1148,6 +1148,7 @@ public class SettingsPage : UserControl
             new SettingsItem(Se.Language.Options.Settings.VadMinSilenceSeconds, () => UiUtil.MakeNumericUpDownTwoDecimals(
                 0, 10, 120, _vm, nameof(_vm.VadMinSilenceSeconds), defaultValue: 0.1m)),
             MakeCheckboxSetting(Se.Language.Options.Settings.CapitalizeAfterSplit, nameof(_vm.CapitalizeAfterSplit)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowVideoEndLine, nameof(_vm.ShowVideoEndLine)),
 
             MakeSeparator(),
             MakeGroupHeader("Waveform centering"),

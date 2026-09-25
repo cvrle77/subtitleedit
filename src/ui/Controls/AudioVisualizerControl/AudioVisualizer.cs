@@ -4158,6 +4158,11 @@ public class AudioVisualizer : Control
             return;
         }
 
+        if (!Se.Settings.General.ShowVideoEndLine)
+        {
+            return;
+        }
+
         var sampleRate = renderCtx.SampleRate > 0 ? renderCtx.SampleRate : FallbackSampleRate;
         if (sampleRate <= 0)
         {
@@ -4165,7 +4170,9 @@ public class AudioVisualizer : Control
         }
 
         var x = SecondsToXPositionOptimized(VideoEndSeconds - renderCtx.StartPositionSeconds, sampleRate, renderCtx.ZoomFactor);
-        if (x < 0 || x >= renderCtx.Width)
+        // The video end is normally the far right of the audio, so x lands exactly on the edge -
+        // "x >= Width" used to skip the line entirely in the main window. Clamp into view instead.
+        if (x < 0 || x > renderCtx.Width)
         {
             return;
         }
@@ -4174,7 +4181,7 @@ public class AudioVisualizer : Control
         var pen = VideoEndOverrun
             ? _videoEndPenOverrun
             : _videoEndPenOk;
-        var clampedX = Math.Max(x, pen.Thickness / 2);
+        var clampedX = Math.Min(Math.Max(x, pen.Thickness / 2), renderCtx.Width - pen.Thickness / 2);
         context.DrawLine(pen, new Point(clampedX, 0), new Point(clampedX, renderCtx.Height));
     }
 

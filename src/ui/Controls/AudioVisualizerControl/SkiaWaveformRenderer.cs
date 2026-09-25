@@ -1,3 +1,4 @@
+using Nikse.SubtitleEdit.Logic.Config;
 using SkiaSharp;
 using SkiaSharp.HarfBuzz;
 using System;
@@ -1006,15 +1007,22 @@ internal sealed class SkiaWaveformRenderer
             return;
         }
 
+        if (!Se.Settings.General.ShowVideoEndLine)
+        {
+            return;
+        }
+
         var x = X(f, f.VideoEndSeconds);
-        if (x < 0 || x >= f.Width)
+        // The video end is normally the far right of the audio, so x lands exactly on the edge -
+        // clamping keeps the line visible instead of skipping it (was "x >= Width" -> return).
+        if (x < 0 || x > f.Width)
         {
             return;
         }
 
         // Traffic light: red when a clip runs past the line, green when everything fits.
         var color = f.VideoEndOverrun ? new SKColor(230, 30, 30) : new SKColor(40, 200, 60);
-        VerticalLine(canvas, Math.Max(x, 1f), 0, f.Height, 2, color);
+        VerticalLine(canvas, Math.Min(Math.Max(x, 1f), f.Width - 1f), 0, f.Height, 2, color);
     }
 
     private void DrawCursor(SKCanvas canvas, SkiaWaveformFrame f)
