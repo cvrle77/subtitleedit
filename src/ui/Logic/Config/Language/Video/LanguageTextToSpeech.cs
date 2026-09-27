@@ -28,6 +28,7 @@ public class LanguageTextToSpeech
     public string VideoEncodingSettings { get; set; }
     public string ElevenLabsSettings { get; set; }
     public string ElevenLabsSettingsResetHint { get; set; }
+    public string ElevenLabsParallelGeneration { get; set; }
     public string Provider { get; set; }
     public string OpenAiCompatibleSettings { get; set; }
     public string CustomServerUrl { get; set; }
@@ -274,6 +275,7 @@ public class LanguageTextToSpeech
         VideoEncodingSettings = "TTS - Video encoding settings";
         ElevenLabsSettings = "TTS - ElevenLabs settings";
         ElevenLabsSettingsResetHint = "Reset ElevenLabs settings to default values";
+        ElevenLabsParallelGeneration = "Generate in parallel (faster; uses your plan's concurrency limit)";
         Provider = "Provider";
         OpenAiCompatibleSettings = "TTS - OpenAI-compatible settings";
         CustomServerUrl = "Custom server URL";

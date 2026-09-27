@@ -2676,6 +2676,7 @@
       "videoEncodingSettings": "TTS - Video encoding settings",
       "elevenLabsSettings": "TTS - ElevenLabs settings",
       "elevenLabsSettingsResetHint": "Reset ElevenLabs settings to default values",
+      "elevenLabsParallelGeneration": "Generate in parallel (faster; uses your plan's concurrency limit)",
       "provider": "Provider",
       "openAiCompatibleSettings": "TTS - OpenAI-compatible settings",
       "customServerUrl": "Custom server URL",
