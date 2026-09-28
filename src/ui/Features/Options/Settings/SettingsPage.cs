@@ -1140,6 +1140,9 @@ public class SettingsPage : UserControl
         [
             MakeGroupHeader("Right-click menus"),
             MakeCheckboxSetting(Se.Language.Options.Settings.MinimalContextMenus, nameof(_vm.MinimalContextMenus)),
+            new SettingsItem(Se.Language.Options.Settings.ContextMenuTextBox, () => MakeContextMenuComboBox(_vm.ContextMenuTextBox)),
+            new SettingsItem(Se.Language.Options.Settings.ContextMenuGrid, () => MakeContextMenuComboBox(_vm.ContextMenuGrid)),
+            new SettingsItem(Se.Language.Options.Settings.ContextMenuWaveform, () => MakeContextMenuComboBox(_vm.ContextMenuWaveform)),
 
             MakeSeparator(),
             MakeGroupHeader("Split: trim the leading silence"),
@@ -1173,10 +1176,12 @@ public class SettingsPage : UserControl
             MakeGroupHeader("Waveform centering"),
             new SettingsItem(Se.Language.Options.Settings.WaveformCenterSmoothSeconds, () => UiUtil.MakeNumericUpDownOneDecimal(
                 0, 10, 120, _vm, nameof(_vm.WaveformCenterSmoothSeconds), defaultValue: 2.0m)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformZoomCentersOnSelection, nameof(_vm.ZoomCentersOnSelection)),
 
             MakeSeparator(),
             MakeGroupHeader("Text to speech"),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechFastMerge, nameof(_vm.TextToSpeechFastMerge)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechDescriptiveFilenames, nameof(_vm.TextToSpeechDescriptiveFilenames)),
             new SettingsItem(Se.Language.Options.Settings.AdjustSpeedParallelism, () => UiUtil.MakeNumericUpDownInt(
                 1, 32, 4, 120, _vm, nameof(_vm.AdjustSpeedParallelism))),
             MakeCheckboxSetting(Se.Language.Options.Settings.ShowTestingTools, nameof(_vm.ShowTestingTools)),
@@ -1320,6 +1325,79 @@ public class SettingsPage : UserControl
         var button = UiUtil.MakeButton(Se.Language.General.Download, command);
         AutomationProperties.SetName(button, settingName);
         button.Bind(AutomationProperties.HelpTextProperty, new Binding(statusProperty) { Source = _vm });
+        return button;
+    }
+
+    /// <summary>
+    /// A compact drop-down for one right-click menu: a thin button reading "All items" or "N hidden",
+    /// opening a flyout that lists every item with a tick. Select all / Select none sit at the top.
+    /// Disabled while the minimal-menus preset is on, because that preset owns the contents.
+    /// </summary>
+    private Control MakeContextMenuComboBox(
+        Nikse.SubtitleEdit.Features.Options.Settings.ContextMenuCustomization.ContextMenuSection section)
+    {
+        var summaryText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+        summaryText.Bind(TextBlock.TextProperty, new Binding(nameof(Nikse.SubtitleEdit.Features.Options.Settings.ContextMenuCustomization.ContextMenuSection.Summary)) { Source = section });
+
+        var button = new Button
+        {
+            MinWidth = 150,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children =
+                {
+                    summaryText,
+                    new TextBlock { Text = "\u25be", VerticalAlignment = VerticalAlignment.Center },
+                },
+            },
+        };
+        button.Bind(IsEnabledProperty, new Binding(nameof(SettingsViewModel.MinimalContextMenus))
+        {
+            Source = _vm,
+            Converter = Nikse.SubtitleEdit.Logic.ValueConverters.InverseBooleanConverter.Instance,
+        });
+        AutomationProperties.SetName(button, section.Key);
+
+        var listPanel = new StackPanel { Orientation = Orientation.Vertical, Spacing = 2, MinWidth = 240 };
+
+        void Rebuild()
+        {
+            listPanel.Children.Clear();
+
+            var selectAll = UiUtil.MakeButton(Se.Language.General.SelectAll, section.SelectAllCommand).WithMinWidth(110);
+            var selectNone = UiUtil.MakeButton(Se.Language.General.SelectNone, section.DeselectAllCommand).WithMinWidth(110);
+            listPanel.Children.Add(new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Margin = new Thickness(4, 4, 4, 4),
+                Children = { selectAll, selectNone },
+            });
+
+            foreach (var item in section.Items)
+            {
+                var checkBox = new CheckBox { Content = item.Name, Margin = new Thickness(4, 0, 4, 0), IsChecked = item.IsVisible };
+                checkBox.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(item.IsVisible)) { Mode = BindingMode.TwoWay, Source = item });
+                AutomationProperties.SetName(checkBox, item.Name);
+                listPanel.Children.Add(checkBox);
+            }
+        }
+
+        section.Items.CollectionChanged += (_, _) => Rebuild();
+        Rebuild();
+
+        var flyout = new Flyout
+        {
+            Placement = PlacementMode.BottomEdgeAlignedLeft,
+            Content = new ScrollViewer { MaxHeight = 360, Content = listPanel },
+        };
+        button.Flyout = flyout;
+        button.Click += (_, _) => flyout.ShowAt(button);
+
         return button;
     }
 

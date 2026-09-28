@@ -62,5 +62,9 @@ public enum SeWaveformToolbarItemType
     // Picks how the editor-style layout (layout 14) splits the subtitles over rows - one row, or
     // a row per layer, actor or style. Only rendered in that layout, like the audio-track picker
     // only renders for a multi-track video.
-    TimelineTrackGrouping = 31
+    TimelineTrackGrouping = 31,
+
+    // The added "smooth" variant of the Center toggle: eases the view to the centre instead of
+    // snapping. Separate from Center so the original instant toggle stays as it always was.
+    CenterSmooth = 32
 }

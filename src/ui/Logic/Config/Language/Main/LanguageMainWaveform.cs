@@ -10,6 +10,7 @@ public class LanguageMainWaveform
     public string SetEndHint { get; set; }
     public string NewHint { get; set; }
     public string CenterWaveformHint { get; set; }
+    public string CenterWaveformSmoothHint { get; set; }
     public string ZoomHorizontalHint { get; set; }
     public string ZoomVerticalHint { get; set; }
     public string SelectCurrentLineWhilePlayingHint { get; set; }
@@ -65,6 +66,7 @@ public class LanguageMainWaveform
         SetEndHint = "Set end of current subtitle {0}";
         NewHint = "Insert new subtitle at video position {0}";
         CenterWaveformHint = "Center waveform on current video position while playing {0}";
+        CenterWaveformSmoothHint = "Center waveform smoothly, easing to the center instead of snapping {0}";
         ZoomHorizontalHint = "Zoom horizontal {0}";
         ZoomVerticalHint = "Zoom vertical {0}";
         SelectCurrentLineWhilePlayingHint = "Select current subtitle while playing {0}";

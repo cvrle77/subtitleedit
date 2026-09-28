@@ -690,6 +690,8 @@ public static class ShortcutsMain
         { nameof(MainViewModel.PlaySelectedLinesWithLoopCommand), Se.Language.General.PlaySelectedLinesWithLoop },
         { nameof(MainViewModel.PlaySelectedLinesAndFocusWaveformCommand), Se.Language.General.PlaySelectedLinesAndFocusWaveform },
         { nameof(MainViewModel.PlaySelectedLinesWithLoopAndFocusWaveformCommand), Se.Language.General.PlaySelectedLinesWithLoopAndFocusWaveform },
+        { nameof(MainViewModel.PlaySelectedLinesContinuousCommand), Se.Language.General.PlaySelectedLinesContinuous },
+        { nameof(MainViewModel.PlaySelectedLinesContinuousAndFocusWaveformCommand), Se.Language.General.PlaySelectedLinesContinuousAndFocusWaveform },
         { nameof(MainViewModel.ToggleCasingCommand), Se.Language.Options.Shortcuts.SelectionToggleCasing },
         { nameof(MainViewModel.SelectionToLowerCommand), Se.Language.Options.Shortcuts.SelectionToLower },
         { nameof(MainViewModel.SelectionToUpperCommand), Se.Language.Options.Shortcuts.SelectionToUpper },
@@ -1241,6 +1243,8 @@ public static class ShortcutsMain
         AddShortcut(shortcuts, vm.PlaySelectedLinesWithLoopCommand, nameof(vm.PlaySelectedLinesWithLoopCommand), ShortcutCategory.General, ShortcutGroup.Video);
         AddShortcut(shortcuts, vm.PlaySelectedLinesAndFocusWaveformCommand, nameof(vm.PlaySelectedLinesAndFocusWaveformCommand), ShortcutCategory.General, ShortcutGroup.Video);
         AddShortcut(shortcuts, vm.PlaySelectedLinesWithLoopAndFocusWaveformCommand, nameof(vm.PlaySelectedLinesWithLoopAndFocusWaveformCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlaySelectedLinesContinuousCommand, nameof(vm.PlaySelectedLinesContinuousCommand), ShortcutCategory.General, ShortcutGroup.Video);
+        AddShortcut(shortcuts, vm.PlaySelectedLinesContinuousAndFocusWaveformCommand, nameof(vm.PlaySelectedLinesContinuousAndFocusWaveformCommand), ShortcutCategory.General, ShortcutGroup.Video);
         // "Toggle casing" also works on selected lines in the grid, but it belongs next to the two
         // other casing actions when browsing shortcuts - the group is display-only (#13093).
         AddShortcut(shortcuts, vm.ToggleCasingCommand, nameof(vm.ToggleCasingCommand), ShortcutCategory.SubtitleGridAndTextBox, ShortcutGroup.TextBox);

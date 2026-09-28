@@ -469,6 +469,8 @@ public class LanguageGeneral
     public string PlaySelectedLinesWithLoop { get; set; }
     public string PlaySelectedLinesAndFocusWaveform { get; set; }
     public string PlaySelectedLinesWithLoopAndFocusWaveform { get; set; }
+    public string PlaySelectedLinesContinuous { get; set; }
+    public string PlaySelectedLinesContinuousAndFocusWaveform { get; set; }
     public string PleaseEnterAValidValueForX { get; set; }
     public string PleaseWait { get; set; }
     public string Position { get; set; }
@@ -1328,6 +1330,8 @@ public class LanguageGeneral
         PlaySelectedLinesWithLoop = "Play selected lines with loop";
         PlaySelectedLinesAndFocusWaveform = "Play selected lines and focus waveform";
         PlaySelectedLinesWithLoopAndFocusWaveform = "Play selected lines with loop and focus waveform";
+        PlaySelectedLinesContinuous = "Play continuous (voice only)";
+        PlaySelectedLinesContinuousAndFocusWaveform = "Play continuous (voice only) and focus waveform";
         PleaseEnterAValidValueForX = "Please enter a valid value for \"{0}\"";
         PleaseWait = "Please wait...";
         Position = "Position";

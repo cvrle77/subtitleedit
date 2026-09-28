@@ -214,6 +214,12 @@ public class SeVideoTextToSpeech
     // keep the per-line clips around for inspection - nothing else sweeps them.
     public bool DeleteTempFiles { get; set; }
 
+    // Naming of the per-line wavs written by Review -> Export. "numeric" keeps the old
+    // 0001.wav names; "descriptive" writes the line number, the first few spoken words and the
+    // take index, e.g. "002-bla-bla-bla-00.wav". Import reads the name from the JSON, so both
+    // schemes round-trip; this only decides what Export writes.
+    public string ExportFileNaming { get; set; }
+
     // Remembered actor/voice mappings. Pre-fills the cast dialog so users don't have to
     // re-assign the same character voices every time they open a new subtitle. Keyed by actor
     // name; matches happen case-insensitively.
@@ -337,6 +343,7 @@ public class SeVideoTextToSpeech
         ShowTestingTools = false;
         GenerationFolder = string.Empty;
         DeleteTempFiles = true;
+        ExportFileNaming = "descriptive";
         LastActorVoiceMappings = new List<ActorVoiceMapping>();
     }
 }

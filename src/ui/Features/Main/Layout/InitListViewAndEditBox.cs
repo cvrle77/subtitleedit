@@ -771,6 +771,7 @@ public static partial class InitListViewAndEditBox
 
         // Create a Flyout for the DataGrid
         var flyout = new MenuFlyout();
+        vm.SubtitleGridContextFlyout = flyout;
 
         flyout.Opening += vm.SubtitleContextOpening;
 
@@ -1896,6 +1897,7 @@ public static partial class InitListViewAndEditBox
             FlyoutPresenterTheme = flyoutTextBoxPresenterTheme,
         };
         textEditor.ContextFlyout = flyoutTextBox;
+        vm.TextBoxContextFlyout = flyoutTextBox;
         flyoutTextBox.Opening += vm.TextBoxContextOpening;
         // Keep the undocked tool windows from covering the text box context menu (#13325).
         WindowService.SuspendUndockedTopmostWhileOpen(flyoutTextBox);

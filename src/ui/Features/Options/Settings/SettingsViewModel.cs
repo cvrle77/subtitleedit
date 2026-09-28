@@ -24,6 +24,7 @@ using Nikse.SubtitleEdit.Features.Tools.BeautifyTimeCodes.Profile;
 using Nikse.SubtitleEdit.Features.Options.Settings.WaveformThemes;
 using Nikse.SubtitleEdit.Features.Options.Settings.VideoControlsItems;
 using Nikse.SubtitleEdit.Features.Options.Settings.WaveformToolbarItems;
+using Nikse.SubtitleEdit.Features.Options.Settings.ContextMenuCustomization;
 using Nikse.SubtitleEdit.Features.Shared;
 using Nikse.SubtitleEdit.Features.Shared.PickLanguage;
 using Nikse.SubtitleEdit.Features.Shared.PickSubtitleFormat;
@@ -253,6 +254,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _textToSpeechPromptSkipNoiseLines;
     [ObservableProperty] private bool _textToSpeechPromptDetectSpeakers;
     [ObservableProperty] private bool _textToSpeechFastMerge;
+    [ObservableProperty] private bool _textToSpeechDescriptiveFilenames;
     [ObservableProperty] private bool _openAiCompatibleSttAutoTranscribeOnAudioSelection;
 
     [ObservableProperty] private ObservableCollection<string> _spellCheckEngines;
@@ -307,6 +309,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _waveformSelectCurrentSubtitleWhilePaused;
     [ObservableProperty] private bool _waveformRememberZoom;
     [ObservableProperty] private decimal _waveformCenterSmoothSeconds;
+    [ObservableProperty] private bool _zoomCentersOnSelection;
 
     [ObservableProperty] private ObservableCollection<string> _waveformDrawStyles;
     [ObservableProperty] private string _selectedWaveformDrawStyle;
@@ -513,6 +516,12 @@ public partial class SettingsViewModel : ObservableObject
     private bool _skipRuleValueChanged = false;
     private List<SeWaveformToolbarItem> _waveformToolbarItems = new List<SeWaveformToolbarItem>();
     private List<SeVideoControlsItem> _videoControlsItems = new List<SeVideoControlsItem>();
+
+    // The three "customize right-click menu" sections, filled from the live menus in Initialize and
+    // saved back into Se.Settings.General.HiddenContextMenuItems on save.
+    public ContextMenuSection ContextMenuTextBox { get; } = new("textbox");
+    public ContextMenuSection ContextMenuGrid { get; } = new("grid");
+    public ContextMenuSection ContextMenuWaveform { get; } = new("waveform");
 
     public SettingsViewModel(IWindowService windowService, IFolderHelper folderHelper)
     {
@@ -963,6 +972,7 @@ public partial class SettingsViewModel : ObservableObject
         TextToSpeechPromptSkipNoiseLines = Se.Settings.Tools.TextToSpeechPromptSkipNoiseLines;
         TextToSpeechPromptDetectSpeakers = Se.Settings.Tools.TextToSpeechPromptDetectSpeakers;
         TextToSpeechFastMerge = Se.Settings.Video.TextToSpeech.FastMerge;
+        TextToSpeechDescriptiveFilenames = !string.Equals(Se.Settings.Video.TextToSpeech.ExportFileNaming, "numeric", StringComparison.OrdinalIgnoreCase);
         OpenAiCompatibleSttAutoTranscribeOnAudioSelection = Se.Settings.Tools.OpenAiCompatibleSttAutoTranscribeOnAudioSelection;
         FixCommonErrorsSkipStep1 = Se.Settings.Tools.FixCommonErrors.SkipStep1;
         MusicSymbol = Se.Settings.Tools.MusicSymbol;
@@ -1035,6 +1045,7 @@ public partial class SettingsViewModel : ObservableObject
         WaveformSelectCurrentSubtitleWhilePaused = Se.Settings.Waveform.SelectCurrentSubtitleWhilePaused;
         WaveformRememberZoom = Se.Settings.Waveform.RememberZoom;
         WaveformCenterSmoothSeconds = (decimal)Se.Settings.Waveform.CenterSmoothSeconds;
+        ZoomCentersOnSelection = Se.Settings.Waveform.ZoomCentersOnSelection;
         WaveformShowToolbar = Se.Settings.Waveform.ShowToolbar;
         WaveformShowOriginalSubtitle = Se.Settings.Waveform.ShowOriginalSubtitle;
 
@@ -1870,6 +1881,7 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Tools.TextToSpeechPromptSkipNoiseLines = TextToSpeechPromptSkipNoiseLines;
         Se.Settings.Tools.TextToSpeechPromptDetectSpeakers = TextToSpeechPromptDetectSpeakers;
         Se.Settings.Video.TextToSpeech.FastMerge = TextToSpeechFastMerge;
+        Se.Settings.Video.TextToSpeech.ExportFileNaming = TextToSpeechDescriptiveFilenames ? "descriptive" : "numeric";
         Se.Settings.Tools.FixCommonErrors.SkipStep1 = FixCommonErrorsSkipStep1;
         Se.Settings.Tools.WriteToolsLog = WriteToolsLog;
         Se.Settings.Tools.OpenAiCompatibleSttAutoTranscribeOnAudioSelection = OpenAiCompatibleSttAutoTranscribeOnAudioSelection;
@@ -1947,6 +1959,7 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Waveform.SelectCurrentSubtitleWhilePaused = WaveformSelectCurrentSubtitleWhilePaused;
         Se.Settings.Waveform.RememberZoom = WaveformRememberZoom;
         Se.Settings.Waveform.CenterSmoothSeconds = (double)WaveformCenterSmoothSeconds;
+        Se.Settings.Waveform.ZoomCentersOnSelection = ZoomCentersOnSelection;
         Se.Settings.Waveform.FocusTextBoxAfterInsertNew = WaveformFocusTextboxAfterInsertNew;
 
         if (SelectedWaveformDrawStyle == Se.Language.General.Classic)
@@ -1990,6 +2003,13 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Waveform.ShowToolbar = WaveformShowToolbar;
         Se.Settings.Waveform.ShowOriginalSubtitle = WaveformShowOriginalSubtitle;
         Se.Settings.Waveform.ToolbarItems = _waveformToolbarItems;
+
+        // The three right-click menu customizations, saved as a per-menu hidden-header map.
+        var hiddenContextMenuItems = new Dictionary<string, List<string>>();
+        ContextMenuTextBox.Save(hiddenContextMenuItems);
+        ContextMenuGrid.Save(hiddenContextMenuItems);
+        ContextMenuWaveform.Save(hiddenContextMenuItems);
+        Se.Settings.General.HiddenContextMenuItems = hiddenContextMenuItems;
 
         Se.Settings.Waveform.WaveformTextFontSize = WaveformTextFontSize;
         Se.Settings.Waveform.WaveformTextFontBold = WaveformTextFontBold;
@@ -3360,6 +3380,12 @@ public partial class SettingsViewModel : ObservableObject
     internal void Initialize(MainViewModel mainViewModel)
     {
         _mainViewModel = mainViewModel;
+
+        // Build the right-click menu customization sections from the live menus, so the rows always
+        // match the current build's menus.
+        ContextMenuTextBox.Fill(mainViewModel.GetContextMenuHeaders("textbox"));
+        ContextMenuGrid.Fill(mainViewModel.GetContextMenuHeaders("grid"));
+        ContextMenuWaveform.Fill(mainViewModel.GetContextMenuHeaders("waveform"));
     }
 
     internal void ProfileChanged()

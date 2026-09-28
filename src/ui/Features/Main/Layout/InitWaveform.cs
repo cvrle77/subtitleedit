@@ -1027,7 +1027,7 @@ public class InitWaveform
         panelAudioTrack.Bind(StackPanel.IsVisibleProperty, new Binding(nameof(vm.IsAudioTracksVisible)));
 
         var settingAutoSelectOnPlay = GetToolbarSettingFor(SeWaveformToolbarItemType.AutoSelectOnPlay);
-        var toggleButtonAutoSelectOnPlay = new ToggleButton
+        var toggleButtonAutoSelectOnPlay = new NonSpaceToggleButton
         {
             DataContext = vm,
             [!ToggleButton.IsCheckedProperty] = new Binding(nameof(vm.SelectCurrentSubtitleWhilePlaying)) { Mode = BindingMode.TwoWay },
@@ -1039,7 +1039,7 @@ public class InitWaveform
         toggleButtonAutoSelectOnPlay.IsCheckedChanged += (s, e) => vm.AutoSelectOnPlayCheckedChanged();
 
         var settingCenter = GetToolbarSettingFor(SeWaveformToolbarItemType.Center);
-        var toggleButtonCenter = new ToggleButton
+        var toggleButtonCenter = new NonSpaceToggleButton
         {
             DataContext = vm,
             [!ToggleButton.IsCheckedProperty] = new Binding(nameof(vm.WaveformCenter)) { Mode = BindingMode.TwoWay },
@@ -1049,6 +1049,18 @@ public class InitWaveform
         };
         Attached.SetIcon(toggleButtonCenter, IconNames.AlignHorizontalCenter);
         toggleButtonCenter.IsCheckedChanged += (s, e) => vm.WaveformCenterCheckedChanged();
+
+        var settingCenterSmooth = GetToolbarSettingFor(SeWaveformToolbarItemType.CenterSmooth);
+        var toggleButtonCenterSmooth = new NonSpaceToggleButton
+        {
+            DataContext = vm,
+            [!ToggleButton.IsCheckedProperty] = new Binding(nameof(vm.WaveformCenterSmooth)) { Mode = BindingMode.TwoWay },
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(settingCenterSmooth.LeftMargin, 0, settingCenterSmooth.RightMargin, 0),
+            [ToolTip.TipProperty] = UiUtil.MakeToolTip(languageHints.CenterWaveformSmoothHint, shortcuts),
+        };
+        Attached.SetIcon(toggleButtonCenterSmooth, IconNames.Waveform);
+        toggleButtonCenterSmooth.IsCheckedChanged += (s, e) => vm.WaveformCenterSmoothCheckedChanged();
 
         var settingVideoSeek = GetToolbarSettingFor(SeWaveformToolbarItemType.VideoSeek);
         var buttonSeekBack = new NonSpaceButton
@@ -1178,6 +1190,7 @@ public class InitWaveform
         SetAccessibleName(buttonRemoveBlankLines, languageHints.RemoveBlankLines);
         SetAccessibleName(toggleButtonAutoSelectOnPlay, languageHints.SelectCurrentLineWhilePlayingHint);
         SetAccessibleName(toggleButtonCenter, languageHints.CenterWaveformHint);
+        SetAccessibleName(toggleButtonCenterSmooth, languageHints.CenterWaveformSmoothHint);
         AutomationProperties.SetName(buttonMore, Se.Language.General.More);
 
         // Row grouping for the editor-style layout: a configurable toolbar item that only
@@ -1263,6 +1276,7 @@ public class InitWaveform
             panelSpeed,
             toggleButtonAutoSelectOnPlay,
             toggleButtonCenter,
+            toggleButtonCenterSmooth,
             panelVideoSeek,
             textBoxInitialText,
             buttonMore,
@@ -1487,6 +1501,7 @@ public class InitWaveform
         StackPanel panelSpeed,
         ToggleButton toggleButtonAutoSelectOnPlay,
         ToggleButton toggleButtonCenter,
+        ToggleButton toggleButtonCenterSmooth,
         StackPanel panelVideoSeek,
         TextBox textBoxInitialText,
         Button buttonMore,
@@ -1582,6 +1597,9 @@ public class InitWaveform
                     break;
                 case SeWaveformToolbarItemType.Center:
                     toolbarButtonForSort.Add(new SortedControl { Sort = item.SortOrder, Control = toggleButtonCenter });
+                    break;
+                case SeWaveformToolbarItemType.CenterSmooth:
+                    toolbarButtonForSort.Add(new SortedControl { Sort = item.SortOrder, Control = toggleButtonCenterSmooth });
                     break;
                 case SeWaveformToolbarItemType.VideoSeek:
                     toolbarButtonForSort.Add(new SortedControl { Sort = item.SortOrder, Control = panelVideoSeek });

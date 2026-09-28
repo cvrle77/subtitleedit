@@ -126,6 +126,16 @@ public class SeGeneral
     public bool MinimalContextMenus { get; set; }
 
     /// <summary>
+    /// Per-menu list of hidden item headers for the three right-click menus. Keyed by menu
+    /// ("textbox", "grid", "waveform"); the value is the set of item headers the user chose to
+    /// hide. Empty means the menu is shown in full. This is the fine-grained successor of
+    /// <see cref="MinimalContextMenus"/> and the two are independent: a header listed here stays
+    /// hidden even when the minimal preset is off. Configurable in Settings via the
+    /// "Customize right-click menus" dialog.
+    /// </summary>
+    public Dictionary<string, List<string>> HiddenContextMenuItems { get; set; }
+
+    /// <summary>
     /// After "split line at video and text box position", move the right half's start forward to
     /// the next speech, trimming the silence the cut left at its front. Uses the "seek silence"
     /// volume; a cut inside speech (no silence in front) leaves the line untouched. Configurable
@@ -295,6 +305,7 @@ public class SeGeneral
     {
         Version = Se.Version;
         Language = "English";
+        HiddenContextMenuItems = new Dictionary<string, List<string>>();
         LayoutNumber = 0;
         SubtitleLineMaximumLength = 43;
         MaxNumberOfLines = 2;
