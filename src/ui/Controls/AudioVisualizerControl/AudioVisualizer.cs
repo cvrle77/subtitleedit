@@ -998,7 +998,8 @@ public class AudioVisualizer : Control
 
             // Remember what to keep in the middle before the zoom changes: the range being
             // dragged out in the waveform if there is one, otherwise the selected block(s).
-            var anchorSeconds = GetZoomAnchorSeconds();
+            // Only when the option is on - otherwise the view keeps its left edge as upstream did.
+            var anchorSeconds = Se.Settings.Waveform.ZoomCentersOnSelection ? GetZoomAnchorSeconds() : null;
 
             ZoomFactor = newZoomFactor;
 

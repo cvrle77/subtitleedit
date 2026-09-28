@@ -439,6 +439,34 @@ public partial class MainViewModel :
     [ObservableProperty] private bool _isWebVttBrowserPreviewVisible;
     [ObservableProperty] private bool _selectCurrentSubtitleWhilePlaying;
     [ObservableProperty] private bool _waveformCenter;
+    [ObservableProperty] private bool _waveformCenterSmooth;
+
+    /// <summary>
+    /// True while either centre-on-position mode is on - the original (snap) toggle or the added
+    /// smooth one. Use this wherever the original code asked <see cref="WaveformCenter"/> and the
+    /// smooth mode should behave the same except for the easing.
+    /// </summary>
+    public bool WaveformCenterAny => WaveformCenter || WaveformCenterSmooth;
+
+    // The two centre toggles are mutually exclusive: turning one on turns the other off. Done here
+    // rather than in the toggle's CheckedChanged so it holds no matter what set the value.
+    partial void OnWaveformCenterChanged(bool value)
+    {
+        OnPropertyChanged(nameof(WaveformCenterAny));
+        if (value && WaveformCenterSmooth)
+        {
+            WaveformCenterSmooth = false;
+        }
+    }
+
+    partial void OnWaveformCenterSmoothChanged(bool value)
+    {
+        OnPropertyChanged(nameof(WaveformCenterAny));
+        if (value && WaveformCenter)
+        {
+            WaveformCenter = false;
+        }
+    }
     [ObservableProperty] private bool _isRightToLeftEnabled;
     [ObservableProperty] private bool _showAutoTranslateSelectedLines;
     [ObservableProperty] private bool _hasMultipleLinesSelected;
@@ -941,6 +969,11 @@ public partial class MainViewModel :
     public MenuItem MenuItemAudioVisualizerCloneVoice { get; set; }
     public MenuItem MenuItemAudioVisualizerCopy { get; set; }
     public MenuItem MenuItemAudioVisualizerCopyText { get; set; }
+
+    // The three right-click flyouts, kept so the "Customize right-click menus" settings can list
+    // their items. Assigned where each flyout is built.
+    public MenuFlyout? SubtitleGridContextFlyout { get; set; }
+    public MenuFlyout? TextBoxContextFlyout { get; set; }
     public ITextBoxWrapper EditTextBoxOriginal { get; set; }
     public ITextBoxWrapper EditTextBox { get; set; }
 
@@ -1154,6 +1187,7 @@ public partial class MainViewModel :
         ShowUpDownLabels = Se.Settings.Appearance.ShowUpDownLabels;
         SelectCurrentSubtitleWhilePlaying = Se.Settings.General.SelectCurrentSubtitleWhilePlaying;
         WaveformCenter = Se.Settings.Waveform.CenterVideoPosition;
+        WaveformCenterSmooth = Se.Settings.Waveform.CenterVideoPositionSmooth;
         EditTextBoxOriginal = new TextBoxWrapper(new TextBox());
         EditTextCharactersPerSecondOriginal = string.Empty;
         EditTextCharactersPerSecondBackgroundOriginal = Brushes.Transparent;
@@ -10553,6 +10587,36 @@ public partial class MainViewModel :
     {
         var selectedItems = SubtitleGridSelectedItems.Cast<SubtitleLineViewModel>().OrderBy(p => p.StartTime).ToList();
         var vp = GetVideoPlayerControl();
+        if (Window == null || selectedItems.Count == 0 || vp == null)
+        {
+            return false;
+        }
+
+        // Upstream behaviour: play exactly the selected lines, starting at the first one. Clear the
+        // continuous mode's toggle flag so a leftover pause/resume state from that command can never
+        // bleed into this one (the two share _playSelectionItem).
+        _playSelectionToggleMode = false;
+        vp.VideoPlayer.Pause();
+        var p = selectedItems.First();
+        SeekVideoPlayer(vp, p.StartTime.TotalSeconds);
+        PinPlayheadTo(p.StartTime.TotalSeconds);
+        _playSelectionItem = new PlaySelectionItem(selectedItems, p.EndTime, loop);
+        PlayVideo(vp);
+
+        return true;
+    }
+
+    /// <summary>
+    /// The added "continuous" play mode: with nothing selected (or just the current row) it plays
+    /// from the playhead through every following line to the end of the file, skipping the gaps
+    /// where there is nothing to hear; a deliberate multi-line selection still plays exactly those
+    /// lines. A second press pauses, a third resumes from the playhead. A separate command from the
+    /// upstream Play selected lines, so the original stays as it was.
+    /// </summary>
+    private bool PlayerSelectedLinesContinuous(bool loop)
+    {
+        var selectedItems = SubtitleGridSelectedItems.Cast<SubtitleLineViewModel>().OrderBy(p => p.StartTime).ToList();
+        var vp = GetVideoPlayerControl();
         if (Window == null || vp == null)
         {
             return false;
@@ -10572,10 +10636,9 @@ public partial class MainViewModel :
             _playSelectionToggleMode = false;
         }
 
-        // Without a real selection - nothing selected, or just the current row - "Play selected
-        // lines" plays from the playhead through every following line to the end of the file,
-        // skipping the gaps where there is nothing to hear. A deliberate multi-line selection
-        // still plays exactly those lines (issue #14655).
+        // Without a real selection - nothing selected, or just the current row - it plays from the
+        // playhead through every following line to the end of the file, skipping the gaps where
+        // there is nothing to hear. A deliberate multi-line selection still plays exactly those lines.
         if (selectedItems.Count <= 1)
         {
             var start = Subtitles.FirstOrDefault(s => s.EndTime.TotalSeconds > vp.Position && !string.IsNullOrWhiteSpace(s.Text));
@@ -10607,6 +10670,21 @@ public partial class MainViewModel :
         PlayVideo(vp);
 
         return true;
+    }
+
+    [RelayCommand]
+    private void PlaySelectedLinesContinuous()
+    {
+        PlayerSelectedLinesContinuous(false);
+    }
+
+    [RelayCommand]
+    private void PlaySelectedLinesContinuousAndFocusWaveform()
+    {
+        if (PlayerSelectedLinesContinuous(false))
+        {
+            FocusAudioVisualizer();
+        }
     }
 
     [RelayCommand]
@@ -18527,7 +18605,7 @@ public partial class MainViewModel :
 
         SelectAndScrollToRowCentered(idx);
 
-        if (WaveformCenter)
+        if (WaveformCenterAny)
         {
             var selectedLine = Subtitles.GetOrNull(idx);
             if (selectedLine != null)
@@ -18587,7 +18665,7 @@ public partial class MainViewModel :
 
         SelectAndScrollToRowCentered(idx);
 
-        if (WaveformCenter)
+        if (WaveformCenterAny)
         {
             var selectedLine = Subtitles.GetOrNull(idx);
             if (selectedLine != null)
@@ -22918,7 +22996,7 @@ public partial class MainViewModel :
         }
 
         var av = AudioVisualizer;
-        if (WaveformCenter)
+        if (WaveformCenterAny)
         {
             var waveformHalfSeconds = (av.EndPositionSeconds - av.StartPositionSeconds) / 2.0;
             av.StartPositionSeconds = newPosition - waveformHalfSeconds;
@@ -28064,6 +28142,7 @@ public partial class MainViewModel :
             Se.Settings.General.SelectCurrentSubtitleWhilePlaying = SelectCurrentSubtitleWhilePlaying;
             Se.Settings.Waveform.ShowToolbar = IsWaveformToolbarVisible;
             Se.Settings.Waveform.CenterVideoPosition = WaveformCenter;
+            Se.Settings.Waveform.CenterVideoPositionSmooth = WaveformCenterSmooth;
 
             UiUtil.SaveWindowPosition(Window);
             Se.Settings.General.UndockVideoControls = Se.Settings.General.RememberPositionAndSize && AreVideoControlsUndocked;
@@ -31029,6 +31108,13 @@ public partial class MainViewModel :
 
             MenuItemMerge.IsVisible = selectedCount > 1;
         }
+
+        // The user's per-item menu choices run last (after the spell-check items were added) so they
+        // only hide, never reveal, on top of the rules above.
+        if (sender is MenuFlyout customizedGridFlyout)
+        {
+            ApplyContextMenuCustomization("grid", customizedGridFlyout.Items);
+        }
     }
 
     private const int MaxSpellCheckMenuWords = 10;
@@ -33890,7 +33976,7 @@ public partial class MainViewModel :
                 var isPlaying = vp.IsPlaying;
                 var firstSelectedIndex = -1;
 
-                if (WaveformCenter && isPlaying)
+                if (WaveformCenterAny && isPlaying)
                 {
                     // The center-mode scroll position is driven smoothly by the 60 fps cursor timer (see
                     // the _cursorTimer tick); here we only refresh the paragraph list. Pass the current
@@ -33912,7 +33998,7 @@ public partial class MainViewModel :
                         vp.Position = av.StartPositionSeconds + ((av.EndPositionSeconds - av.StartPositionSeconds) / 2.0);
                     }
                 }
-                else if (av != null && isPlaying && !WaveformCenter &&
+                else if (av != null && isPlaying && !WaveformCenterAny &&
                          (mediaPlayerSeconds > av.EndPositionSeconds || mediaPlayerSeconds < av.StartPositionSeconds))
                 {
                     // A play-head that left the visible window is scrolled back into view in one
@@ -34043,7 +34129,7 @@ public partial class MainViewModel :
                             // Opt-in (default off, like SE 4 which never selected while paused): scrubbing
                             // backwards would otherwise steal the selection to the previous line, so the
                             // current line's start can't be pulled back to the cursor (#15513).
-                            if (WaveformCenter && Se.Settings.Waveform.CenterVideoPositionAlsoWhenPaused &&
+                            if (WaveformCenterAny && Se.Settings.Waveform.CenterVideoPositionAlsoWhenPaused &&
                                 Se.Settings.Waveform.SelectCurrentSubtitleWhilePaused &&
                                 SelectCurrentSubtitleWhilePlaying &&
                                 Math.Abs(mediaPlayerSeconds - _pausedSelectLastSeconds) > 0.001)
@@ -34180,11 +34266,13 @@ public partial class MainViewModel :
                 // the user is dragging an edge (#13955): the drag scrubs the video to the edge, so
                 // recentering would scroll to the very edge being dragged and the drag delta feeds
                 // back into the scroll until the edge shoots off screen (#13600).
-                var centerPausedChange = WaveformCenter && !isPlaying &&
+                var centerPausedChange = WaveformCenterAny && !isPlaying &&
                                          Se.Settings.Waveform.CenterVideoPositionAlsoWhenPaused &&
                                          !av.IsEditingWithPointer &&
                                          Math.Abs(est - _pausedCenterLastSeconds) > 0.001;
-                var centered = WaveformCenter && av.WavePeaks != null && (isPlaying || centerPausedChange);
+                var centered = WaveformCenterAny && av.WavePeaks != null && (isPlaying || centerPausedChange);
+                // Only the smooth toggle eases; the original Center toggle keeps its instant snap.
+                var smoothCenter = WaveformCenterSmooth && !WaveformCenter;
                 if (centered)
                 {
                     var halfSeconds = (av.EndPositionSeconds - av.StartPositionSeconds) / 2.0;
@@ -34194,6 +34282,12 @@ public partial class MainViewModel :
                     if (centerSuspended)
                     {
                         _centerAnimActive = false;
+                    }
+                    else if (!smoothCenter)
+                    {
+                        // Original Center toggle: snap straight to the centre, as it always did.
+                        _centerAnimActive = false;
+                        av.StartPositionSeconds = centerTarget;
                     }
                     else
                     {
@@ -35785,6 +35879,12 @@ public partial class MainViewModel :
                 }
             }
         }
+
+        // The user's per-item menu choices run last so they only hide on top of the rules above.
+        if (sender is MenuFlyout customizedTextBoxFlyout)
+        {
+            ApplyContextMenuCustomization("textbox", customizedTextBoxFlyout.Items);
+        }
     }
 
     [RelayCommand]
@@ -35808,7 +35908,153 @@ public partial class MainViewModel :
         });
     }
 
+    /// <summary>
+    /// Applies the user's "Customize right-click menus" choices to one menu: hides every item they
+    /// ticked off, then tidies the separators. Keyed by menu ("textbox", "grid", "waveform"); items
+    /// are matched by their header text. Runs after the per-item visibility rules so it can only
+    /// hide, never reveal. When the menu is left with five or fewer visible options the separators
+    /// are dropped entirely - a line through a short menu is just noise.
+    /// </summary>
+    private static void ApplyContextMenuCustomization(string menuKey, IEnumerable<object?> items)
+    {
+        // The minimal-menus preset owns the menus while it is on: it deliberately keeps a handful of
+        // commands and hides the rest, so the per-item choices must not run on top of it (a hidden
+        // header such as "Merge selected" would otherwise remove the very item the preset keeps).
+        if (Se.Settings.General.MinimalContextMenus)
+        {
+            return;
+        }
+
+        var itemList = items.ToList();
+
+        if (Se.Settings.General.HiddenContextMenuItems.TryGetValue(menuKey, out var hidden) && hidden.Count > 0)
+        {
+            var hiddenSet = new HashSet<string>(hidden, StringComparer.Ordinal);
+            foreach (var item in itemList)
+            {
+                if (item is MenuItem menuItem && menuItem.Header is string header && hiddenSet.Contains(header))
+                {
+                    menuItem.IsVisible = false;
+                }
+            }
+        }
+
+        TidyContextMenuSeparators(itemList);
+    }
+
+    /// <summary>
+    /// Hides separators that separate nothing: leading, trailing, doubled, or next to a hidden item.
+    /// When five or fewer menu items remain visible, every separator goes.
+    /// </summary>
+    private static void TidyContextMenuSeparators(List<object?> items)
+    {
+        var visibleItems = items.Count(i => i is MenuItem { IsVisible: true });
+        if (visibleItems <= 5)
+        {
+            foreach (var item in items)
+            {
+                if (item is Separator separator)
+                {
+                    separator.IsVisible = false;
+                }
+            }
+
+            return;
+        }
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (items[i] is not Separator separator)
+            {
+                continue;
+            }
+
+            separator.IsVisible = PreviousVisibleMenuItem(items, i) != null && NextVisibleMenuItem(items, i) != null;
+        }
+    }
+
+    private static MenuItem? PreviousVisibleMenuItem(List<object?> items, int index)
+    {
+        for (var i = index - 1; i >= 0; i--)
+        {
+            if (items[i] is MenuItem { IsVisible: true } menuItem)
+            {
+                return menuItem;
+            }
+
+            if (items[i] is Separator { IsVisible: true })
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    private static MenuItem? NextVisibleMenuItem(List<object?> items, int index)
+    {
+        for (var i = index + 1; i < items.Count; i++)
+        {
+            if (items[i] is MenuItem { IsVisible: true } menuItem)
+            {
+                return menuItem;
+            }
+
+            if (items[i] is Separator { IsVisible: true })
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns the header texts of every item currently in one of the three right-click menus, in
+    /// menu order, skipping separators and empty headers. Used by the "Customize right-click menus"
+    /// settings to list what can be shown or hidden.
+    /// </summary>
+    internal List<string> GetContextMenuHeaders(string menuKey)
+    {
+        var flyout = menuKey switch
+        {
+            "textbox" => TextBoxContextFlyout,
+            "grid" => SubtitleGridContextFlyout,
+            "waveform" => AudioVisualizer?.MenuFlyout,
+            _ => null,
+        };
+
+        var headers = new List<string>();
+        if (flyout == null)
+        {
+            return headers;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in flyout.Items)
+        {
+            if (item is MenuItem { Header: string header } && !string.IsNullOrEmpty(header) && seen.Add(header))
+            {
+                headers.Add(header);
+            }
+        }
+
+        return headers;
+    }
+
     public void AudioVisualizerFlyoutMenuOpening(object sender, AudioVisualizer.ContextEventArgs e)
+    {
+        UpdateAudioVisualizerFlyoutMenuVisibility(sender, e);
+
+        // The user's per-item menu choices run last so they only hide, never reveal, on top of the
+        // contextual rules.
+        if (sender is AudioVisualizer customizedVisualizer && customizedVisualizer.MenuFlyout != null)
+        {
+            ApplyContextMenuCustomization("waveform", customizedVisualizer.MenuFlyout.Items);
+        }
+    }
+
+    private void UpdateAudioVisualizerFlyoutMenuVisibility(object sender, AudioVisualizer.ContextEventArgs e)
     {
         // Remembered so "Insert subtitle file at video position..." anchors the file at the
         // right-clicked waveform position instead of wherever the play-head happens to be.
@@ -36215,10 +36461,21 @@ public partial class MainViewModel :
 
     internal void WaveformCenterCheckedChanged()
     {
+        // The two centre toggles are kept mutually exclusive by the property setters; here we only
+        // persist the choice.
         Dispatcher.UIThread.Post(() =>
         {
             Task.Delay(50);
             Se.Settings.Waveform.CenterVideoPosition = WaveformCenter;
+        });
+    }
+
+    internal void WaveformCenterSmoothCheckedChanged()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            Task.Delay(50);
+            Se.Settings.Waveform.CenterVideoPositionSmooth = WaveformCenterSmooth;
         });
     }
 

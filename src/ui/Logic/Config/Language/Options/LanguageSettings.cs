@@ -102,6 +102,10 @@ public class LanguageSettings
     public string MoveLinesShortenNeighbor { get; set; }
     public string PromptBeforeDelete { get; set; }
     public string MinimalContextMenus { get; set; }
+    public string CustomizeContextMenus { get; set; }
+    public string ContextMenuTextBox { get; set; }
+    public string ContextMenuGrid { get; set; }
+    public string ContextMenuWaveform { get; set; }
     public string TrimSilenceAfterSplit { get; set; }
     public string SplitTrimUseVoiceDetection { get; set; }
     public string CapitalizeAfterSplit { get; set; }
@@ -142,6 +146,7 @@ public class LanguageSettings
     public string WaveformCenterVideoPositionAlsoWhenPaused { get; set; }
     public string WaveformSelectCurrentSubtitleWhilePaused { get; set; }
     public string WaveformCenterSmoothSeconds { get; set; }
+    public string WaveformZoomCentersOnSelection { get; set; }
     public string WaveformShowToolbar { get; set; }
     public string WaveformShowToolbarEdit { get; set; }
     public string WaveformShowToolbarEditLabel { get; set; }
@@ -327,6 +332,7 @@ public class LanguageSettings
     public string TextToSpeechPromptSkipNoiseLines { get; set; }
     public string TextToSpeechPromptDetectSpeakers { get; set; }
     public string TextToSpeechFastMerge { get; set; }
+    public string TextToSpeechDescriptiveFilenames { get; set; }
     public string AdjustSpeedParallelism { get; set; }
     public string ShowTestingTools { get; set; }
     public string UseFocusedButtonBackgroundColor { get; set; }
@@ -468,17 +474,21 @@ public class LanguageSettings
         MoveSelectedLinesStepMs = "Move selected lines shortcut step (ms)";
         MoveLinesShortenNeighbor = "Move lines: shorten previous/next line instead of overlapping it";
         PromptBeforeDelete = "Prompt before delete";
-        MinimalContextMenus = "Minimal right-click menus (text box, subtitle grid, waveform)";
-        TrimSilenceAfterSplit = "Trim leading silence of the line after a split";
-        SplitTrimUseVoiceDetection = "Use voice detection (Silero VAD) for the split trim";
-        CapitalizeAfterSplit = "Split: capitalize the second half when the first ends a sentence";
-        ShowVideoEndLine = "Waveform: show the end-of-video line (green/red)";
+        MinimalContextMenus = "Minimal right-click menus (text box, grid, waveform)";
+        CustomizeContextMenus = "Customize right-click menus...";
+        ContextMenuTextBox = "Text box menu";
+        ContextMenuGrid = "Subtitle grid menu";
+        ContextMenuWaveform = "Waveform menu";
+        TrimSilenceAfterSplit = "Trim leading silence after a split";
+        SplitTrimUseVoiceDetection = "Use voice detection (Silero VAD)";
+        CapitalizeAfterSplit = "Capitalize the second half after a split at a sentence end";
+        ShowVideoEndLine = "Show the end-of-video line (green/red)";
         SileroVadModel = "Silero VAD model";
         SileroVadInstalled = "Installed";
         SileroVadNotInstalled = "Not installed";
         VadThreshold = "Voice detection threshold (0-1)";
-        VadMinSpeechSeconds = "Voice detection minimum speech (seconds)";
-        VadMinSilenceSeconds = "Voice detection minimum silence (seconds)";
+        VadMinSpeechSeconds = "Minimum speech (seconds)";
+        VadMinSilenceSeconds = "Minimum silence (seconds)";
         RememberPositionAndSize = "Remember window position and size";
         TitleBarFullFileName = "Show full file path in title bar";
         OpenLastFileOnStart = "Open last recent file on start";
@@ -510,6 +520,7 @@ public class LanguageSettings
         WaveformCenterVideoPositionAlsoWhenPaused = "Center video position also while paused";
         WaveformSelectCurrentSubtitleWhilePaused = "Select current subtitle also while paused";
         WaveformCenterSmoothSeconds = "Center transition time (seconds)";
+        WaveformZoomCentersOnSelection = "Zoom (Alt+wheel) keeps the selection centered";
         WaveformShowToolbar = "Show toolbar";
         WaveformShowToolbarEdit = "Edit toolbar...";
         WaveformShowToolbarEditLabel = "Toolbar items";
@@ -692,9 +703,10 @@ public class LanguageSettings
         TextToSpeechPromptMergeContinuationLines = "Text to speech: prompt to merge continuation lines";
         TextToSpeechPromptSkipNoiseLines = "Text to speech: prompt to skip sound/music lines";
         TextToSpeechPromptDetectSpeakers = "Text to speech: prompt to detect speaker names in the text";
-        TextToSpeechFastMerge = "Text to speech: fast merge (one ffmpeg pass instead of one per line)";
-        AdjustSpeedParallelism = "Text to speech: segments processed at once when adjusting speed";
-        ShowTestingTools = "Text to speech: show testing tools (re-run adjust speed button)";
+        TextToSpeechFastMerge = "Fast merge (one ffmpeg pass)";
+        TextToSpeechDescriptiveFilenames = "Export filenames: 001-text-00 (off = 0001)";
+        AdjustSpeedParallelism = "Segments processed at once (adjust speed)";
+        ShowTestingTools = "Show testing tools (re-run adjust speed)";
         UseFocusedButtonBackgroundColor = "Use focused button background color";
         FocusedButtonBackgroundColor = "Focused button background color";
         ForceCrLfOnSave = "Force CR+LF on save (text subtitle files)";
