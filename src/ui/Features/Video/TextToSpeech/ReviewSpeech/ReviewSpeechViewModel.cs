@@ -1274,6 +1274,54 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Builds the descriptive export name for a line: "002-bla-bla-bla-00.wav" - the line number
+    /// (3+ digits), the first few words of the spoken text, and the take index (00 for the first
+    /// take of that line, 01 after a regeneration). Take numbering restarts at 00 when the text
+    /// changes, because a changed line is a different utterance. Falls back to the plain line
+    /// number when there is no usable text.
+    /// </summary>
+    internal static string DescriptiveExportName(int lineNumber, string text, int takeIndex, string extension)
+    {
+        var words = CleanWordsForFileName(text, 4);
+        var number = lineNumber.ToString().PadLeft(3, '0');
+        var take = takeIndex.ToString().PadLeft(2, '0');
+        var stem = string.IsNullOrEmpty(words) ? number : $"{number}-{words}";
+        return $"{stem}-{take}{extension}";
+    }
+
+    /// <summary>
+    /// First <paramref name="maxWords"/> words of <paramref name="text"/> made safe for a file
+    /// name: tags stripped, whitespace collapsed to "-", characters Windows forbids removed, and
+    /// the whole thing capped so a long line does not produce a giant name. Diacritics are kept.
+    /// </summary>
+    internal static string CleanWordsForFileName(string text, int maxWords)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Empty;
+        }
+
+        var stripped = HtmlUtil.RemoveHtmlTags(text, true);
+        stripped = stripped.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        var parts = stripped.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length > maxWords)
+        {
+            parts = parts.Take(maxWords).ToArray();
+        }
+
+        var joined = string.Join("-", parts);
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string(joined.Select(c => invalid.Contains(c) ? '-' : c).ToArray());
+        cleaned = cleaned.Trim('-', '.', ' ');
+        if (cleaned.Length > 60)
+        {
+            cleaned = cleaned.Substring(0, 60).TrimEnd('-');
+        }
+
+        return cleaned;
+    }
+
     [RelayCommand]
     private async Task Export()
     {
@@ -1361,6 +1409,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         var index = 0;
         var missingAudioCount = 0;
+        var descriptiveNaming = !string.Equals(Se.Settings.Video.TextToSpeech.ExportFileNaming, "numeric", StringComparison.OrdinalIgnoreCase);
         var exportFormat = new TtsImportExport
         {
             VideoFileName = _videoFileName,
@@ -1370,7 +1419,20 @@ public partial class ReviewSpeechViewModel : ObservableObject
         {
             index++;
             var sourceFileName = line.StepResult.CurrentFileName;
-            var targetFileName = Path.Combine(audioFolder, index.ToString().PadLeft(4, '0') + Path.GetExtension((string?)sourceFileName));
+            var extension = Path.GetExtension((string?)sourceFileName) ?? string.Empty;
+            string targetFileName;
+            if (descriptiveNaming)
+            {
+                // Take index: a regeneration of the same text raises it (00, 01, ...); editing the
+                // text makes it a different utterance, so it starts again at 00.
+                var textUnchanged = string.Equals(line.Text, line.OriginalText, StringComparison.Ordinal);
+                var takeIndex = textUnchanged && line.HistoryItems.Count > 0 ? line.HistoryItems.Count - 1 : 0;
+                targetFileName = Path.Combine(audioFolder, DescriptiveExportName(line.Number, line.Text, takeIndex, extension));
+            }
+            else
+            {
+                targetFileName = Path.Combine(audioFolder, index.ToString().PadLeft(4, '0') + extension);
+            }
 
             // A row can point at a deleted/moved file (e.g. an imported session whose folder was
             // cleaned). File.Copy used to throw unhandled mid-export, leaving some files copied
@@ -1397,7 +1459,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 string candidate;
                 do
                 {
-                    candidate = Path.Combine(audioFolder, $"{index.ToString().PadLeft(4, '0')}_{suffix}{Path.GetExtension((string?)sourceFileName)}");
+                    var stem = Path.GetFileNameWithoutExtension(targetFileName);
+                    candidate = Path.Combine(audioFolder, $"{stem}_hist{suffix}{extension}");
                     suffix++;
                 }
                 while (referencedFiles.Contains(Path.GetFullPath(candidate)) || File.Exists(candidate));
