@@ -63,6 +63,11 @@ public class SeAudioToText
     public bool CrispAsrIsolateSpeech { get; set; }
     public bool CrispAsrDetectSpeakers { get; set; }
     public string CrispAsrVad { get; set; } = "auto";
+
+    // After speech-to-text, rebreak the result into subtitle lines using the engine's word-level
+    // timings (plus Silero VAD for pauses and ends) - the "smart break" rules. Works for engines
+    // that emit word timings (WhisperX, faster-whisper, whisper.cpp, ...). Default off.
+    public bool SmartBreak { get; set; }
     public bool ForcedAlignerEndsFromIsolatedSpeech { get; set; }
 
     public bool WhisperAutoAdjustTimings { get; set; } = true;
