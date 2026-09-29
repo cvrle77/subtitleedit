@@ -1188,6 +1188,10 @@ public class SettingsPage : UserControl
                 Opacity = 0.75,
                 Margin = new Thickness(4, 0, 0, 0),
             }),
+
+            MakeSeparator(),
+            MakeGroupHeader("Speech to text"),
+            MakeCheckboxSetting(Se.Language.Options.Settings.SmartBreak, nameof(_vm.SmartBreak)),
         ]));
 
 

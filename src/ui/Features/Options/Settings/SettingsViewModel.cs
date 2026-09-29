@@ -239,6 +239,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _textToSpeechPromptSkipNoiseLines;
     [ObservableProperty] private bool _textToSpeechPromptDetectSpeakers;
     [ObservableProperty] private bool _textToSpeechFastMerge;
+    [ObservableProperty] private bool _smartBreak;
     [ObservableProperty] private bool _textToSpeechDescriptiveFilenames;
     [ObservableProperty] private bool _openAiCompatibleSttAutoTranscribeOnAudioSelection;
 
@@ -944,6 +945,7 @@ public partial class SettingsViewModel : ObservableObject
         TextToSpeechPromptSkipNoiseLines = Se.Settings.Tools.TextToSpeechPromptSkipNoiseLines;
         TextToSpeechPromptDetectSpeakers = Se.Settings.Tools.TextToSpeechPromptDetectSpeakers;
         TextToSpeechFastMerge = Se.Settings.Video.TextToSpeech.FastMerge;
+        SmartBreak = Se.Settings.Tools.AudioToText.SmartBreak;
         TextToSpeechDescriptiveFilenames = !string.Equals(Se.Settings.Video.TextToSpeech.ExportFileNaming, "numeric", StringComparison.OrdinalIgnoreCase);
         OpenAiCompatibleSttAutoTranscribeOnAudioSelection = Se.Settings.Tools.OpenAiCompatibleSttAutoTranscribeOnAudioSelection;
         FixCommonErrorsSkipStep1 = Se.Settings.Tools.FixCommonErrors.SkipStep1;
@@ -1831,6 +1833,7 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Tools.TextToSpeechPromptSkipNoiseLines = TextToSpeechPromptSkipNoiseLines;
         Se.Settings.Tools.TextToSpeechPromptDetectSpeakers = TextToSpeechPromptDetectSpeakers;
         Se.Settings.Video.TextToSpeech.FastMerge = TextToSpeechFastMerge;
+        Se.Settings.Tools.AudioToText.SmartBreak = SmartBreak;
         Se.Settings.Video.TextToSpeech.ExportFileNaming = TextToSpeechDescriptiveFilenames ? "descriptive" : "numeric";
         Se.Settings.Tools.FixCommonErrors.SkipStep1 = FixCommonErrorsSkipStep1;
         Se.Settings.Tools.WriteToolsLog = WriteToolsLog;

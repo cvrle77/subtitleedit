@@ -332,6 +332,7 @@ public class LanguageSettings
     public string TextToSpeechPromptSkipNoiseLines { get; set; }
     public string TextToSpeechPromptDetectSpeakers { get; set; }
     public string TextToSpeechFastMerge { get; set; }
+    public string SmartBreak { get; set; }
     public string TextToSpeechDescriptiveFilenames { get; set; }
     public string AdjustSpeedParallelism { get; set; }
     public string ShowTestingTools { get; set; }
@@ -704,6 +705,7 @@ public class LanguageSettings
         TextToSpeechPromptSkipNoiseLines = "Text to speech: prompt to skip sound/music lines";
         TextToSpeechPromptDetectSpeakers = "Text to speech: prompt to detect speaker names in the text";
         TextToSpeechFastMerge = "Fast merge (one ffmpeg pass)";
+        SmartBreak = "Smart break: rebreak speech-to-text into subtitle lines (word-timed)";
         TextToSpeechDescriptiveFilenames = "Export filenames: 001-text-00 (off = 0001)";
         AdjustSpeedParallelism = "Segments processed at once (adjust speed)";
         ShowTestingTools = "Show testing tools (re-run adjust speed)";
