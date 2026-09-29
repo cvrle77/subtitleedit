@@ -37,6 +37,7 @@ namespace Nikse.SubtitleEdit.UiLogic.AudioToText
                         new WhisperLanguage("pt", "portuguese"),
                         new WhisperLanguage("es", "spanish"),
                         new WhisperLanguage("uk", "ukrainian"),
+                        new WhisperLanguage("sr", "serbian"),
                     };
                 }
 
