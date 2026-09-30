@@ -37,6 +37,7 @@ public static class SmartBreak
     public const double MaxWord = 0.85;     // a word span longer than this absorbed trailing silence
     public const double MaxExt = 1.5;       // never extend a cue more than this past its last word
     public const double MinCue = 0.8;
+    public const double PauseAtComma = 1.5;  // a pause after a comma ends the cue (enumeration with a gap)
 
     private static readonly HashSet<string> Strong = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -72,7 +73,7 @@ public static class SmartBreak
     {
         "bl", "bl.", "dipl", "dipl.", "dr", "dr.", "g", "g.", "gđa", "gđica",
         "gđice", "gđici", "gđicu", "gđu", "god.", "gosp", "gosp.", "ing.", "mr.",
-        "prof", "prof.", "sv", "sv.", "vlč.", "vlc.",
+        "prof", "prof.", "sv", "sv.", "vlč.", "vlc.", "gr", "gr.", "br", "br.", "itd", "itd.",
     };
 
     private static readonly HashSet<string> Units = new(StringComparer.OrdinalIgnoreCase)
@@ -111,6 +112,36 @@ public static class SmartBreak
     }
 
     private static double SoundEnd(SmartBreakWord w) => Math.Min(w.End, w.Start + MaxWord);
+
+    /// <summary>
+    /// True when the word ends a sentence. A trailing "." after an abbreviation or unit (e.g. "gr.",
+    /// "g.", "ml.") is not a sentence end, so the AI's "800 gr." does not split the phrase.
+    /// </summary>
+    private static bool EndsSentence(string word)
+    {
+        var s = Rstrip(word);
+        if (s.Length == 0 || ".!?…".IndexOf(s[^1]) < 0)
+        {
+            return false;
+        }
+
+        var bare = Bare(s);
+        return bare.Length > 1 && !Abbrev.Contains(bare) && !Units.Contains(bare);
+    }
+
+    private static bool LineEndsSentence(string line)
+    {
+        var s = line.TrimEnd('„', '"', '»', ')', ']').TrimEnd();
+        if (s.Length == 0 || ".!?…".IndexOf(s[^1]) < 0)
+        {
+            return false;
+        }
+
+        var space = s.LastIndexOf(' ');
+        var lastToken = space >= 0 ? s.Substring(space + 1) : s;
+        var bare = Bare(lastToken);
+        return bare.Length > 1 && !Abbrev.Contains(bare) && !Units.Contains(bare);
+    }
 
     /// <summary>
     /// Where the word's sound really ends: the chained Silero speech run it starts in. Runs are
@@ -243,7 +274,14 @@ public static class SmartBreak
 
             if (cands.Count == 0)
             {
-                var b = Math.Max(i + 1, j);
+                // No allowed break in range: take the largest one that still does not leave a
+                // preposition/clitic dangling at the line end.
+                var b = j;
+                while (b > i + 1 && Forbidden(words, b))
+                {
+                    b--;
+                }
+
                 cands.Add((b, LLen(words, i, b)));
             }
             else
@@ -282,6 +320,117 @@ public static class SmartBreak
     }
 
     private static string Text(IEnumerable<SmartBreakWord> ws) => string.Join(" ", ws.Select(w => w.Word.Trim()));
+
+    private static bool IsClauseEnd(string w)
+    {
+        var c = LastChar(w);
+        if (c is ',' or ';' or ':' or '!' or '?' or '…')
+        {
+            return true;
+        }
+
+        // "." counts only for a real sentence end, not after an abbreviation/unit ("gr.", "ml.")
+        return c == '.' && EndsSentence(w);
+    }
+
+    private static readonly HashSet<string> ClauseStarters = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "sad", "sada", "onda", "tada", "zatim", "zato", "tako", "posle", "poslije", "pre", "prije",
+        "opet", "uvek", "uvijek", "nikad", "nikada", "dalje", "prvo", "potom", "konačno", "naposletku",
+        "pošto", "posto", "nakon",
+    };
+
+    /// <summary>
+    /// A clause boundary that is not marked by punctuation: "i/a/pa/ili/te" followed by a
+    /// clause-starting adverb ("i sad", "i onda", "a onda"...). Enumeration ("so i biber",
+    /// "jedan i dva") is followed by a noun/number, so it is left alone.
+    /// </summary>
+    private static bool SoftClauseStart(IReadOnlyList<SmartBreakWord> w, int j)
+    {
+        if (j <= 0 || j >= w.Count || j + 1 >= w.Count)
+        {
+            return false;
+        }
+
+        var cur = Bare(w[j].Word);
+        if (cur is not ("i" or "a" or "pa" or "ili" or "te"))
+        {
+            return false;
+        }
+
+        return ClauseStarters.Contains(Bare(w[j + 1].Word));
+    }
+
+    /// <summary>
+    /// Cuts a block into cue-sized groups that end at a clause boundary (comma/period) whenever
+    /// possible, so a cue never breaks in the middle of a phrase. Capacity is two wrapped lines.
+    /// </summary>
+    private static List<List<SmartBreakWord>> SplitIntoCues(List<SmartBreakWord> block, IReadOnlyList<(double Start, double End)> runs)
+    {
+        var cues = new List<List<SmartBreakWord>>();
+        var i = 0;
+        var n = block.Count;
+        while (i < n)
+        {
+            var len = 0;
+            var lastPunct = -1;
+            var j = i;
+            while (j < n)
+            {
+                var wl = block[j].Word.Trim().Length + (j > i ? 1 : 0);
+                if (len + wl > MaxLen * MaxLines && j > i)
+                {
+                    break;
+                }
+
+                len += wl;
+                j++;
+                var clause = IsClauseEnd(block[j - 1].Word) || SoftClauseStart(block, j);
+                if (clause)
+                {
+                    lastPunct = j;
+
+                    // A real pause right after a comma ends the cue: enumeration spoken with a gap
+                    // ("50 ml ulja, <pause> jedno celo jaje") should not stay in one cue.
+                    if (j < n && IsClauseEnd(block[j - 1].Word))
+                    {
+                        var gap = block[j].Start - EffEnd(runs, block[j - 1]);
+                        if (gap >= PauseAtComma)
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
+
+            int end;
+            if (j >= n)
+            {
+                end = n;
+            }
+            else if (lastPunct > i)
+            {
+                end = lastPunct;
+            }
+            else
+            {
+                var lines = BuildLines(block.GetRange(i, n - i));
+                var take = lines.Take(MaxLines).Sum(l => l.Count);
+                end = Math.Min(n, i + Math.Max(1, take));
+            }
+
+            var groupLines = BuildLines(block.GetRange(i, end - i));
+            if (groupLines.Count > MaxLines)
+            {
+                end = i + Math.Max(1, groupLines.Take(MaxLines).Sum(l => l.Count));
+            }
+
+            cues.Add(block.GetRange(i, end - i));
+            i = end;
+        }
+
+        return cues;
+    }
 
     private static double? RunEnd(IReadOnlyList<(double Start, double End)> runs, double t, double tol = 0.08)
     {
@@ -385,7 +534,7 @@ public static class SmartBreak
         {
             var a = words[idx];
             var b = words[idx + 1];
-            var endsSentence = ".!?…".IndexOf(LastChar(a.Word)) >= 0;
+            var endsSentence = EndsSentence(a.Word);
             var gap = b.Start - EffEnd(runs, a);
             // A long pause breaks even where grammar would normally keep the words together, so the
             // cue does not sit on screen through the silence.
@@ -423,33 +572,9 @@ public static class SmartBreak
         var cues = new List<(double Start, double End, List<string> Lines)>();
         foreach (var block in blocks)
         {
-            var ci = -1;
-            for (var k = 0; k < block.Count; k++)
+            foreach (var group in SplitIntoCues(block, runs))
             {
-                if (LastChar(block[k].Word) is ',' or ';' or ':')
-                {
-                    ci = k;
-                    break;
-                }
-            }
-
-            List<List<SmartBreakWord>> lines;
-            // Once after the first comma, but only when the block is too long for two lines anyway;
-            // splitting a block that already fits just shatters it into fragments.
-            if (ci > 4 && ci + 1 < block.Count && LLen(block, 0, ci + 1) <= MaxLen &&
-                LLen(block, 0, block.Count) > MaxLen * MaxLines)
-            {
-                cues.Add(MakeCue(new List<List<SmartBreakWord>> { block.Take(ci + 1).ToList() }));
-                lines = BuildLines(block.Skip(ci + 1).ToList());
-            }
-            else
-            {
-                lines = BuildLines(block);
-            }
-
-            for (var k = 0; k < lines.Count; k += MaxLines)
-            {
-                cues.Add(MakeCue(lines.Skip(k).Take(MaxLines).ToList()));
+                cues.Add(MakeCue(BuildLines(group)));
             }
         }
 
@@ -534,7 +659,7 @@ public static class SmartBreak
             if (i > 0)
             {
                 var t = timed[i - 1].Lines[^1].TrimEnd('„', '"', '»', ')', ']').TrimEnd();
-                if (t.Length > 0 && ".!?…".IndexOf(t[^1]) >= 0)
+                if (LineEndsSentence(t))
                 {
                     newSentence = true;
                 }

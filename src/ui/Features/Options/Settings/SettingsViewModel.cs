@@ -255,6 +255,12 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _textToSpeechPromptDetectSpeakers;
     [ObservableProperty] private bool _textToSpeechFastMerge;
     [ObservableProperty] private bool _smartBreak;
+
+    [ObservableProperty] private bool _aiFix;
+    [ObservableProperty] private string _aiFixUrl;
+    [ObservableProperty] private string _aiFixApiKey;
+    [ObservableProperty] private string _aiFixModel;
+    [ObservableProperty] private string _aiFixPrompt;
     [ObservableProperty] private bool _textToSpeechDescriptiveFilenames;
     [ObservableProperty] private bool _openAiCompatibleSttAutoTranscribeOnAudioSelection;
 
@@ -974,6 +980,11 @@ public partial class SettingsViewModel : ObservableObject
         TextToSpeechPromptDetectSpeakers = Se.Settings.Tools.TextToSpeechPromptDetectSpeakers;
         TextToSpeechFastMerge = Se.Settings.Video.TextToSpeech.FastMerge;
         SmartBreak = Se.Settings.Tools.AudioToText.SmartBreak;
+        AiFix = Se.Settings.Tools.AudioToText.AiFix;
+        AiFixUrl = Se.Settings.Tools.AudioToText.AiFixUrl;
+        AiFixApiKey = Se.Settings.Tools.AudioToText.AiFixApiKey;
+        AiFixModel = Se.Settings.Tools.AudioToText.AiFixModel;
+        AiFixPrompt = Se.Settings.Tools.AudioToText.AiFixPrompt;
         TextToSpeechDescriptiveFilenames = !string.Equals(Se.Settings.Video.TextToSpeech.ExportFileNaming, "numeric", StringComparison.OrdinalIgnoreCase);
         OpenAiCompatibleSttAutoTranscribeOnAudioSelection = Se.Settings.Tools.OpenAiCompatibleSttAutoTranscribeOnAudioSelection;
         FixCommonErrorsSkipStep1 = Se.Settings.Tools.FixCommonErrors.SkipStep1;
@@ -1884,6 +1895,11 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Tools.TextToSpeechPromptDetectSpeakers = TextToSpeechPromptDetectSpeakers;
         Se.Settings.Video.TextToSpeech.FastMerge = TextToSpeechFastMerge;
         Se.Settings.Tools.AudioToText.SmartBreak = SmartBreak;
+        Se.Settings.Tools.AudioToText.AiFix = AiFix;
+        Se.Settings.Tools.AudioToText.AiFixUrl = AiFixUrl;
+        Se.Settings.Tools.AudioToText.AiFixApiKey = AiFixApiKey;
+        Se.Settings.Tools.AudioToText.AiFixModel = AiFixModel;
+        Se.Settings.Tools.AudioToText.AiFixPrompt = AiFixPrompt;
         Se.Settings.Video.TextToSpeech.ExportFileNaming = TextToSpeechDescriptiveFilenames ? "descriptive" : "numeric";
         Se.Settings.Tools.FixCommonErrors.SkipStep1 = FixCommonErrorsSkipStep1;
         Se.Settings.Tools.WriteToolsLog = WriteToolsLog;
