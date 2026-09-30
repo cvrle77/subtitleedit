@@ -55,6 +55,12 @@ namespace Nikse.SubtitleEdit.Core.Common
 
         public bool NewSection { get; set; }
 
+        /// <summary>
+        /// Transient (not serialized): this paragraph was split into a cue by a non-punctuation
+        /// rule in Smart break, so the grid tints its row for review.
+        /// </summary>
+        public bool IsSmartBreakRisky { get; set; }
+
         public string Bookmark { get; set; }
 
         public bool IsDefault => Math.Abs(StartTime.TotalMilliseconds) < 0.01 && Math.Abs(EndTime.TotalMilliseconds) < 0.01 && string.IsNullOrEmpty(Text);
@@ -124,6 +130,7 @@ namespace Nikse.SubtitleEdit.Core.Common
             Style = paragraph.Style;
             NewSection = paragraph.NewSection;
             Bookmark = paragraph.Bookmark;
+            IsSmartBreakRisky = paragraph.IsSmartBreakRisky;
         }
 
         public Paragraph(string text, double startTotalMilliseconds, double endTotalMilliseconds)
