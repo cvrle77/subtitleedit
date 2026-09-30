@@ -1192,6 +1192,20 @@ public class SettingsPage : UserControl
             MakeSeparator(),
             MakeGroupHeader("Speech to text"),
             MakeCheckboxSetting(Se.Language.Options.Settings.SmartBreak, nameof(_vm.SmartBreak)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AiFix, nameof(_vm.AiFix)),
+            new SettingsItem(Se.Language.Options.Settings.AiFixUrl, () => UiUtil.MakeTextBox(380, _vm, nameof(_vm.AiFixUrl))),
+            new SettingsItem(Se.Language.Options.Settings.AiFixModel, () => UiUtil.MakeTextBox(380, _vm, nameof(_vm.AiFixModel))),
+            new SettingsItem(Se.Language.Options.Settings.AiFixApiKey, () => UiUtil.MakeApiKeyTextBox(380, _vm, nameof(_vm.AiFixApiKey))),
+            new SettingsItem(Se.Language.Options.Settings.AiFixPrompt, () =>
+            {
+                var promptBox = UiUtil.MakeTextBox(380, _vm, nameof(_vm.AiFixPrompt));
+                promptBox.AcceptsReturn = true;
+                promptBox.TextWrapping = TextWrapping.Wrap;
+                promptBox.Height = 90;
+                ScrollViewer.SetVerticalScrollBarVisibility(promptBox, ScrollBarVisibility.Auto);
+                promptBox.VerticalAlignment = VerticalAlignment.Top;
+                return promptBox;
+            }),
         ]));
 
 

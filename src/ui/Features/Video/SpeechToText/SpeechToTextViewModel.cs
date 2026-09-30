@@ -2693,6 +2693,18 @@ public partial class SpeechToTextViewModel : ObservableObject
             }
 
             var words = Nikse.SubtitleEdit.Logic.Media.SmartBreak.ParseWords(wordJson);
+
+            var aiSettings = Se.Settings.Tools.AudioToText;
+            if (aiSettings.AiFix && !string.IsNullOrWhiteSpace(aiSettings.AiFixApiKey))
+            {
+                words = Nikse.SubtitleEdit.Logic.Media.AiTextFixer.Fix(
+                    words,
+                    aiSettings.AiFixUrl,
+                    aiSettings.AiFixApiKey,
+                    aiSettings.AiFixModel,
+                    aiSettings.AiFixPrompt);
+            }
+
             var runs = new List<(double Start, double End)>();
             if (SileroVadModel.IsInstalled())
             {
