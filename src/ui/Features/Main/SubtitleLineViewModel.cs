@@ -216,6 +216,15 @@ public partial class SubtitleLineViewModel : ObservableObject
 
     private static IBrush _errorBrush = new ImmutableSolidColorBrush(Se.Settings.General.ErrorColor.FromHexToColor());
     private static readonly IBrush _transparentBrush = new ImmutableSolidColorBrush(Colors.Transparent);
+    private static readonly IBrush _smartBreakBrush = new ImmutableSolidColorBrush(Color.FromArgb(70, 120, 220, 120));
+
+    /// <summary>
+    /// Transient (from Paragraph): this line's cue boundary came from a non-punctuation Smart break
+    /// rule, so the grid tints its row (soft green) for review.
+    /// </summary>
+    public bool IsSmartBreakRisky { get; set; }
+
+    public IBrush RowBackgroundBrush => IsSmartBreakRisky ? _smartBreakBrush : _transparentBrush;
     public static Color ErrorColor
     {
         get => field;
@@ -273,6 +282,7 @@ public partial class SubtitleLineViewModel : ObservableObject
         NewSection = p.NewSection;
         _forced = p.Forced;
         _bookmark = p.Bookmark;
+            IsSmartBreakRisky = p.IsSmartBreakRisky;
         _isReferenceOnly = p.IsReferenceOnly;
         ReferenceParagraphId = p.ReferenceParagraphId;
 
@@ -308,6 +318,7 @@ public partial class SubtitleLineViewModel : ObservableObject
         Id = paragraph.Id ?? Guid.NewGuid();
         Paragraph = paragraph;
         Bookmark = paragraph.Bookmark;
+            IsSmartBreakRisky = paragraph.IsSmartBreakRisky;
 
         if (subtitleFormat is AdvancedSubStationAlpha or SubStationAlpha)
         {
@@ -649,7 +660,7 @@ public partial class SubtitleLineViewModel : ObservableObject
         }
     }
 
-    public IBrush TextBackgroundBrush => HasTextRuleError() ? _errorBrush : _transparentBrush;
+    public IBrush TextBackgroundBrush => HasTextRuleError() ? _errorBrush : (IsSmartBreakRisky ? _smartBreakBrush : _transparentBrush);
 
     /// <summary>
     /// The memoized "text too long / too wide / too many lines" verdict behind

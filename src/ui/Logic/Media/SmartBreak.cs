@@ -28,7 +28,7 @@ public sealed record SmartBreakWord(string Word, double Start, double End);
 /// </summary>
 public static class SmartBreak
 {
-    public const int MaxLen = 43;
+    public const int MaxLen = 46;
     public const int MaxLines = 2;
     public const int MinLine = 13;         // avoid a one-word orphan line when a longer break exists
     public const double Gap = 2.0;          // a real pause that starts a new cue (short pauses stay in)
@@ -126,7 +126,7 @@ public static class SmartBreak
         }
 
         var bare = Bare(s);
-        return bare.Length > 1 && !Abbrev.Contains(bare) && !Units.Contains(bare);
+        return bare.Length > 1 && !Abbrev.Contains(bare);
     }
 
     private static bool LineEndsSentence(string line)
@@ -140,7 +140,7 @@ public static class SmartBreak
         var space = s.LastIndexOf(' ');
         var lastToken = space >= 0 ? s.Substring(space + 1) : s;
         var bare = Bare(lastToken);
-        return bare.Length > 1 && !Abbrev.Contains(bare) && !Units.Contains(bare);
+        return bare.Length > 1 && !Abbrev.Contains(bare);
     }
 
     /// <summary>
@@ -313,6 +313,14 @@ public static class SmartBreak
             }
 
             lines.Add(words.Skip(i).Take(end - i).ToList());
+
+            // Diagnostic: a line must not end on a conjunction/particle.
+            if (end - 1 >= 0 && Weak.Contains(Bare(words[end - 1].Word)))
+            {
+                Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
+                    $"DIAG line ends on conjunction: \"{string.Join(" ", words.Skip(i).Take(end - i).Select(x => x.Word.Trim()))}\" | next=\"{words[Math.Min(end, words.Count - 1)].Word.Trim()}\"");
+            }
+
             i = end;
         }
 
@@ -333,17 +341,78 @@ public static class SmartBreak
         return c == '.' && EndsSentence(w);
     }
 
-    private static readonly HashSet<string> ClauseStarters = new(StringComparer.OrdinalIgnoreCase)
+    // Phrases that, right after "i/a/pa/ili/te", start a new clause. Stored without diacritics
+    // (Bare() strips them). Matched longest-first, up to 4 words.
+    private static readonly HashSet<string> ClauseStartPhrases = new(StringComparer.OrdinalIgnoreCase)
     {
-        "sad", "sada", "onda", "tada", "zatim", "zato", "tako", "posle", "poslije", "pre", "prije",
-        "opet", "uvek", "uvijek", "nikad", "nikada", "dalje", "prvo", "potom", "konačno", "naposletku",
-        "pošto", "posto", "nakon",
+        // 1. time / moment
+        "sada", "sad", "onda", "tada", "zatim", "potom", "posle", "kasnije", "ranije", "najpre",
+        "prvo", "konacno", "naposletku", "na kraju", "u medjuvremenu", "do tada", "od tada",
+        "do sada", "od sada", "pre toga", "posle toga", "nakon toga", "pre svega", "tek tada",
+        "tek sada", "tek onda", "upravo tada", "upravo sada", "upravo onda", "vec tada", "vec sada",
+        "vec onda", "jos tada", "jos sada", "jos onda", "ovog puta", "ovoga puta", "sledeci put",
+        "svaki put", "svakog puta", "istovremeno", "u pocetku", "na pocetku", "na samom pocetku",
+        "na kraju krajeva", "na kraju svega", "na kraju svega toga", "od tog trenutka", "od tog dana",
+        "od tog casa", "od tog trenutka nadalje", "od tada nadalje", "sve do tada", "sve do sada",
+        "sve do tog trenutka",
+        // 2. repetition / continuation
+        "opet", "ponovo", "iznova", "nanovo", "jos jednom", "ponovo iz pocetka", "opet iz pocetka",
+        "dalje", "nadalje", "dalje na isti nacin", "dalje isto", "dalje tako", "jos", "jos uvek",
+        "jos uvek tako", "jos uvek isto", "ponovo isto", "opet isto", "opet tako", "iznova isto",
+        "iznova tako", "svakoga puta", "svaki put iznova", "svaki put ponovo", "ponovo sve isto",
+        "opet sve isto", "opet iznova",
+        // 3. cause / consequence
+        "zato", "stoga", "zbog toga", "usled toga", "usled svega toga", "zbog svega toga", "upravo zato",
+        "bas zato", "samo zato", "samim tim", "prema tome", "shodno tome", "s obzirom na to", "otuda",
+        "iz toga", "iz svega toga", "time", "tim povodom", "kao rezultat toga", "kao posledica toga",
+        "posledicno", "dakle", "tako", "tako je", "tako onda", "upravo zbog toga", "upravo zbog svega toga",
+        // 4. contrast
+        "ipak", "medjutim", "ipak tada", "ipak sada", "ipak onda", "naprotiv", "obrnuto", "zapravo",
+        "u stvari", "istina", "doduse", "svejedno", "bez obzira na to", "uprkos tome", "nasuprot tome",
+        "umesto toga", "za razliku od toga", "s druge strane", "sa druge strane", "po svemu sudeci",
+        "pored toga", "pored svega", "pored svega toga", "uprkos svemu", "uprkos svemu tome",
+        // 5. adding information
+        "pritom", "pri tome", "uz to", "uz sve to", "osim toga", "povrh toga", "preko toga", "dodatno",
+        "takodje", "isto tako", "isto tako sada", "isto tako tada", "isto tako onda", "cak", "stavise",
+        "vise od toga", "jos vise", "narocito", "posebno", "povrh svega", "iznad svega", "najzad",
+        // 6. explanation / clarification
+        "naime", "drugim recima", "preciznije", "tacnije", "konkretnije", "jednostavno",
+        "jednostavno receno", "ukratko", "da budemo precizni", "da budem precizan", "da budemo iskreni",
+        "da budem iskren", "realno", "prakticno", "sustinski", "u sustini", "u osnovi", "uglavnom",
+        "generalno", "nacelno",
+        // 7. speaker's stance / evaluation
+        "naravno", "svakako", "sigurno", "nesumnjivo", "verovatno", "moguce", "mozda", "ocigledno",
+        "jasno", "zaista", "doista", "bez sumnje", "izgleda", "izgleda da", "cini se", "cini se da",
+        "srecom", "na srecu", "nazalost", "na zalost", "na moje iznenadenje", "na njegovo iznenadenje",
+        "na nase iznenadenje",
+        // 8. condition / circumstance
+        "u tom slucaju", "u takvom slucaju", "u svakom slucaju", "u svakom slucaju tada", "u suprotnom",
+        "u protivnom", "pod tim uslovom", "pod tim okolnostima", "u tim okolnostima", "bez obzira na sve",
+        "bez obzira na sve to", "kada je to potrebno", "kada dodje vreme", "kada za to dodje vreme",
+        // 9. combinations with sada/onda/tada/...
+        "sada kada", "sada kad", "sada ako", "sada dok", "sada cim", "sada posto", "sada nakon sto",
+        "sada pre nego sto",
+        "onda kada", "onda kad", "onda ako", "onda dok", "onda cim", "onda posto", "onda nakon sto",
+        "onda pre nego sto",
+        "tada kada", "tada kad", "tada ako", "tada dok", "tada cim", "tada posto", "tada nakon sto",
+        "tada pre nego sto",
+        "zatim kada", "zatim kad", "zatim ako", "zatim dok", "zatim cim",
+        "potom kada", "potom kad", "potom ako", "potom dok", "potom cim",
+        "tek tada kada", "tek tada kad", "tek tada ako", "tek tada cim",
+        "tek onda kada", "tek onda kad", "tek onda ako", "tek onda cim",
+        "upravo tada kada", "upravo tada kad", "upravo tada ako",
+        "upravo sada kada", "upravo sada kad", "upravo sada ako",
+        // svaki/sve/svi group (re-added: "i svaki deo testa...")
+        "svaki", "svaka", "svako", "svake", "svakog", "svakom", "svaku", "sve", "svi", "sva",
+        "dobro",
     };
 
+    private const int MaxClausePhraseWords = 4;
+
     /// <summary>
-    /// A clause boundary that is not marked by punctuation: "i/a/pa/ili/te" followed by a
-    /// clause-starting adverb ("i sad", "i onda", "a onda"...). Enumeration ("so i biber",
-    /// "jedan i dva") is followed by a noun/number, so it is left alone.
+    /// A clause boundary that is not marked by punctuation: "i/a/pa/ili/te" followed by one of the
+    /// clause-starting words/phrases ("i sad", "i onda", "i sve do tog trenutka"...). Match is
+    /// longest-first (up to 4 words); enumeration is left alone.
     /// </summary>
     private static bool SoftClauseStart(IReadOnlyList<SmartBreakWord> w, int j)
     {
@@ -358,22 +427,38 @@ public static class SmartBreak
             return false;
         }
 
-        return ClauseStarters.Contains(Bare(w[j + 1].Word));
+        var sb = new System.Text.StringBuilder();
+        for (var k = j + 1; k < w.Count && k <= j + MaxClausePhraseWords; k++)
+        {
+            if (k > j + 1)
+            {
+                sb.Append(' ');
+            }
+
+            sb.Append(Bare(w[k].Word));
+            if (ClauseStartPhrases.Contains(sb.ToString()))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
     /// Cuts a block into cue-sized groups that end at a clause boundary (comma/period) whenever
     /// possible, so a cue never breaks in the middle of a phrase. Capacity is two wrapped lines.
     /// </summary>
-    private static List<List<SmartBreakWord>> SplitIntoCues(List<SmartBreakWord> block, IReadOnlyList<(double Start, double End)> runs)
+    private static List<(List<SmartBreakWord> Words, bool Risky)> SplitIntoCues(List<SmartBreakWord> block, IReadOnlyList<(double Start, double End)> runs)
     {
-        var cues = new List<List<SmartBreakWord>>();
+        var cues = new List<(List<SmartBreakWord> Words, bool Risky)>();
         var i = 0;
         var n = block.Count;
         while (i < n)
         {
             var len = 0;
-            var lastPunct = -1;
+            var lastHard = -1; // last punctuation clause boundary (exclusive end index)
+            var lastSoft = -1; // last "i ..." clause boundary
             var j = i;
             while (j < n)
             {
@@ -385,14 +470,13 @@ public static class SmartBreak
 
                 len += wl;
                 j++;
-                var clause = IsClauseEnd(block[j - 1].Word) || SoftClauseStart(block, j);
-                if (clause)
+                var hard = IsClauseEnd(block[j - 1].Word);
+                if (hard)
                 {
-                    lastPunct = j;
+                    lastHard = j;
 
-                    // A real pause right after a comma ends the cue: enumeration spoken with a gap
-                    // ("50 ml ulja, <pause> jedno celo jaje") should not stay in one cue.
-                    if (j < n && IsClauseEnd(block[j - 1].Word))
+                    // a real pause right after a comma ends the cue
+                    if (j < n)
                     {
                         var gap = block[j].Start - EffEnd(runs, block[j - 1]);
                         if (gap >= PauseAtComma)
@@ -401,35 +485,159 @@ public static class SmartBreak
                         }
                     }
                 }
+                else if (SoftClauseStart(block, j))
+                {
+                    lastSoft = j;
+                }
             }
 
             int end;
+            var isBoundary = false;
+            var risky = false;
             if (j >= n)
             {
                 end = n;
             }
-            else if (lastPunct > i)
+            else if (Math.Max(lastHard, lastSoft) > i)
             {
-                end = lastPunct;
+                end = Math.Max(lastHard, lastSoft);
+                isBoundary = true;
+                risky = end == lastSoft; // "i ..." boundary is a judgment call
+
+                // If the chosen soft boundary (", i ...") leaves only a short tail after the last
+                // comma, break at the comma instead so the tail starts the next cue.
+                if (end == lastSoft && lastHard > i && lastSoft - lastHard <= 2)
+                {
+                    end = lastHard;
+                    risky = false;
+                }
             }
             else
             {
-                var lines = BuildLines(block.GetRange(i, n - i));
-                var take = lines.Take(MaxLines).Sum(l => l.Count);
-                end = Math.Min(n, i + Math.Max(1, take));
+                // No punctuation/soft boundary in range: use the longest pause inside the capacity
+                // window as an "imaginary comma" and break there.
+                risky = true;
+                var bestK = -1;
+                var bestPause = -1.0;
+                for (var k = i + 1; k <= j && k < n; k++)
+                {
+                    var pause = block[k].Start - EffEnd(runs, block[k - 1]);
+                    if (pause > bestPause)
+                    {
+                        bestPause = pause;
+                        bestK = k;
+                    }
+                }
+
+                if (bestK > i && bestPause >= 0.15)
+                {
+                    end = bestK;
+                }
+                else
+                {
+                    var lines = BuildLines(block.GetRange(i, n - i));
+                    var take = lines.Take(MaxLines).Sum(l => l.Count);
+                    end = Math.Min(n, i + Math.Max(1, take));
+                }
             }
 
-            var groupLines = BuildLines(block.GetRange(i, end - i));
-            if (groupLines.Count > MaxLines)
+            if (isBoundary)
             {
-                end = i + Math.Max(1, groupLines.Take(MaxLines).Sum(l => l.Count));
+                // A punctuation/soft boundary must not be thrown away by the line-limit safety net:
+                // if the group does not fit two lines, step back to the last comma instead.
+                if (BuildLines(block.GetRange(i, end - i)).Count > MaxLines && lastHard > i)
+                {
+                    end = lastHard;
+                    risky = false;
+                }
+            }
+            else if (BuildLines(block.GetRange(i, end - i)).Count > MaxLines)
+            {
+                end = i + Math.Max(1, BuildLines(block.GetRange(i, end - i)).Take(MaxLines).Sum(l => l.Count));
             }
 
-            cues.Add(block.GetRange(i, end - i));
+            var group = block.GetRange(i, end - i);
+
+            // A split at a soft "i ..." boundary reads better when the upper block ends with a
+            // comma, so append one (unless it already ends with punctuation).
+            if (end == lastSoft && group.Count > 0)
+            {
+                var lastIdx = group.Count - 1;
+                var w = group[lastIdx];
+                if (LastChar(w.Word) is not (',' or ';' or ':' or '.' or '!' or '?' or '…'))
+                {
+                    group[lastIdx] = new SmartBreakWord(w.Word.TrimEnd() + ",", w.Start, w.End);
+                }
+            }
+
+            cues.Add((group, risky));
             i = end;
         }
 
+        // A sentence that already spans two or more cues, where one cue has a line filled to the
+        // limit and a comma, gets split further at the comma nearest the middle (shorter lines).
+        if (cues.Count >= 2)
+        {
+            var refined = new List<(List<SmartBreakWord> Words, bool Risky)>();
+            foreach (var cue in cues)
+            {
+                RefineDense(cue, refined);
+            }
+
+            cues = refined;
+        }
+
         return cues;
+    }
+
+    private static bool IsDense(List<SmartBreakWord> cue)
+    {
+        var lines = BuildLines(cue);
+        return lines.Any(l => LLen(l, 0, l.Count) >= MaxLen);
+    }
+
+    private static bool HasComma(List<SmartBreakWord> cue)
+    {
+        for (var k = 1; k < cue.Count; k++)
+        {
+            if (LastChar(cue[k - 1].Word) == ',')
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void RefineDense((List<SmartBreakWord> Words, bool Risky) cue, List<(List<SmartBreakWord> Words, bool Risky)> outCues)
+    {
+        if (cue.Words.Count > 1 && HasComma(cue.Words) && IsDense(cue.Words))
+        {
+            var best = -1;
+            var bestDist = double.MaxValue;
+            var mid = cue.Words.Count / 2.0;
+            for (var k = 1; k < cue.Words.Count; k++)
+            {
+                if (LastChar(cue.Words[k - 1].Word) == ',')
+                {
+                    var d = Math.Abs(k - mid);
+                    if (d < bestDist)
+                    {
+                        bestDist = d;
+                        best = k;
+                    }
+                }
+            }
+
+            if (best > 0 && best < cue.Words.Count)
+            {
+                RefineDense((cue.Words.GetRange(0, best), true), outCues);
+                RefineDense((cue.Words.GetRange(best, cue.Words.Count - best), true), outCues);
+                return;
+            }
+        }
+
+        outCues.Add(cue);
     }
 
     private static double? RunEnd(IReadOnlyList<(double Start, double End)> runs, double t, double tol = 0.08)
@@ -518,18 +726,34 @@ public static class SmartBreak
     /// <summary>
     /// Builds cues (start, end, lines) from word timings and Silero speech runs (already padded).
     /// </summary>
-    public static List<(double Start, double End, List<string> Lines)> Build(
+    public static List<(double Start, double End, List<string> Lines, bool Risky)> Build(
         List<SmartBreakWord> words,
         IReadOnlyList<(double Start, double End)> runs)
     {
         if (words.Count == 0)
         {
-            return new List<(double, double, List<string>)>();
+            return new List<(double, double, List<string>, bool)>();
+        }
+
+        // First step: put a comma before every clause connector ("i sad", "i onda", "a onda",
+        // "i nakon toga"...). Then every later rule (split/line break) sees a real comma instead of
+        // a hidden "soft" boundary, so the choice of where to cut is uniform and larger.
+        for (var k = 1; k < words.Count; k++)
+        {
+            if (SoftClauseStart(words, k))
+            {
+                var prev = words[k - 1];
+                if (LastChar(prev.Word) is not (',' or ';' or ':' or '.' or '!' or '?' or '…'))
+                {
+                    words[k - 1] = new SmartBreakWord(prev.Word.TrimEnd() + ",", prev.Start, prev.End);
+                }
+            }
         }
 
         // split the word stream into blocks at long effective gaps / sentence ends
-        var blocks = new List<List<SmartBreakWord>>();
+        var blocks = new List<(List<SmartBreakWord> Words, bool EndedByPause)>();
         var cur = new List<SmartBreakWord> { words[0] };
+        var curEndedByPause = false;
         for (var idx = 0; idx < words.Count - 1; idx++)
         {
             var a = words[idx];
@@ -539,10 +763,14 @@ public static class SmartBreak
             // A long pause breaks even where grammar would normally keep the words together, so the
             // cue does not sit on screen through the silence.
             var bigGap = gap > Gap && (!Forbidden(words, idx + 1) || gap > 2.5);
-            if (bigGap || endsSentence)
+            // A pause starts a new block, but never leave a one-word block unless that word really
+            // ends a sentence ("Opa."). A window/mis-timed single word ("Ovaj") joins what follows.
+            var stranding = cur.Count == 1 && !EndsSentence(cur[0].Word);
+            if (endsSentence || (bigGap && !stranding))
             {
-                blocks.Add(cur);
+                blocks.Add((cur, bigGap));
                 cur = new List<SmartBreakWord> { b };
+                curEndedByPause = false;
             }
             else
             {
@@ -550,9 +778,9 @@ public static class SmartBreak
             }
         }
 
-        blocks.Add(cur);
+        blocks.Add((cur, curEndedByPause));
 
-        (double Start, double End, List<string> Lines) MakeCue(List<List<SmartBreakWord>> group)
+        (double Start, double End, List<string> Lines, bool Risky) MakeCue(List<List<SmartBreakWord>> group, bool risky)
         {
             var flat = group.SelectMany(g => g).ToList();
             var first = flat[0];
@@ -566,15 +794,19 @@ public static class SmartBreak
                 e = SoundEnd(last);
             }
 
-            return (s, e, group.Select(Text).ToList());
+            return (s, e, group.Select(Text).ToList(), risky);
         }
 
-        var cues = new List<(double Start, double End, List<string> Lines)>();
-        foreach (var block in blocks)
+        var cues = new List<(double Start, double End, List<string> Lines, bool Risky)>();
+        foreach (var (block, endedByPause) in blocks)
         {
-            foreach (var group in SplitIntoCues(block, runs))
+            var groups = SplitIntoCues(block, runs);
+            for (var gi = 0; gi < groups.Count; gi++)
             {
-                cues.Add(MakeCue(BuildLines(group)));
+                var (groupWords, groupRisky) = groups[gi];
+                // A block ended by a long pause makes its last cue a judgment call too.
+                var risky = groupRisky || (endedByPause && gi == groups.Count - 1);
+                cues.Add(MakeCue(BuildLines(groupWords), risky));
             }
         }
 
@@ -585,7 +817,7 @@ public static class SmartBreak
             return t.Length <= 12 && (t.Length == 0 || ".!?…".IndexOf(t[^1]) < 0);
         }
 
-        var merged = new List<(double Start, double End, List<string> Lines)>();
+        var merged = new List<(double Start, double End, List<string> Lines, bool Risky)>();
         for (var i = 0; i < cues.Count; i++)
         {
             // Do not merge across a real pause: that would put the short fragment's text back on
@@ -604,7 +836,7 @@ public static class SmartBreak
                     joined[^1] = joined[^1] + " " + nxt[0];
                     joined.AddRange(nxt.Skip(1));
                 }
-                merged.Add((cues[i].Start, cues[i + 1].End, joined));
+                merged.Add((cues[i].Start, cues[i + 1].End, joined, cues[i + 1].Risky));
                 i++;
             }
             else
@@ -628,10 +860,10 @@ public static class SmartBreak
             starts[i] = s;
         }
 
-        var timed = new List<(double Start, double End, List<string> Lines)>();
+        var timed = new List<(double Start, double End, List<string> Lines, bool Risky)>();
         for (var i = 0; i < merged.Count; i++)
         {
-            var (_, e, lines) = merged[i];
+            var (_, e, lines, risky) = merged[i];
             var s2 = starts[i];
             if (i > 0)
             {
@@ -649,7 +881,7 @@ public static class SmartBreak
                 s2 = Math.Max(0.0, end - 0.2);
             }
 
-            timed.Add((s2, end, lines));
+            timed.Add((s2, end, lines, risky));
         }
 
         // capitalize a cue that starts a new sentence
@@ -669,7 +901,7 @@ public static class SmartBreak
             {
                 var lines = timed[i].Lines.ToList();
                 lines[0] = CapitalizeFirst(lines[0]);
-                timed[i] = (timed[i].Start, timed[i].End, lines);
+                timed[i] = (timed[i].Start, timed[i].End, lines, timed[i].Risky);
             }
         }
 

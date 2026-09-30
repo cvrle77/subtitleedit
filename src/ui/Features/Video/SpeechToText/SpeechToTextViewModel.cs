@@ -809,7 +809,7 @@ public partial class SpeechToTextViewModel : ObservableObject
                     ProgressOpacity = 0;
                     var partialSub = new Subtitle();
                     partialSub.Paragraphs.AddRange(_resultList
-                        .Select(p => new Paragraph(p.Text, (double)p.Start * 1000.0, (double)p.End * 1000.0)).ToList());
+                        .Select(p => new Paragraph(p.Text, (double)p.Start * 1000.0, (double)p.End * 1000.0) { IsSmartBreakRisky = p.Risky }).ToList());
 
                     // Engine output is not guaranteed to be sorted or free of overlaps
                     // (issue #13548) - a kept partial must go through the same repair as
@@ -959,7 +959,7 @@ public partial class SpeechToTextViewModel : ObservableObject
                     _loadedFromStdOut = false;
                     var subtitle = new Subtitle();
                     subtitle.Paragraphs.AddRange(resultTexts
-                        .Select(p => new Paragraph(p.Text, (double)p.Start * 1000.0, (double)p.End * 1000.0)).ToList());
+                        .Select(p => new Paragraph(p.Text, (double)p.Start * 1000.0, (double)p.End * 1000.0) { IsSmartBreakRisky = p.Risky }).ToList());
 
                     // The result file is engine output and is not guaranteed to be
                     // sorted or free of overlaps (issue #13548), so straighten the
@@ -990,7 +990,7 @@ public partial class SpeechToTextViewModel : ObservableObject
                 _outputText.Enqueue("Loading result from STDOUT");
                 var transcribedSubtitleFromStdOut = new Subtitle();
                 transcribedSubtitleFromStdOut.Paragraphs.AddRange(_resultList
-                    .Select(p => new Paragraph(p.Text, (double)p.Start * 1000.0, (double)p.End * 1000.0)).ToList());
+                    .Select(p => new Paragraph(p.Text, (double)p.Start * 1000.0, (double)p.End * 1000.0) { IsSmartBreakRisky = p.Risky }).ToList());
                 transcribedSubtitleFromStdOut = SpeechToTextTimingFixer.SortAndRemoveOverlaps(transcribedSubtitleFromStdOut);
                 _loadedFromStdOut = transcribedSubtitleFromStdOut.Paragraphs.Count > 0;
                 await MakeResult(transcribedSubtitleFromStdOut);
@@ -2723,6 +2723,38 @@ public partial class SpeechToTextViewModel : ObservableObject
                 }
             }
 
+            // Temporary diagnostic: words the engine timed inside silence (no Silero speech at their
+            // time). These are the ones behind a stray single-word cue ("Ovaj") or an early cue
+            // ("Opa"); the log tells us their exact times and the nearest speech run.
+            foreach (var w in words)
+            {
+                if (w.End - w.Start < 0.25)
+                {
+                    continue;
+                }
+
+                var overlap = 0.0;
+                var nearestStart = 0.0;
+                var nearestEnd = 0.0;
+                var nearestDist = double.MaxValue;
+                foreach (var (a, b) in runs)
+                {
+                    overlap = Math.Max(overlap, Math.Min(w.End, b) - Math.Max(w.Start, a));
+                    var d = a >= w.Start ? a - w.Start : w.Start - b;
+                    if (d < nearestDist)
+                    {
+                        nearestDist = d;
+                        nearestStart = a;
+                        nearestEnd = b;
+                    }
+                }
+
+                if (overlap <= 0.03 && runs.Count > 0)
+                {
+                    Se.WriteToolsLog($"DIAG silent word: \"{w.Word}\" {w.Start:F2}-{w.End:F2} (dur {w.End - w.Start:F2}s, no speech) nearest run {nearestStart:F2}-{nearestEnd:F2}");
+                }
+            }
+
             var cues = Nikse.SubtitleEdit.Logic.Media.SmartBreak.Build(words, runs);
             if (cues.Count == 0)
             {
@@ -2731,11 +2763,17 @@ public partial class SpeechToTextViewModel : ObservableObject
 
             Se.WriteToolsLog($"Smart break: {resultTexts.Count} -> {cues.Count} cues ({words.Count} words, {runs.Count} Silero runs)");
 
+            foreach (var c in cues)
+            {
+                Se.WriteToolsLog($"SRTDUMP {c.Start:F3} --> {c.End:F3} | " + string.Join(" | ", c.Lines));
+            }
+
             return cues.Select(c => new ResultText
             {
                 Start = (decimal)c.Start,
                 End = (decimal)c.End,
                 Text = string.Join(Environment.NewLine, c.Lines),
+                Risky = c.Risky,
             }).ToList();
         }
         catch (Exception exception)
