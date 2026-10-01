@@ -331,6 +331,45 @@ public static class SmartBreak
         if (lines.Count > minLines)
         {
             lines = GreedyLines(words);
+
+            // Greedy can still be forced over the budget by the "no dangling clitic" rule (a run of
+            // short words like "... bajadera je da vam ..." has no allowed break inside the first
+            // line). Exceeding the line budget is worse than a clitic at the line end, so refill
+            // ignoring Forbidden as a last resort - otherwise SplitIntoCues has to trim the cue and
+            // the split lands mid-phrase instead of on the comma.
+            if (lines.Count > minLines)
+            {
+                lines = RelaxedGreedyLines(words);
+            }
+        }
+
+        return lines;
+    }
+
+    /// <summary>
+    /// Greedy fill that ignores <see cref="Forbidden"/>: each line takes as many words as fit under
+    /// <see cref="MaxLen"/>. Used only when the forbidden-break rules would force more lines than
+    /// the text actually needs.
+    /// </summary>
+    private static List<List<SmartBreakWord>> RelaxedGreedyLines(IReadOnlyList<SmartBreakWord> words)
+    {
+        var lines = new List<List<SmartBreakWord>>();
+        int i = 0, n = words.Count;
+        while (i < n)
+        {
+            var j = i;
+            while (j < n && LLen(words, i, j + 1) <= MaxLen)
+            {
+                j++;
+            }
+
+            if (j <= i)
+            {
+                j = i + 1;
+            }
+
+            lines.Add(words.Skip(i).Take(j - i).ToList());
+            i = j;
         }
 
         return lines;
