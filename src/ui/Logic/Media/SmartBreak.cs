@@ -428,7 +428,7 @@ public static class SmartBreak
     private static readonly HashSet<string> ClauseStartPhrases = new(StringComparer.OrdinalIgnoreCase)
     {
         // 1. time / moment
-        "sada", "sad", "onda", "tada", "zatim", "potom", "posle", "kasnije", "ranije", "najpre",
+        "sada", "sad", "onda", "tada", "kada", "kad", "zatim", "potom", "posle", "kasnije", "ranije", "najpre",
         "prvo", "konacno", "naposletku", "na kraju", "u medjuvremenu", "do tada", "od tada",
         "do sada", "od sada", "pre toga", "posle toga", "nakon toga", "pre svega", "tek tada",
         "tek sada", "tek onda", "upravo tada", "upravo sada", "upravo onda", "vec tada", "vec sada",
