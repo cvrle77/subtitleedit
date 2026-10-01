@@ -617,9 +617,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
             avTts.CurrentVideoPositionSeconds = seconds;
         }
 
-        // Center mode is opt-in (Se.Settings.Waveform.CenterVideoPosition). Without it the view
-        // stays put and only the cursor moves, exactly as before this change.
-        if (Se.Settings.Waveform.CenterVideoPosition && av.WavePeaks != null)
+        // Center mode is opt-in. Either the snap toggle (CenterVideoPosition) or the smooth one
+        // (CenterVideoPositionSmooth) enables it - the main window treats them as one "center any"
+        // flag, and this window must follow, otherwise turning on only "Center (smooth)" left the
+        // playhead walking off the right edge here.
+        var centerEnabled = Se.Settings.Waveform.CenterVideoPosition || Se.Settings.Waveform.CenterVideoPositionSmooth;
+        if (centerEnabled && av.WavePeaks != null)
         {
             var halfSeconds = (av.EndPositionSeconds - av.StartPositionSeconds) / 2.0;
             var centerTarget = Math.Max(0, seconds - halfSeconds);

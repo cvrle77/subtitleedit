@@ -302,7 +302,7 @@ public static class SmartBreak
 
             // if the current line does not end on punctuation and the next word is a single word
             // followed by a comma, pull that word+comma onto this line, then break after it
-            if (end < n)
+            if (end < n && LLen(words, i, end + 1) <= MaxLen)
             {
                 var last = LastChar(words[end - 1].Word);
                 var nxtc = LastChar(words[end].Word);
@@ -321,6 +321,49 @@ public static class SmartBreak
                     $"DIAG line ends on conjunction: \"{string.Join(" ", words.Skip(i).Take(end - i).Select(x => x.Word.Trim()))}\" | next=\"{words[Math.Min(end, words.Count - 1)].Word.Trim()}\"");
             }
 
+            i = end;
+        }
+
+        // The balanced split can pick a short first line (a comma) and force an extra line. Never
+        // exceed the minimum possible: ceil(chars / MaxLen). If it did, refill greedily.
+        var total = LLen(words, 0, words.Count);
+        var minLines = Math.Max(1, (total + MaxLen - 1) / MaxLen);
+        if (lines.Count > minLines)
+        {
+            lines = GreedyLines(words);
+        }
+
+        return lines;
+    }
+
+    private static List<List<SmartBreakWord>> GreedyLines(IReadOnlyList<SmartBreakWord> words)
+    {
+        var lines = new List<List<SmartBreakWord>>();
+        int i = 0, n = words.Count;
+        while (i < n)
+        {
+            var j = i;
+            while (j < n && LLen(words, i, j + 1) <= MaxLen)
+            {
+                j++;
+            }
+
+            if (j <= i)
+            {
+                j = i + 1;
+            }
+
+            var end = j;
+            for (var b = j; b > i + 1; b--)
+            {
+                if (!Forbidden(words, b))
+                {
+                    end = b;
+                    break;
+                }
+            }
+
+            lines.Add(words.Skip(i).Take(end - i).ToList());
             i = end;
         }
 
@@ -405,6 +448,15 @@ public static class SmartBreak
         // svaki/sve/svi group (re-added: "i svaki deo testa...")
         "svaki", "svaka", "svako", "svake", "svakog", "svakom", "svaku", "sve", "svi", "sva",
         "dobro",
+        "dobijem", "dobiješ", "dobije", "dobijemo", "dobijete", "dobiju",
+        // imperative/present verbs often used with "i"
+        "podeli", "podelim", "podeliš", "podelimo", "podelite", "podele", "podeliti",
+        "ostavi", "ostavim", "ostaviš", "ostavimo", "ostavite", "ostave", "ostaviti",
+        "kreni", "krenem", "kreneš", "krene", "krenemo", "krenete", "krenu", "krenuti",
+        "stavi", "stavim", "staviš", "stavimo", "stavite", "stave", "staviti",
+        "pokreni", "pokrenem", "pokreneš", "pokrene", "pokrenemo", "pokrenete", "pokrenu", "pokrenuti",
+        "deli", "delim", "deliš", "delimo", "delite", "dele", "deliti",
+        "ovim", "ovom", "ovoga", "ovog", "ovoj", "ovo", "ova", "ovaj",
     };
 
     private const int MaxClausePhraseWords = 4;
@@ -459,6 +511,7 @@ public static class SmartBreak
             var len = 0;
             var lastHard = -1; // last punctuation clause boundary (exclusive end index)
             var lastSoft = -1; // last "i ..." clause boundary
+            var boundaries = new List<int>(); // every punctuation/soft boundary seen in range
             var j = i;
             while (j < n)
             {
@@ -474,6 +527,7 @@ public static class SmartBreak
                 if (hard)
                 {
                     lastHard = j;
+                    boundaries.Add(j);
 
                     // a real pause right after a comma ends the cue
                     if (j < n)
@@ -488,25 +542,28 @@ public static class SmartBreak
                 else if (SoftClauseStart(block, j))
                 {
                     lastSoft = j;
+                    boundaries.Add(j);
                 }
             }
 
             int end;
-            var isBoundary = false;
             var risky = false;
             if (j >= n)
             {
                 end = n;
             }
-            else if (Math.Max(lastHard, lastSoft) > i)
+            else if (lastHard > i)
             {
-                end = Math.Max(lastHard, lastSoft);
-                isBoundary = true;
-                risky = end == lastSoft; // "i ..." boundary is a judgment call
+                end = lastHard; // a comma/sentence boundary wins over soft and pause
+            }
+            else if (lastSoft > i)
+            {
+                end = lastSoft;
+                risky = true;
 
-                // If the chosen soft boundary (", i ...") leaves only a short tail after the last
-                // comma, break at the comma instead so the tail starts the next cue.
-                if (end == lastSoft && lastHard > i && lastSoft - lastHard <= 2)
+                // If the soft boundary (", i ...") leaves only a short tail after the last comma,
+                // break at the comma instead.
+                if (lastHard > i && lastSoft - lastHard <= 2)
                 {
                     end = lastHard;
                     risky = false;
@@ -515,7 +572,7 @@ public static class SmartBreak
             else
             {
                 // No punctuation/soft boundary in range: use the longest pause inside the capacity
-                // window as an "imaginary comma" and break there.
+                // window as an "imaginary comma", else fall back to plain line wrapping.
                 risky = true;
                 var bestK = -1;
                 var bestPause = -1.0;
@@ -541,22 +598,34 @@ public static class SmartBreak
                 }
             }
 
-            if (isBoundary)
+            // Two-line limit is absolute: if the chosen group still needs more lines, step back to
+            // the largest punctuation/soft boundary that fits, else trim to two lines.
+            if (BuildLines(block.GetRange(i, end - i)).Count > MaxLines)
             {
-                // A punctuation/soft boundary must not be thrown away by the line-limit safety net:
-                // if the group does not fit two lines, step back to the last comma instead.
-                if (BuildLines(block.GetRange(i, end - i)).Count > MaxLines && lastHard > i)
+                var best = -1;
+                foreach (var b in boundaries)
                 {
-                    end = lastHard;
+                    if (b > i && b <= end && b > best && BuildLines(block.GetRange(i, b - i)).Count <= MaxLines)
+                    {
+                        best = b;
+                    }
+                }
+
+                if (best > i)
+                {
+                    end = best;
                     risky = false;
                 }
-            }
-            else if (BuildLines(block.GetRange(i, end - i)).Count > MaxLines)
-            {
-                end = i + Math.Max(1, BuildLines(block.GetRange(i, end - i)).Take(MaxLines).Sum(l => l.Count));
+                else
+                {
+                    end = i + Math.Max(1, BuildLines(block.GetRange(i, end - i)).Take(MaxLines).Sum(l => l.Count));
+                }
             }
 
             var group = block.GetRange(i, end - i);
+
+            Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
+                $"DIAG split: first=\"{block[i].Word.Trim()}\" i={i} j={j} end={end} hard={lastHard} soft={lastSoft} text=\"{string.Join(" ", group.Select(x => x.Word.Trim()))}\"");
 
             // A split at a soft "i ..." boundary reads better when the upper block ends with a
             // comma, so append one (unless it already ends with punctuation).
@@ -631,6 +700,8 @@ public static class SmartBreak
 
             if (best > 0 && best < cue.Words.Count)
             {
+                Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
+                    $"DIAG dense: split \"{string.Join(" ", cue.Words.Select(x => x.Word.Trim()))}\" at comma #{best}");
                 RefineDense((cue.Words.GetRange(0, best), true), outCues);
                 RefineDense((cue.Words.GetRange(best, cue.Words.Count - best), true), outCues);
                 return;
@@ -768,6 +839,11 @@ public static class SmartBreak
             var stranding = cur.Count == 1 && !EndsSentence(cur[0].Word);
             if (endsSentence || (bigGap && !stranding))
             {
+                if (bigGap)
+                {
+                    Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog($"DIAG bigGap: after \"{a.Word.Trim()}\" gap={gap:F2}s -> \"{b.Word.Trim()}\"");
+                }
+
                 blocks.Add((cur, bigGap));
                 cur = new List<SmartBreakWord> { b };
                 curEndedByPause = false;
@@ -779,6 +855,14 @@ public static class SmartBreak
         }
 
         blocks.Add((cur, curEndedByPause));
+
+        foreach (var (wb, _) in blocks)
+        {
+            if (wb.Count == 1)
+            {
+                Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog($"DIAG 1-word block: \"{wb[0].Word.Trim()}\" {wb[0].Start:F2}-{wb[0].End:F2}");
+            }
+        }
 
         (double Start, double End, List<string> Lines, bool Risky) MakeCue(List<List<SmartBreakWord>> group, bool risky)
         {
