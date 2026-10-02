@@ -1094,6 +1094,27 @@ public partial class ReviewSpeechViewModel : ObservableObject
         GoToPosition(result.Time.TotalSeconds - offsetSeconds);
     }
 
+    // Parks the playhead on a row's start and scrolls it into view if needed (2 s lead-in, like
+    // GoToPosition). Called when the table selection changes so Play / Play-selected starts from
+    // the selected block instead of the clip the playhead was left on.
+    private void GoToRowStart(ReviewRow row)
+    {
+        var waveformParagraph = row.WaveformParagraph;
+        var av = AudioVisualizer;
+        if (waveformParagraph == null || av == null)
+        {
+            return;
+        }
+
+        var seconds = waveformParagraph.StartTime.TotalSeconds;
+        if (seconds < av.StartPositionSeconds || seconds > av.EndPositionSeconds)
+        {
+            av.StartPositionSeconds = Math.Max(0, seconds - 2.0);
+        }
+
+        SetWaveformPlayhead(seconds);
+    }
+
     internal void GoToPosition(double seconds)
     {
         var av = AudioVisualizer;
@@ -3138,6 +3159,14 @@ public partial class ReviewSpeechViewModel : ObservableObject
         if (value == null)
         {
             return;
+        }
+
+        // Park the playhead on the selected block too, so Play / Play-selected starts from the row
+        // the user clicked, not from the clip the playhead was left on. A selection that came from
+        // a waveform click, or the automatic advance during playback, must not move the playhead.
+        if (!_selectionFromWaveform && _playingRow == null)
+        {
+            GoToRowStart(value);
         }
 
         // If another apply is in flight, queue this selection — we'll re-apply at the end of the
