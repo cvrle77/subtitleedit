@@ -323,8 +323,13 @@ public class ElevenLabs : ITtsEngine
 
         Se.WriteToolsLog($"ElevenLabs: voice={elevenLabVoice.Voice}, voiceId={elevenLabVoice.VoiceId}, model={model}, textLen={text.Length}");
 
+        // A configured general accent is applied invisibly to every line (v4/v3, which read audio
+        // tags): prepend it to the leading tag group so "[warmly] text" becomes
+        // "[American accent warmly] text". Empty setting -> untouched.
+        var accentedText = ApplyGeneralAccent(text, model);
+
         var ms = new MemoryStream();
-        var (ok, error) = await _ttsDownloadService.DownloadElevenLabsVoiceSpeak(text, elevenLabVoice, model, Se.Settings.Video.TextToSpeech.ElevenLabsApiKey, language?.Code ?? string.Empty, ms, null, cancellationToken);
+        var (ok, error) = await _ttsDownloadService.DownloadElevenLabsVoiceSpeak(accentedText, elevenLabVoice, model, Se.Settings.Video.TextToSpeech.ElevenLabsApiKey, language?.Code ?? string.Empty, ms, null, cancellationToken);
         if (!ok)
         {
             // Forced: a failed API call must land in the tools log even when the setting is off,
@@ -336,6 +341,33 @@ public class ElevenLabs : ITtsEngine
         var fileName = Path.Combine(TtsOutputFolder.Resolve(outputFolder, GetSetElevenLabsFolder), Guid.NewGuid() + ".mp3");
         await File.WriteAllBytesAsync(fileName, ms.ToArray(), cancellationToken);
         return new TtsResult { Text = text, FileName = fileName };
+    }
+
+    // Prepends the configured general accent tag to the leading tag group of the line, for the
+    // models that read audio tags (v3 / v4 family). The accent is never stored in the text - it is
+    // only merged into what is sent to the API.
+    private static string ApplyGeneralAccent(string text, string model)
+    {
+        var accent = Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent?.Trim();
+        if (string.IsNullOrEmpty(accent) || model is not ("eleven_v3" or "eleven_v4" or "eleven_v4_turbo"))
+        {
+            return text;
+        }
+
+        accent = accent.TrimStart('[').TrimEnd(']').Trim();
+
+        if (text.Length > 0 && text[0] == '[')
+        {
+            var close = text.IndexOf(']');
+            if (close > 0)
+            {
+                var inner = text.Substring(1, close - 1).Trim();
+                var merged = inner.Length == 0 ? accent : accent + " " + inner;
+                return "[" + merged + "]" + text.Substring(close + 1);
+            }
+        }
+
+        return "[" + accent + "] " + text;
     }
 
     public Task<string[]> GetRegions()

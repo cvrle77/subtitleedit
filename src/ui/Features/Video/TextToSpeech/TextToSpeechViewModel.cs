@@ -90,6 +90,13 @@ public partial class TextToSpeechViewModel : ObservableObject
     [ObservableProperty] private string _region;
     [ObservableProperty] private string _regionLabel;
     [ObservableProperty] private bool _hasModel;
+
+    // Hidden accent applied to every line sent to ElevenLabs v4 ("American accent" etc.). Shown
+    // between Voice and Language only for the v4 family.
+    [ObservableProperty] private string _generalAccent = string.Empty;
+    [ObservableProperty] private bool _isGeneralAccentVisible;
+    [ObservableProperty] private ObservableCollection<string> _generalAccentOptions = new();
+
     [ObservableProperty] private bool _isVoiceCountVisible;
     [ObservableProperty] private string _linesInfo = string.Empty;
     [ObservableProperty] private bool _hasVideoFile;
@@ -207,6 +214,18 @@ public partial class TextToSpeechViewModel : ObservableObject
         Regions = new ObservableCollection<string>();
         Models = new ObservableCollection<string>();
         Languages = new ObservableCollection<TtsLanguage>();
+        GeneralAccentOptions = new ObservableCollection<string>
+        {
+            "American accent",
+            "British accent",
+            "Australian accent",
+            "South African accent",
+            "Irish accent",
+            "Scottish accent",
+            "Serbian accent",
+            "neutral accent",
+        };
+        GeneralAccent = Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent ?? string.Empty;
         ApiKey = string.Empty;
         Region = string.Empty;
         RegionLabel = Se.Language.General.Region;
@@ -352,6 +371,7 @@ public partial class TextToSpeechViewModel : ObservableObject
             // Read back by name on model change (this file + ReviewSpeechViewModel) but was never
             // written anywhere, so the language choice silently reset to English every time.
             Se.Settings.Video.TextToSpeech.ElevenLabsLanguage = SelectedLanguage?.Name ?? string.Empty;
+            Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent = GeneralAccent ?? string.Empty;
         }
         else if (SelectedEngine is MistralSpeech)
         {
@@ -629,6 +649,10 @@ public partial class TextToSpeechViewModel : ObservableObject
     {
         RefreshInstructionVisibility();
         UpdateVoiceLock();
+
+        // General accent is only meaningful for the v4 family (the models that read audio tags).
+        IsGeneralAccentVisible = SelectedEngine is ElevenLabs
+            && value is "eleven_v4" or "eleven_v4_turbo";
 
         // OpenAI (tts-1 vs gpt-4o-mini-tts) and every OpenRouter model have their own voice
         // list. GetVoices reads the saved model, so persist it before reloading. The equality

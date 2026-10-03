@@ -61,6 +61,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // On by default: after a clip finishes the review plays the next line automatically, so a
     // full pass can be listened to without clicking each row.
     [ObservableProperty] private bool _autoContinue = true;
+
+    // When checked, a regenerate ignores the configured general accent (the hidden accent tag
+    // added to every line on the way to the API) for the line being regenerated.
+    [ObservableProperty] private bool _skipGeneralAccent;
     [ObservableProperty] private bool _isPlayVisible;
     [ObservableProperty] private bool _isStopVisible;
     // Waveform playhead as a time code, so a spot can be compared with the original video (#15211).
@@ -1213,11 +1217,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
     }
 
     // Audio-tag palette: every click works on the tag group at the START of the line.
-    //   - no group yet         -> insert "[tag] "
-    //   - group without the tag -> add it: "[a]" + [b] -> "[a b] "
-    //   - group already has it  -> remove it: "[a b]" + [b] -> "[a] "
+    //   - no group yet          -> insert "[tag] "
+    //   - group without the tag -> add it after the existing tags
+    //   - group already has it  -> remove it
     //   - removing the last tag -> drop the whole group
-    // A single space is kept after the group; the rest of the line is untouched.
+    // Tags are compared as whole strings (so a hand-typed "[American accent]" stays one unit and
+    // is not split at the space).
     public void InsertTagAtCaret(string tag)
     {
         var row = SelectedLine;
@@ -1233,21 +1238,26 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
 
         var text = row.Text ?? string.Empty;
-        var (groupStart, groupEnd, groupTags) = FindLeadingTagGroup(text);
+        var inner = FindLeadingTagGroupInner(text);
 
         string newText;
-        if (groupStart == 0)
+        if (inner != null)
         {
-            if (groupTags.RemoveAll(t => string.Equals(t, bare, StringComparison.OrdinalIgnoreCase)) > 0)
+            // Split the group into tags, keeping a hand-typed multi-word tag like "American accent"
+            // together by matching known palette entries greedily; unknown runs stay as one tag.
+            var tags = SplitTagGroup(inner);
+            var existing = tags.FindIndex(t => string.Equals(t, bare, StringComparison.OrdinalIgnoreCase));
+            if (existing >= 0)
             {
-                newText = groupTags.Count == 0
-                    ? text.Substring(groupEnd).TrimStart()
-                    : "[" + string.Join(" ", groupTags) + "] " + text.Substring(groupEnd).TrimStart();
+                tags.RemoveAt(existing);
+                newText = tags.Count == 0
+                    ? StripGroup(text)
+                    : "[" + string.Join(" ", tags) + "] " + StripGroup(text);
             }
             else
             {
-                groupTags.Add(bare);
-                newText = "[" + string.Join(" ", groupTags) + "] " + text.Substring(groupEnd).TrimStart();
+                tags.Add(bare);
+                newText = "[" + string.Join(" ", tags) + "] " + StripGroup(text);
             }
         }
         else
@@ -1265,34 +1275,104 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
     }
 
-    // Reads the audio-tag group at the very start of the line ("[a b] rest..."), if any.
-    // Returns (0, endIndex, tags); (-1, -1, empty) when the line does not start with a group.
-    private static (int Start, int End, List<string> Tags) FindLeadingTagGroup(string text)
+    // Removes the whole leading "[...]" tag group from the selected line, if present.
+    public void RemoveAllTags()
     {
-        var empty = new List<string>();
+        var row = SelectedLine;
+        if (row == null)
+        {
+            return;
+        }
+
+        var text = row.Text ?? string.Empty;
+        if (FindLeadingTagGroupInner(text) == null)
+        {
+            return;
+        }
+
+        var newText = StripGroup(text);
+        row.Text = newText;
+
+        if (EditTextBox != null)
+        {
+            EditTextBox.Text = newText;
+            EditTextBox.CaretIndex = 0;
+            EditTextBox.Focus();
+        }
+    }
+
+    // The inner text of the leading "[...]" group, or null when the line does not start with one.
+    private static string? FindLeadingTagGroupInner(string text)
+    {
         if (text.Length == 0 || text[0] != '[')
         {
-            return (-1, -1, empty);
+            return null;
         }
 
         var close = text.IndexOf(']');
+        return close < 0 ? null : text.Substring(1, close - 1).Trim();
+    }
+
+    // The line without its leading "[...] " group.
+    private static string StripGroup(string text)
+    {
+        var close = text.IndexOf(']');
         if (close < 0)
         {
-            return (-1, -1, empty);
+            return text;
         }
 
-        var inner = text.Substring(1, close - 1).Trim();
-        var tags = inner.Length == 0
-            ? new List<string>()
-            : inner.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
-        var end = close + 1;
-        if (end < text.Length && text[end] == ' ')
-        {
-            end++;
-        }
-
-        return (0, end, tags);
+        var rest = text.Substring(close + 1);
+        return rest.TrimStart();
     }
+
+    // Splits a tag group into tags. A single word is always one tag; a multi-word run is kept
+    // together when it matches a known palette tag (e.g. "American accent", "short pause").
+    private static List<string> SplitTagGroup(string inner)
+    {
+        if (string.IsNullOrWhiteSpace(inner))
+        {
+            return new List<string>();
+        }
+
+        var words = inner.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var tags = new List<string>();
+        var i = 0;
+        while (i < words.Length)
+        {
+            // Try the longest known multi-word tag starting here (up to 3 words).
+            var matched = false;
+            for (var len = Math.Min(3, words.Length - i); len >= 2; len--)
+            {
+                var candidate = string.Join(" ", words, i, len);
+                if (KnownMultiWordTags.Contains(candidate))
+                {
+                    tags.Add(candidate);
+                    i += len;
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (!matched)
+            {
+                tags.Add(words[i]);
+                i++;
+            }
+        }
+
+        return tags;
+    }
+
+    // Multi-word palette tags, so an inserted "American accent" is treated as one tag (and removed
+    // as one) instead of being split into "American" and "accent".
+    private static readonly HashSet<string> KnownMultiWordTags = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "American accent", "British accent", "strong American accent", "South African accent",
+        "Serbian accent", "warm, conversational", "short pause", "long pause",
+        "clears throat", "inhales deeply", "exhales sharply", "with emphasis", "matter-of-factly",
+        "light-hearted", "well done", "nice work", "that's it", "here we go",
+    };
 
     // Keys that act on the waveform when it has focus (the grid handles its own Up/Down):
     // Home/End jump to the first/last row; Ctrl+Left/Right nudge the selected cue 100 ms
@@ -2218,11 +2298,27 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         try
         {
-            var speakResult = await TtsInstructionSwap.RunAsync(engine, instruction, () =>
-                // Strip markup here the way the main generate path does - the row text is the
-                // subtitle's own text, and engines vocalize "<i>" or garble on tags.
-                engine.Speak(Utilities.UnbreakLine(HtmlUtil.RemoveHtmlTags(line.Text, alsoSsaTags: true)),
-                    _waveFolder, voice, language, region, model, _cancellationToken));
+            // "Skip general accent": temporarily clear the configured accent so this one regenerate
+            // sends no hidden accent tag. Restored right after, so other lines keep using it.
+            var savedAccent = Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent;
+            if (SkipGeneralAccent)
+            {
+                Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent = string.Empty;
+            }
+
+            TtsResult speakResult;
+            try
+            {
+                speakResult = await TtsInstructionSwap.RunAsync(engine, instruction, () =>
+                    // Strip markup here the way the main generate path does - the row text is the
+                    // subtitle's own text, and engines vocalize "<i>" or garble on tags.
+                    engine.Speak(Utilities.UnbreakLine(HtmlUtil.RemoveHtmlTags(line.Text, alsoSsaTags: true)),
+                        _waveFolder, voice, language, region, model, _cancellationToken));
+            }
+            finally
+            {
+                Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent = savedAccent;
+            }
 
             if (speakResult.Error || string.IsNullOrEmpty(speakResult.FileName) || !File.Exists(speakResult.FileName))
             {
@@ -3220,6 +3316,13 @@ public partial class ReviewSpeechViewModel : ObservableObject
             {
                 SelectedModel = Models.First();
             }
+
+            // Apply the v3/v4 UI (only Stability + Similarity visible) right away for an imported
+            // session too - previously this flag was only set in SelectedModelChanged, so a session
+            // imported with eleven_v4 still showed the v2 sliders until the model was toggled away
+            // and back.
+            IsElevenLabsV3OrV4Selected = SelectedModel is "eleven_v3" or "eleven_v4" or "eleven_v4_turbo";
+            IsElevenLabsEngineV3Selected = IsElevenLabsV3OrV4Selected;
         }
         else if (engine is Qwen3TtsCpp)
         {
