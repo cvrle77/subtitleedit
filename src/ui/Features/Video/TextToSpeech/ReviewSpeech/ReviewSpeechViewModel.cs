@@ -1210,6 +1210,40 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
     }
 
+    // Inserts an audio tag ([happy], [short pause], ...) at the caret of the selected line's text
+    // box, so the tag-button palette in the window drops tags right where the user is typing.
+    public void InsertTagAtCaret(string tag)
+    {
+        var row = SelectedLine;
+        if (row == null || string.IsNullOrEmpty(tag))
+        {
+            return;
+        }
+
+        var text = row.Text ?? string.Empty;
+        var caret = EditTextBox?.SelectionStart ?? text.Length;
+        if (caret < 0 || caret > text.Length)
+        {
+            caret = text.Length;
+        }
+
+        // Keep a single space between the tag and the neighbouring word, but don't double up.
+        var before = text.Substring(0, caret);
+        var after = text.Substring(caret);
+        var needsLeadingSpace = before.Length > 0 && !char.IsWhiteSpace(before[^1]);
+        var insert = (needsLeadingSpace ? " " : string.Empty) + tag + " ";
+
+        row.Text = before + insert + after;
+        var newCaret = before.Length + insert.Length;
+
+        if (EditTextBox != null)
+        {
+            EditTextBox.Text = row.Text;
+            EditTextBox.CaretIndex = newCaret;
+            EditTextBox.Focus();
+        }
+    }
+
     // Keys that act on the waveform when it has focus (the grid handles its own Up/Down):
     // Home/End jump to the first/last row; Ctrl+Left/Right nudge the selected cue 100 ms
     // (10 ms with Shift) without changing its duration.
