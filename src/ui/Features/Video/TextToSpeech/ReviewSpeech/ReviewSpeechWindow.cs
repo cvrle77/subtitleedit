@@ -13,6 +13,7 @@ using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Engines;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.ValueConverters;
+using System.Linq;
 
 namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech.ReviewSpeech;
 
@@ -73,11 +74,20 @@ public class ReviewSpeechWindow : Window
             [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.AutoContinue)) { Mode = BindingMode.TwoWay },
         };
 
+        var checkBoxSkipGeneralAccent = new CheckBox
+        {
+            Content = "Skip general accent",
+            Margin = new Thickness(180, 0, 0, 0),
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.SkipGeneralAccent)) { Mode = BindingMode.TwoWay },
+        };
+        ToolTip.SetTip(checkBoxSkipGeneralAccent, "Regenerate without the configured general accent for this line");
+
         grid.Add(controls, 0, 0);
         grid.Add(lineGridView, 0, 1);
         grid.Add(waveform, 1, 0, 1, 2);
         grid.Add(panelButtons, 2, 0, 1, 2);
         grid.Add(checkBoxAutoContinue, 2, 0);
+        grid.Add(checkBoxSkipGeneralAccent, 2, 0);
         grid.Add(MakePositionLabel(vm), 2, 0, 1, 2);
 
         Content = grid;
@@ -405,7 +415,6 @@ public class ReviewSpeechWindow : Window
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
-                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) }, // tag palette
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }, // filler
             },
             ColumnDefinitions =
@@ -426,10 +435,15 @@ public class ReviewSpeechWindow : Window
         grid.Add(panelVoice, 2, 0);
         grid.Add(panelRegion, 3, 0);
         grid.Add(panelLanguage, 4, 0);
-        grid.Add(elevenLabsControls, 5, 0);
+        // ElevenLabs sliders with the audio-tag palette docked right below them (same block, not
+        // the bottom of the whole window).
+        grid.Add(new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Children = { elevenLabsControls, MakeTagPanel(vm) },
+        }, 5, 0);
         grid.Add(panelInstruction, 6, 0);
-        grid.Add(MakeTagPanel(vm), 7, 0);
-        // 8 is filler
+        // 7 is filler.
 
         return UiUtil.MakeBorderForControl(grid);
     }
@@ -440,64 +454,93 @@ public class ReviewSpeechWindow : Window
     {
         var rows = new (string Header, string[] Tags)[]
         {
-            ("Intro", new[] { "[happy]", "[excited]", "[welcoming]", "[cheerful]", "[warmly]" }),
-            ("Steps", new[] { "[thoughtful]", "[measured]", "[calm]", "[matter-of-factly]", "[informative]", "[patiently]" }),
-            ("Advice", new[] { "[reassuring]", "[encouraging]", "[gently]", "[kindly]", "[helpfully]" }),
-            ("Important", new[] { "[serious]", "[firmly]", "[clearly]", "[with emphasis]" }),
-            ("Fun", new[] { "[chuckles]", "[laughs]", "[playful]", "[amused]", "[light-hearted]" }),
-            ("Pauses", new[] { "[short pause]", "[pause]", "[long pause]", "[sighs]", "[exhales]" }),
-            ("Ending", new[] { "[satisfied]", "[pleased]", "[proudly]", "[delighted]", "[content]" }),
+            ("Intro", new[] { "[happy]", "[excited]", "[welcoming]", "[cheerful]", "[warmly]", "[friendly]", "[enthusiastic]", "[upbeat]", "[delighted]" }),
+            ("Steps", new[] { "[thoughtful]", "[measured]", "[calm]", "[matter-of-factly]", "[informative]", "[patiently]", "[clearly]", "[precise]", "[methodical]", "[detailed]" }),
+            ("Advice", new[] { "[reassuring]", "[encouraging]", "[gently]", "[kindly]", "[helpfully]", "[supportive]", "[caring]", "[attentive]" }),
+            ("Important", new[] { "[serious]", "[firmly]", "[with emphasis]", "[earnestly]", "[confident]", "[determined]", "[stern]" }),
+            ("Fun", new[] { "[chuckles]", "[laughs]", "[playful]", "[amused]", "[light-hearted]", "[cheeky]", "[impish]", "[jesting]" }),
+            ("Pauses", new[] { "[short pause]", "[pause]", "[long pause]", "[sighs]", "[exhales]", "[inhales]", "[clears throat]", "[breath]" }),
+            ("Ending", new[] { "[satisfied]", "[pleased]", "[proudly]", "[content]", "[gratified]", "[triumphant]", "[concluding]" }),
+            ("Accent", new[] { "[American accent]", "[British accent]", "[strong American accent]", "[South African accent]", "[Serbian accent]", "[warm, conversational]", "[narrator]" }),
         };
 
         var panel = new StackPanel
         {
             Orientation = Orientation.Vertical,
-            Spacing = 3,
+            Spacing = 4,
             Margin = new Thickness(0, 6, 0, 0),
         };
 
+        // Remove-all: clears the leading "[...]" tag group from the selected line.
+        var removeAllButton = new Button
+        {
+            Content = "Remove all tags",
+            Padding = new Thickness(8, 1, 8, 1),
+            FontSize = 11,
+            Margin = new Thickness(74, 0, 0, 2),
+        };
+        removeAllButton.Click += (_, _) => vm.RemoveAllTags();
+        ToolTip.SetTip(removeAllButton, "Remove the whole [..] tag group from the selected line");
+        panel.Children.Add(removeAllButton);
+
         foreach (var (header, tags) in rows)
         {
-            var line = new StackPanel
+            var headerLabel = new TextBlock
             {
-                Orientation = Orientation.Horizontal,
-                Spacing = 4,
-                Children =
-                {
-                    new TextBlock
-                    {
-                        Text = header,
-                        Width = 70,
-                        VerticalAlignment = VerticalAlignment.Center,
-                        Opacity = 0.75,
-                    },
-                },
+                Text = header,
+                Width = 70,
+                VerticalAlignment = VerticalAlignment.Center,
+                Opacity = 0.75,
             };
 
-            foreach (var tag in tags)
+            // Split the category into two rows so it fits without a horizontal scrollbar.
+            var half = (tags.Length + 1) / 2;
+            var firstRow = tags.Take(half).ToArray();
+            var secondRow = tags.Skip(half).ToArray();
+
+            var row1 = MakeTagRow(vm, firstRow, headerLabel);
+            panel.Children.Add(row1);
+
+            if (secondRow.Length > 0)
             {
-                if (tag == "(A)")
-                {
-                    // Convenience: wrap the current selection in a CAPS-emphasis marker is out of
-                    // scope here; instead this inserts a pair of parentheses the user can type into.
-                    continue;
-                }
-
-                var button = new Button
-                {
-                    Content = tag,
-                    Padding = new Thickness(6, 1, 6, 1),
-                    FontSize = 11,
-                };
-                button.Click += (_, _) => vm.InsertTagAtCaret(tag);
-                ToolTip.SetTip(button, $"Insert {tag} at the caret");
-                line.Children.Add(button);
+                panel.Children.Add(MakeTagRow(vm, secondRow, null, headerLabel.Width + 4));
             }
-
-            panel.Children.Add(line);
         }
 
         return panel;
+    }
+
+    private static StackPanel MakeTagRow(ReviewSpeechViewModel vm, string[] tags, TextBlock? label, double leftPad = 0)
+    {
+        var row = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 4,
+        };
+
+        if (label != null)
+        {
+            row.Children.Add(label);
+        }
+        else if (leftPad > 0)
+        {
+            row.Children.Add(new TextBlock { Width = leftPad });
+        }
+
+        foreach (var tag in tags)
+        {
+            var button = new Button
+            {
+                Content = tag,
+                Padding = new Thickness(6, 1, 6, 1),
+                FontSize = 11,
+            };
+            button.Click += (_, _) => vm.InsertTagAtCaret(tag);
+            ToolTip.SetTip(button, $"Insert {tag} at the start of the line");
+            row.Children.Add(button);
+        }
+
+        return row;
     }
 
     // Voice-design controls shared with the main TTS window: free-text instruction (Qwen3
