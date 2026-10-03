@@ -440,12 +440,13 @@ public class ReviewSpeechWindow : Window
     {
         var rows = new (string Header, string[] Tags)[]
         {
-            ("Tone", new[] { "[happy]", "[excited]", "[thoughtful]", "[serious]", "[calm]" }),
-            ("Delivery", new[] { "[warmly]", "[gently]", "[reassuring]", "[encouraging]", "[firmly]" }),
-            ("Fun", new[] { "[chuckles]", "[laughs]", "[playful]", "[amused]" }),
-            ("Pauses", new[] { "[short pause]", "[pause]", "[long pause]", "[sighs]" }),
-            ("Ending", new[] { "[satisfied]", "[pleased]", "[delighted]", "[proudly]" }),
-            ("Emphasis", new[] { "(A)" }),
+            ("Intro", new[] { "[happy]", "[excited]", "[welcoming]", "[cheerful]", "[warmly]" }),
+            ("Steps", new[] { "[thoughtful]", "[measured]", "[calm]", "[matter-of-factly]", "[informative]", "[patiently]" }),
+            ("Advice", new[] { "[reassuring]", "[encouraging]", "[gently]", "[kindly]", "[helpfully]" }),
+            ("Important", new[] { "[serious]", "[firmly]", "[clearly]", "[with emphasis]" }),
+            ("Fun", new[] { "[chuckles]", "[laughs]", "[playful]", "[amused]", "[light-hearted]" }),
+            ("Pauses", new[] { "[short pause]", "[pause]", "[long pause]", "[sighs]", "[exhales]" }),
+            ("Ending", new[] { "[satisfied]", "[pleased]", "[proudly]", "[delighted]", "[content]" }),
         };
 
         var panel = new StackPanel
