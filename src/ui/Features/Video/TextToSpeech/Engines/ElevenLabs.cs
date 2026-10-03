@@ -132,7 +132,9 @@ public class ElevenLabs : ITtsEngine
 
         var languages = new List<TtsLanguage>();
 
-        if (model == "eleven_v3")
+        // Eleven v4 family supports 90+ languages (a superset of v3's 70+), including Serbian.
+        // Reuse the v3 list until a dedicated one is needed.
+        if (model is "eleven_v3" or "eleven_v4" or "eleven_v4_turbo")
         {
             languages = new List<TtsLanguage>
             {
@@ -345,9 +347,11 @@ public class ElevenLabs : ITtsEngine
     {
         return Task.FromResult(new[]
         {
-            "eleven_turbo_v2_5",
+            "eleven_v4",
+            "eleven_v4_turbo",
             "eleven_v3",
-            "eleven_multilingual_v2"
+            "eleven_multilingual_v2",
+            "eleven_turbo_v2_5"
         });
     }
 
