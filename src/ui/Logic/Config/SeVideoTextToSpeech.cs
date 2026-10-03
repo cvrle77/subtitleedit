@@ -25,6 +25,10 @@ public class SeVideoTextToSpeech
     public string ElevenLabsApiKey { get; set; }
     public string ElevenLabsModel { get; set; }
     public string ElevenLabsLanguage { get; set; }
+
+    // A hidden accent applied to every line sent to ElevenLabs (v4) - inserted as a leading tag
+    // ("[American accent] ...") without ever appearing in the visible text. Empty = none.
+    public string ElevenLabsGeneralAccent { get; set; }
     public double ElevenLabsStability { get; set; }
     public double ElevenLabsSimilarity { get; set; }
     public double ElevenLabsSpeakerBoost { get; set; }
@@ -234,6 +238,7 @@ public class SeVideoTextToSpeech
         AzureRegion = string.Empty;
         ElevenLabsModel = "eleven_v4_turbo";
         ElevenLabsLanguage = string.Empty;
+        ElevenLabsGeneralAccent = string.Empty;
         ElevenLabsStability = 0.5;
         ElevenLabsSimilarity = 0.5;
         ElevenLabsSpeakerBoost = 0;

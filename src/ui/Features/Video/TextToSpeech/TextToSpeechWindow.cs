@@ -496,6 +496,34 @@ public class TextToSpeechWindow : Window
         };
         comboBoxLanguages.SelectionChanged += vm.SelectedLanguageChanged;
 
+        // Hidden general accent (v4 only): free text or pick from the list; the brackets are added
+        // when the line is sent to the API, never shown in the subtitle text.
+        var comboBoxGeneralAccent = new AutoCompleteBox
+        {
+            Width = controlMinWidth,
+            FilterMode = AutoCompleteFilterMode.Contains,
+            MinimumPrefixLength = 0,
+            IsTextCompletionEnabled = false,
+            ItemsSource = vm.GeneralAccentOptions,
+            [!AutoCompleteBox.TextProperty] = new Binding(nameof(vm.GeneralAccent)) { Mode = BindingMode.TwoWay },
+            DataContext = vm,
+        };
+        var panelGeneralAccent = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children =
+            {
+                new Label
+                {
+                    Content = "General accent",
+                    MinWidth = labelMinWidth,
+                },
+                comboBoxGeneralAccent,
+            },
+            [!StackPanel.IsVisibleProperty] = new Binding(nameof(vm.IsGeneralAccentVisible)) { Mode = BindingMode.OneWay },
+        };
+
         var panelApiKey = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -596,11 +624,12 @@ public class TextToSpeechWindow : Window
         grid.Add(labelEngineDescription, 1, 0);
         grid.Add(panelModel, 2, 0);
         grid.Add(panelVoice, 3, 0);
-        grid.Add(panelRegion, 4, 0);
-        grid.Add(panelLanguage, 5, 0);
-        grid.Add(panelApiKey, 6, 0);
-        grid.Add(panelKeyFile, 7, 0);
-        grid.Add(panelInstruction, 8, 0);
+        grid.Add(panelGeneralAccent, 4, 0);
+        grid.Add(panelRegion, 5, 0);
+        grid.Add(panelLanguage, 6, 0);
+        grid.Add(panelApiKey, 7, 0);
+        grid.Add(panelKeyFile, 8, 0);
+        grid.Add(panelInstruction, 9, 0);
 
         // Give the left (Engine/Voice/Model/...) panel a sensible minimum so the window doesn't
         // collapse into a narrow column when the right-side panel happens to be wider than the
