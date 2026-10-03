@@ -5226,6 +5226,12 @@ public partial class TextToSpeechViewModel : ObservableObject
 
         var result = await _windowService.ShowDialogAsync<ReviewSpeechWindow, ReviewSpeechViewModel>(Window!, vm =>
         {
+            // Same peak resolution as the Import path: prefer the on-disk cache, fall back to the
+            // in-memory value, and kick off a background ffmpeg job when both are empty. Passing
+            // the raw _wavePeakData here (often just the empty placeholder) is why the original
+            // audio waveform vanished after a fresh Generate.
+            var peaksForReview = TryLoadWavePeaksFromDisk(_videoFileName) ?? _wavePeakData;
+
             vm.Initialize(
                 previousStepResult,
                 Engines.ToArray(),
@@ -5236,10 +5242,15 @@ public partial class TextToSpeechViewModel : ObservableObject
                 SelectedLanguage,
                 _videoFileName,
                 _waveFolder,
-                _wavePeakData);
+                peaksForReview);
             vm.ActorVoiceMappings.AddRange(_actorVoiceMappings);
             vm.SubtitleFileName = GetLoadedSubtitleFileName();
             vm.ReferenceTextOf = GetSpokenTextInVideo;
+
+            if (peaksForReview == null || peaksForReview.Peaks.Count == 0)
+            {
+                _ = GenerateWavePeaksIfNeededAsync(_videoFileName, vm);
+            }
         });
 
         if (result.OkPressed)
