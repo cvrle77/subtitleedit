@@ -64,6 +64,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // Waveform playhead as a time code, so a spot can be compared with the original video (#15211).
     [ObservableProperty] private string _positionText = FormatPosition(0);
     [ObservableProperty] private bool _isElevenLabsEngineV3Selected;
+
+    // True for the eleven_v3 / eleven_v4 family, which expose only Stability and Similarity:
+    // SpeakerBoost, Speed and Style are ignored by those models (the text-to-dialogue endpoint
+    // has no such fields), so their sliders must be hidden instead of appearing to do nothing.
+    [ObservableProperty] private bool _isElevenLabsV3OrV4Selected;
     // Whether the picked engine has a settings dialog. The knobs in there (emotion, speed,
     // instruction) change how a regenerated line sounds, so they belong next to Regenerate.
     [ObservableProperty] private bool _isEngineSettingsVisible;
@@ -3115,6 +3120,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         var voice = SelectedVoice;
         var model = SelectedModel;
         IsElevenLabsEngineV3Selected = false;
+        IsElevenLabsV3OrV4Selected = false;
         UpdateInstructionVisibility();
         if (engine == null || voice == null || model == null)
         {
@@ -3128,6 +3134,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
             if (engine is ElevenLabs && model is "eleven_v3" or "eleven_v4" or "eleven_v4_turbo")
             {
                 IsElevenLabsEngineV3Selected = true;
+                IsElevenLabsV3OrV4Selected = true;
             }
 
             if (engine.HasLanguageParameter)

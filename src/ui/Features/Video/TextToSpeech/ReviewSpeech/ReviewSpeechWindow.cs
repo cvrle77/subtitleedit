@@ -604,6 +604,17 @@ public class ReviewSpeechWindow : Window
         var labelStyleExaggerationValue = UiUtil.MakeLabel().WithBindText(vm, nameof(vm.StyleExaggeration), new DoubleToTwoDecimalConverter());
         var buttonStyleExaggeration = UiUtil.MakeButton(vm.ShowStyleExaggerationHelpCommand, IconNames.Help, $"{Se.Language.General.StyleExaggeration} - {Se.Language.General.Help}");
 
+        // eleven_v3 / eleven_v4 accept only Stability and Similarity - hide SpeakerBoost, Speed
+        // and Style for them so no slider is shown that the API would silently ignore.
+        foreach (var c in new Control[] { labelSpeakerBoost, sliderSpeakerBoost, labelSpeakerBoostValue, buttonSpeakerBoost, labelSpeed, sliderSpeed, labelSpeedValue, buttonSpeed, labelStyleExaggeration, sliderStyleExaggeration, labelStyleExaggerationValue, buttonStyleExaggeration })
+        {
+            c.Bind(Visual.IsVisibleProperty, new Binding(nameof(vm.IsElevenLabsV3OrV4Selected))
+            {
+                Converter = InverseBooleanConverter.Instance,
+                Mode = BindingMode.OneWay,
+            });
+        }
+
         var grid = new Grid
         {
             RowDefinitions =
