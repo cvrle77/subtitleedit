@@ -58,7 +58,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // are gated on it, and the default false left them dead until the first regenerate ran.
     [ObservableProperty] private bool _isRegenerateEnabled = true;
     [ObservableProperty] private bool _isElevenLabsControlsVisible;
-    [ObservableProperty] private bool _autoContinue;
+    // On by default: after a clip finishes the review plays the next line automatically, so a
+    // full pass can be listened to without clicking each row.
+    [ObservableProperty] private bool _autoContinue = true;
     [ObservableProperty] private bool _isPlayVisible;
     [ObservableProperty] private bool _isStopVisible;
     // Waveform playhead as a time code, so a spot can be compared with the original video (#15211).
@@ -2747,9 +2749,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
     [RelayCommand]
     private async Task Play()
     {
-        // Play from the play-head: the clip under it, or the next one when it is in a gap, so the
-        // clip to the left of the play-head is never replayed by mistake.
-        var line = FindRowToPlayFromPlayhead() ?? SelectedLine;
+        // Play the selected block - the one the user clicked (clicking a block parks the playhead
+        // on its start). Falling back to the play-head only when nothing is selected. Looking up by
+        // play-head instead replayed the previous clip whenever blocks overlap the selection.
+        var line = SelectedLine ?? FindRowToPlayFromPlayhead();
         if (line == null)
         {
             return;
@@ -3081,9 +3084,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return;
         }
 
-        // Same play-head rule as Play: the clip under the cursor, or the next one when it is in a
-        // gap between clips.
-        var line = FindRowToPlayFromPlayhead() ?? SelectedLine;
+        // Same rule as Play: the selected (clicked) block wins, falling back to the play-head only
+        // when nothing is selected.
+        var line = SelectedLine ?? FindRowToPlayFromPlayhead();
         if (line is { IsPlayingEnabled: true } && PlayRowCommand.CanExecute(line))
         {
             PlayRowCommand.Execute(line);
