@@ -2592,12 +2592,16 @@ public partial class ReviewSpeechViewModel : ObservableObject
         _skipAutoContinue = false;
         _startPlayTicks = DateTime.UtcNow.Ticks;
 
+        // Set the playing row BEFORE selecting it: OnSelectedLineChanged now starts playback for a
+        // newly selected row while audio is running, and it checks _playingRow to skip the row we
+        // are already starting - leaving the old order here would make this re-enter PlayRow.
+        line.IsPlaying = true;
+        _playingRow = line;
+
         // Playing a row selects it, so the keyboard (Space to replay, R to regenerate) always
         // targets the line just heard - previously selection stayed on the old row (#12093).
         SelectedLine = line;
 
-        line.IsPlaying = true;
-        _playingRow = line;
         foreach (var l in Lines)
         {
             l.IsPlayingEnabled = false;
@@ -3274,6 +3278,14 @@ public partial class ReviewSpeechViewModel : ObservableObject
         if (!_selectionFromWaveform && _playingRow == null)
         {
             GoToRowStart(value);
+        }
+
+        // While a clip is playing, selecting a DIFFERENT row - from the grid or the waveform -
+        // starts playing that row immediately instead of leaving the old clip running.
+        if (_playingRow != null && !ReferenceEquals(value, _playingRow))
+        {
+            _ = PlayRow(value);
+            return;
         }
 
         // If another apply is in flight, queue this selection — we'll re-apply at the end of the
