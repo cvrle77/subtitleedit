@@ -663,6 +663,7 @@ public partial class TextToSpeechViewModel : ObservableObject
         IsGeneralAccentVisible = SelectedEngine is ElevenLabs
             && value is "eleven_v4" or "eleven_v4_turbo";
 
+
         // OpenAI (tts-1 vs gpt-4o-mini-tts) and every OpenRouter model have their own voice
         // list. GetVoices reads the saved model, so persist it before reloading. The equality
         // check skips the engine-switch restore, which selects the saved model itself.
@@ -696,6 +697,15 @@ public partial class TextToSpeechViewModel : ObservableObject
                 }
             });
         }
+    }
+
+    // Persist the general accent as soon as it is typed/chosen: the review window and the TTS
+    // engine read it straight from settings, and SaveSettings() only runs on OK/close - without
+    // this an accent entered before opening Review was never written, so regenerations saw an
+    // empty accent.
+    partial void OnGeneralAccentChanged(string? value)
+    {
+        Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent = value ?? string.Empty;
     }
 
     // omnivoice-tts applies voice-design keywords only without a reference WAV, so the picker
