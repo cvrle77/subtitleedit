@@ -338,7 +338,10 @@ public class TtsDownloadService : ITtsDownloadService
         IProgress<float>? progress,
         CancellationToken cancellationToken)
     {
-        if (model == "eleven_v3")
+        // Eleven v3 and the Eleven v4 family are only available through the text-to-dialogue
+        // endpoint (they are not served by /v1/text-to-speech). The request body below is the
+        // same shape for all of them.
+        if (model is "eleven_v3" or "eleven_v4" or "eleven_v4_turbo")
         {
             return await DownloadElevenLabsVoiceSpeak3(inputText, voice, model, apiKey, languageCode, stream, progress, cancellationToken);
         }
@@ -512,10 +515,13 @@ public class TtsDownloadService : ITtsDownloadService
         var languageFragment = string.IsNullOrEmpty(languageCode)
             ? string.Empty
             : ", \"language_code\": \"" + languageCode + "\"";
+        // The dialogue endpoint defaults to eleven_v3, so model_id must be sent explicitly to
+        // actually select the Eleven v4 / v4 Turbo model the caller asked for.
         var data = "{ \"inputs\": [{ " +
                    "\"text\": \"" + Json.EncodeJsonText(text) + "\", " +
                    "\"voice_id\": \"" + voice.VoiceId + "\"" +
                    " }]" +
+                   ", \"model_id\": \"" + model + "\"" +
                    languageFragment +
                    ", \"settings\": { \"stability\": " + stability + " } }";
 
