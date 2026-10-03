@@ -1667,7 +1667,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 Instruction = line.StepResult.Instruction,
                 VoiceFileName = ExportVoiceReference(line.StepResult.Voice, referenceFolder, exportedReferences),
                 SpeedFactor = line.StepResult.SpeedFactor,
-                Text = line.Text,
+                // Text is the clean subtitle form; TextWithTags keeps the audio-tag/emphasis
+                // markup so a re-import restores exactly what was sent to the engine.
+                Text = TtsTextCleaner.Clean(line.Text),
+                TextWithTags = line.Text,
                 Include = line.Include,
             });
         }
