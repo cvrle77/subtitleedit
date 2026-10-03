@@ -1677,7 +1677,19 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         // Export json
         var json = JsonSerializer.Serialize(exportFormat, new JsonSerializerOptions { WriteIndented = true });
-        await WriteJsonWithRetryAsync(jsonFileName, json);
+        var writeError = await WriteJsonWithRetryAsync(jsonFileName, json);
+        if (writeError != null)
+        {
+            await MessageBox.Show(
+                Window,
+                Se.Language.General.Error,
+                $"Could not write \"{jsonFileName}\"." + Environment.NewLine +
+                "Another program (Explorer preview, antivirus, a file manager) is holding the file." +
+                Environment.NewLine + Environment.NewLine + writeError,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
 
         if (missingAudioCount > 0)
         {
@@ -1693,16 +1705,17 @@ public partial class ReviewSpeechViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Writes <paramref name="json"/> to <paramref name="fileName"/>, retrying briefly while the
-    /// file is transiently locked (Explorer preview, antivirus, indexer). Opening with
-    /// FileShare.ReadWrite lets us overwrite a file another process has open for reading, which
-    /// plain File.WriteAllTextAsync / File.Delete could not. The last attempt is allowed to throw
-    /// so a genuinely unwritable file still surfaces an error.
+    /// Writes <paramref name="json"/> to <paramref name="fileName"/>, retrying while the file is
+    /// transiently locked (Explorer preview, antivirus, a file manager). First tries a direct
+    /// overwrite with FileShare.ReadWrite; if the target is held exclusively it falls back to
+    /// writing a sibling temp file and swapping it in with File.Replace/Move. Returns an error
+    /// message on failure instead of throwing, so a locked file cannot crash the UI thread.
     /// </summary>
-    private static async Task WriteJsonWithRetryAsync(string fileName, string json)
+    private static async Task<string?> WriteJsonWithRetryAsync(string fileName, string json)
     {
-        const int attempts = 5;
-        for (var attempt = 1; ; attempt++)
+        const int attempts = 6;
+        string? lastError = null;
+        for (var attempt = 1; attempt <= attempts; attempt++)
         {
             try
             {
@@ -1710,12 +1723,42 @@ public partial class ReviewSpeechViewModel : ObservableObject
                     fileName, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
                 await using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false));
                 await writer.WriteAsync(json);
-                return;
+                return null;
             }
-            catch (IOException) when (attempt < attempts)
+            catch (IOException ex)
             {
+                lastError = ex.Message;
                 await Task.Delay(150 * attempt);
             }
+            catch (UnauthorizedAccessException ex)
+            {
+                lastError = ex.Message;
+                await Task.Delay(150 * attempt);
+            }
+        }
+
+        // Direct overwrite kept failing (the file is held exclusively). Write a sibling temp file
+        // and swap it in - File.Replace/Move often succeeds where opening the target did not.
+        var dir = Path.GetDirectoryName(fileName) ?? ".";
+        var temp = Path.Combine(dir, "SubtitleEditTts." + Guid.NewGuid().ToString("N") + ".tmp");
+        try
+        {
+            await File.WriteAllTextAsync(temp, json, new System.Text.UTF8Encoding(false));
+            if (File.Exists(fileName))
+            {
+                File.Replace(temp, fileName, null, ignoreMetadataErrors: true);
+            }
+            else
+            {
+                File.Move(temp, fileName);
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(temp)) { File.Delete(temp); } } catch { /* best effort */ }
+            return lastError ?? ex.Message;
         }
     }
 
