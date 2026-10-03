@@ -849,6 +849,59 @@ public partial class ReviewSpeechViewModel : ObservableObject
         return peaks;
     }
 
+    // Aligns a cue block with the length of its generated clip.
+    //
+    //   clip longer than the block (diff < 0)      -> extend the block to cover the whole clip
+    //   block much longer than the clip (diff > 1)  -> trim so 0.5 s remains after the clip
+    //   block a little longer (0 < diff <= 1 s)     -> keep exactly the diff (0.3 -> 0.3)
+    //
+    // Makes the block boundaries follow the actual audio instead of the original subtitle timing.
+    private void AlignAllBlocksToAudio()
+    {
+        foreach (var row in Lines)
+        {
+            var wp = row.WaveformParagraph;
+            if (wp == null)
+            {
+                continue;
+            }
+
+            var seconds = GetGeneratedAudioLengthSeconds(row);
+            if (seconds <= 0)
+            {
+                continue;
+            }
+
+            var startSeconds = wp.StartTime.TotalSeconds;
+            var currentEnd = wp.EndTime.TotalSeconds;
+            var clipEnd = startSeconds + seconds;
+
+            // diff > 0: block is longer than the clip; diff < 0: the clip is longer.
+            var diff = currentEnd - clipEnd;
+            double targetEnd;
+            if (diff < 0)
+            {
+                targetEnd = clipEnd; // extend to cover the whole clip
+            }
+            else if (diff > 1.0)
+            {
+                targetEnd = clipEnd + 0.5; // too much trailing silence -> leave 0.5 s
+            }
+            else
+            {
+                targetEnd = currentEnd; // 0.1 / 0.3 ... keep as-is
+            }
+
+            if (Math.Abs(targetEnd - currentEnd) < 0.001)
+            {
+                continue;
+            }
+
+            wp.EndTime = TimeSpan.FromSeconds(targetEnd);
+            wp.UpdateDuration();
+        }
+    }
+
     // Rebuilds the generated-speech track from the rows' clips, on a worker thread (reading every
     // clip can take a moment on a long session). Called on load, after a regenerate, and when cue
     // times change; the in-memory clip-peak cache keeps the repeated calls cheap.
@@ -858,6 +911,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
         {
             return;
         }
+
+        // Keep each cue block matching its generated audio before drawing the track: trim a block
+        // that is far longer than its clip, extend one the clip overruns (see AlignAllBlocksToAudio).
+        AlignAllBlocksToAudio();
 
         // Snapshot on the UI thread - the background build must not walk the observable rows.
         var placements = new List<(double StartSeconds, string FileName)>();
@@ -2597,6 +2654,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         // Push any edits the user made to row.Text back into the step results so
         // the caller sees them, then publish the included rows as StepResults.
+        // StepResults keep the original text (with audio tags / CAPS emphasis) because they feed
+        // the TTS merge - that is where the emotion lives.
         foreach (var row in Lines)
         {
             row.StepResult.Text = row.Text;
@@ -2604,11 +2663,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         StepResults = Lines.Where(p => p.Include).Select(p => p.StepResult).ToArray();
 
-        // All rows, not just included ones - excluding a row only skips its audio in the merge,
-        // while a text edit was still made deliberately and should reach the main subtitle.
+        // The copy that reaches the main subtitle is cleaned of TTS-only markup (audio tags,
+        // (,,,) pauses, CAPS emphasis) while keeping every real edit the user made.
         TextChanges = Lines
             .Where(row => row.Text != row.OriginalText)
-            .Select(row => new ReviewTextChange(row.OriginalStartMs, row.OriginalEndMs, row.Text))
+            .Select(row => new ReviewTextChange(
+                row.OriginalStartMs, row.OriginalEndMs, TtsTextCleaner.Clean(row.Text)))
             .ToList();
 
         Se.SaveSettings();

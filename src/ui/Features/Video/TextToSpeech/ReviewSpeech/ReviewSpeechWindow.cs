@@ -852,7 +852,15 @@ public class ReviewSpeechWindow : Window
         av.OnPrimarySingleClicked += (_, e) =>
         {
             vm.SelectFromWaveform(e.Paragraph);
-            vm.OnWaveformPositionClicked(e.Seconds);
+            // A click on a block parks the playhead on that block's start (one click selects AND
+            // sets the position); a click on empty waveform parks it where the user clicked.
+            // An empty click yields a default paragraph (0..0), so the range test fails and the
+            // raw click position is used.
+            var clickSeconds = e.Paragraph.StartTime.TotalSeconds <= e.Seconds &&
+                               e.Seconds <= e.Paragraph.EndTime.TotalSeconds
+                ? e.Paragraph.StartTime.TotalSeconds
+                : e.Seconds;
+            vm.OnWaveformPositionClicked(clickSeconds);
         };
         av.OnDragStarted += (_, e) => vm.SelectFromWaveform(e.Paragraph);
         av.OnSelectRequested += (_, e) => vm.SelectFromWaveform(e.Paragraph);
