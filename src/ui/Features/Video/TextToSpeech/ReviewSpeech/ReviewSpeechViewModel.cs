@@ -1210,9 +1210,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
     }
 
-    // Inserts an audio tag at the START of the selected line, regardless of where the caret is,
-    // with a single space after it. Clicking the palette buttons builds the leading tag sequence
-    // ("[happy] ", then "[excited] [happy] ") so the whole line keeps one delivery prefix.
+    // Audio-tag palette: every click works on the tag group at the START of the line.
+    //   - no group yet         -> insert "[tag] "
+    //   - group without the tag -> add it: "[a]" + [b] -> "[a b] "
+    //   - group already has it  -> remove it: "[a b]" + [b] -> "[a] "
+    //   - removing the last tag -> drop the whole group
+    // A single space is kept after the group; the rest of the line is untouched.
     public void InsertTagAtCaret(string tag)
     {
         var row = SelectedLine;
@@ -1221,15 +1224,72 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return;
         }
 
-        var insert = tag.Trim() + " ";
-        row.Text = insert + (row.Text ?? string.Empty);
+        var bare = tag.Trim().TrimStart('[').TrimEnd(']').Trim();
+        if (bare.Length == 0)
+        {
+            return;
+        }
+
+        var text = row.Text ?? string.Empty;
+        var (groupStart, groupEnd, groupTags) = FindLeadingTagGroup(text);
+
+        string newText;
+        if (groupStart == 0)
+        {
+            if (groupTags.RemoveAll(t => string.Equals(t, bare, StringComparison.OrdinalIgnoreCase)) > 0)
+            {
+                newText = groupTags.Count == 0
+                    ? text.Substring(groupEnd).TrimStart()
+                    : "[" + string.Join(" ", groupTags) + "] " + text.Substring(groupEnd).TrimStart();
+            }
+            else
+            {
+                groupTags.Add(bare);
+                newText = "[" + string.Join(" ", groupTags) + "] " + text.Substring(groupEnd).TrimStart();
+            }
+        }
+        else
+        {
+            newText = "[" + bare + "] " + text.TrimStart();
+        }
+
+        row.Text = newText;
 
         if (EditTextBox != null)
         {
-            EditTextBox.Text = row.Text;
-            EditTextBox.CaretIndex = insert.Length;
+            EditTextBox.Text = newText;
+            EditTextBox.CaretIndex = 0;
             EditTextBox.Focus();
         }
+    }
+
+    // Reads the audio-tag group at the very start of the line ("[a b] rest..."), if any.
+    // Returns (0, endIndex, tags); (-1, -1, empty) when the line does not start with a group.
+    private static (int Start, int End, List<string> Tags) FindLeadingTagGroup(string text)
+    {
+        var empty = new List<string>();
+        if (text.Length == 0 || text[0] != '[')
+        {
+            return (-1, -1, empty);
+        }
+
+        var close = text.IndexOf(']');
+        if (close < 0)
+        {
+            return (-1, -1, empty);
+        }
+
+        var inner = text.Substring(1, close - 1).Trim();
+        var tags = inner.Length == 0
+            ? new List<string>()
+            : inner.Split(' ', StringSplitOptions.RemoveEmptyEntries).ToList();
+        var end = close + 1;
+        if (end < text.Length && text[end] == ' ')
+        {
+            end++;
+        }
+
+        return (0, end, tags);
     }
 
     // Keys that act on the waveform when it has focus (the grid handles its own Up/Down):
