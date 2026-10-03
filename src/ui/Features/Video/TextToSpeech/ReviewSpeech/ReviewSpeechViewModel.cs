@@ -1381,20 +1381,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 return;
             }
 
-            try
-            {
-                File.Delete(jsonFileName);
-            }
-            catch (Exception e)
-            {
-                await MessageBox.Show(
-                    Window,
-                    Se.Language.General.Error,
-                    $"Could not overwrite the file \"{jsonFileName}" + Environment.NewLine + e.Message,
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-                return;
-            }
+            // Do not File.Delete here: the JSON is often still held by Explorer's preview,
+            // an indexer or the previous import, and a locked file made Delete throw
+            // "used by another process", aborting the whole export. WriteAllTextAsync below
+            // truncates and rewrites the file in place instead, which works on a locked file.
         }
 
         // The audio files go into a "wav" subfolder so they don't flood the folder the user
@@ -1540,7 +1530,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         // Export json
         var json = JsonSerializer.Serialize(exportFormat, new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(jsonFileName, json);
+        await WriteJsonWithRetryAsync(jsonFileName, json);
 
         if (missingAudioCount > 0)
         {
@@ -1553,6 +1543,33 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
 
         await _folderHelper.OpenFolder(Window!, folder);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="json"/> to <paramref name="fileName"/>, retrying briefly while the
+    /// file is transiently locked (Explorer preview, antivirus, indexer). Opening with
+    /// FileShare.ReadWrite lets us overwrite a file another process has open for reading, which
+    /// plain File.WriteAllTextAsync / File.Delete could not. The last attempt is allowed to throw
+    /// so a genuinely unwritable file still surfaces an error.
+    /// </summary>
+    private static async Task WriteJsonWithRetryAsync(string fileName, string json)
+    {
+        const int attempts = 5;
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await using var stream = new FileStream(
+                    fileName, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+                await using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false));
+                await writer.WriteAsync(json);
+                return;
+            }
+            catch (IOException) when (attempt < attempts)
+            {
+                await Task.Delay(150 * attempt);
+            }
+        }
     }
 
     /// <summary>
@@ -3106,7 +3123,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         Dispatcher.UIThread.PostSafe(async () =>
         {
-            // v4 / v4 Turbo honor the same audio tags as v3 ([whispers], [laughs], [pause]...)
+            // Shown for the models that use audio tags instead of SSML (v3 and the v4 family),
+            // so the help/audio-tags link appears for them too.
             if (engine is ElevenLabs && model is "eleven_v3" or "eleven_v4" or "eleven_v4_turbo")
             {
                 IsElevenLabsEngineV3Selected = true;
