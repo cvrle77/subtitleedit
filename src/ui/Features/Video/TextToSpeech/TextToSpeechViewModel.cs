@@ -2747,7 +2747,12 @@ public partial class TextToSpeechViewModel : ObservableObject
         for (var index = 0; index < importExport.Items.Count; index++)
         {
             var item = importExport.Items[index];
-            var paragraph = new Paragraph(item.Text, item.StartMs, item.EndMs) { Number = index + 1 };
+            // Restore the tagged text when the export carries it (TextWithTags), so the audio-tag
+            // / emphasis markup survives a round-trip through SubtitleEditTts.json and shows up
+            // again in the review window. TextChanges is cleaned for the SRT on OK, so the
+            // subtitle still gets the plain form. Legacy exports fall back to the clean Text.
+            var reviewText = string.IsNullOrEmpty(item.TextWithTags) ? item.Text : item.TextWithTags;
+            var paragraph = new Paragraph(reviewText, item.StartMs, item.EndMs) { Number = index + 1 };
             Voice? voice = null;
             if (!string.IsNullOrEmpty(item.EngineName)
                 && voicesByEngine.TryGetValue(item.EngineName, out var perEngineVoices))
@@ -2765,7 +2770,7 @@ public partial class TextToSpeechViewModel : ObservableObject
             voice ??= Voices.FirstOrDefault(v => v.Name == item.VoiceName);
             stepResults.Add(new TtsStepResult
             {
-                Text = item.Text,
+                Text = reviewText,
                 CurrentFileName = ResolveImportedAudioFileName(item.AudioFileName, jsonFolder),
                 Paragraph = paragraph,
                 SpeedFactor = item.SpeedFactor <= 0 ? 1.0f : item.SpeedFactor,
