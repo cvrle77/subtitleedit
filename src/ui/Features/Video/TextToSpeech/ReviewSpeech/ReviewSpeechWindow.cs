@@ -405,6 +405,7 @@ public class ReviewSpeechWindow : Window
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) }, // tag palette
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }, // filler
             },
             ColumnDefinitions =
@@ -427,9 +428,75 @@ public class ReviewSpeechWindow : Window
         grid.Add(panelLanguage, 4, 0);
         grid.Add(elevenLabsControls, 5, 0);
         grid.Add(panelInstruction, 6, 0);
-        // 7 is filler
+        grid.Add(MakeTagPanel(vm), 7, 0);
+        // 8 is filler
 
         return UiUtil.MakeBorderForControl(grid);
+    }
+
+    // A click-to-insert palette of the audio tags that make sense for a recipe voiceover. Each
+    // button drops its tag at the caret of the selected line's text box.
+    private static Control MakeTagPanel(ReviewSpeechViewModel vm)
+    {
+        var rows = new (string Header, string[] Tags)[]
+        {
+            ("Tone", new[] { "[happy]", "[excited]", "[thoughtful]", "[serious]", "[calm]" }),
+            ("Delivery", new[] { "[warmly]", "[gently]", "[reassuring]", "[encouraging]", "[firmly]" }),
+            ("Fun", new[] { "[chuckles]", "[laughs]", "[playful]", "[amused]" }),
+            ("Pauses", new[] { "[short pause]", "[pause]", "[long pause]", "[sighs]" }),
+            ("Ending", new[] { "[satisfied]", "[pleased]", "[delighted]", "[proudly]" }),
+            ("Emphasis", new[] { "(A)" }),
+        };
+
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Spacing = 3,
+            Margin = new Thickness(0, 6, 0, 0),
+        };
+
+        foreach (var (header, tags) in rows)
+        {
+            var line = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 4,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = header,
+                        Width = 70,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        Opacity = 0.75,
+                    },
+                },
+            };
+
+            foreach (var tag in tags)
+            {
+                if (tag == "(A)")
+                {
+                    // Convenience: wrap the current selection in a CAPS-emphasis marker is out of
+                    // scope here; instead this inserts a pair of parentheses the user can type into.
+                    continue;
+                }
+
+                var button = new Button
+                {
+                    Content = tag,
+                    Padding = new Thickness(6, 1, 6, 1),
+                    FontSize = 11,
+                };
+                button.Click += (_, _) => vm.InsertTagAtCaret(tag);
+                ToolTip.SetTip(button, $"Insert {tag} at the caret");
+                line.Children.Add(button);
+            }
+
+            panel.Children.Add(line);
+        }
+
+        return panel;
     }
 
     // Voice-design controls shared with the main TTS window: free-text instruction (Qwen3
