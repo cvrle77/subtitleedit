@@ -2675,8 +2675,12 @@ public partial class TextToSpeechViewModel : ObservableObject
             return;
         }
 
-        await using var stream = File.OpenRead(fileName);
-        var importExport = await JsonSerializer.DeserializeAsync<TtsImportExport>(stream, cancellationToken: _cancellationToken);
+        // Read the file fully and close it before opening the review window: the window is shown
+        // inside this method and stays open until the user closes it, so an open read stream here
+        // kept SubtitleEditTts.json locked for the whole review session - exporting to that same
+        // folder then failed with "used by another process" (the lock was SE itself).
+        var json = await File.ReadAllTextAsync(fileName, _cancellationToken);
+        var importExport = JsonSerializer.Deserialize<TtsImportExport>(json);
         if (importExport == null)
         {
             var answer = await MessageBox.Show(
