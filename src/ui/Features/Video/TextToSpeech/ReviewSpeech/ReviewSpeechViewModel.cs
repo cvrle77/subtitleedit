@@ -466,6 +466,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
         // property once ffmpeg finishes, at which point the binding refreshes the visualizer.
         WavePeakData = wavePeakData;
 
+        // One-time alignment of every block with its generated clip length, before the track is
+        // drawn. Runs only here (open) and after a regenerate - never inside a rebuild - so a
+        // manual resize the user makes later is preserved.
+        AlignAllBlocksToAudio();
+
         // Build the generated-speech track for the second waveform (background - reading every
         // clip can take a moment on a long session).
         ScheduleTtsWaveformRebuild();
@@ -866,46 +871,52 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         foreach (var row in Lines)
         {
-            var wp = row.WaveformParagraph;
-            if (wp == null)
-            {
-                continue;
-            }
-
-            var seconds = GetGeneratedAudioLengthSeconds(row);
-            if (seconds <= 0)
-            {
-                continue;
-            }
-
-            var startSeconds = wp.StartTime.TotalSeconds;
-            var currentEnd = wp.EndTime.TotalSeconds;
-            var clipEnd = startSeconds + seconds;
-
-            // diff > 0: block is longer than the clip; diff < 0: the clip is longer.
-            var diff = currentEnd - clipEnd;
-            double targetEnd;
-            if (diff < 0)
-            {
-                targetEnd = clipEnd; // extend to cover the whole clip
-            }
-            else if (diff > 1.0)
-            {
-                targetEnd = clipEnd + 0.5; // too much trailing silence -> leave 0.5 s
-            }
-            else
-            {
-                targetEnd = currentEnd; // 0.1 / 0.3 ... keep as-is
-            }
-
-            if (Math.Abs(targetEnd - currentEnd) < 0.001)
-            {
-                continue;
-            }
-
-            wp.EndTime = TimeSpan.FromSeconds(targetEnd);
-            wp.UpdateDuration();
+            AlignBlockToAudio(row);
         }
+    }
+
+    // The per-row version, used after a regenerate so only the changed line moves.
+    private void AlignBlockToAudio(ReviewRow row)
+    {
+        var wp = row.WaveformParagraph;
+        if (wp == null)
+        {
+            return;
+        }
+
+        var seconds = GetGeneratedAudioLengthSeconds(row);
+        if (seconds <= 0)
+        {
+            return;
+        }
+
+        var startSeconds = wp.StartTime.TotalSeconds;
+        var currentEnd = wp.EndTime.TotalSeconds;
+        var clipEnd = startSeconds + seconds;
+
+        // diff > 0: block is longer than the clip; diff < 0: the clip is longer.
+        var diff = currentEnd - clipEnd;
+        double targetEnd;
+        if (diff < 0)
+        {
+            targetEnd = clipEnd; // extend to cover the whole clip
+        }
+        else if (diff > 1.0)
+        {
+            targetEnd = clipEnd + 0.5; // too much trailing silence -> leave 0.5 s
+        }
+        else
+        {
+            targetEnd = currentEnd; // 0.1 / 0.3 ... keep as-is
+        }
+
+        if (Math.Abs(targetEnd - currentEnd) < 0.001)
+        {
+            return;
+        }
+
+        wp.EndTime = TimeSpan.FromSeconds(targetEnd);
+        wp.UpdateDuration();
     }
 
     // Rebuilds the generated-speech track from the rows' clips, on a worker thread (reading every
@@ -918,9 +929,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return;
         }
 
-        // Keep each cue block matching its generated audio before drawing the track: trim a block
-        // that is far longer than its clip, extend one the clip overruns (see AlignAllBlocksToAudio).
-        AlignAllBlocksToAudio();
+        // NOTE: block alignment is NOT done here - it runs once after generation/regeneration
+        // (AlignAllBlocksToAudio) so a manual resize the user makes afterwards is never undone by
+        // a later rebuild.
 
         // Snapshot on the UI thread - the background build must not walk the observable rows.
         var placements = new List<(double StartSeconds, string FileName)>();
@@ -2364,6 +2375,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
             line.AddHistory(voice, line.StepResult.CurrentFileName, engine.Name, model ?? string.Empty, instruction ?? string.Empty);
 
+            // A new clip: align this line's block to it once, then refresh the waveform. Aligning
+            // only the regenerated row leaves any manual timing on the other rows untouched.
+            AlignBlockToAudio(line);
+
             // The row's clip changed - refresh the generated-speech waveform.
             ScheduleTtsWaveformRebuild();
             return true;
@@ -2420,7 +2435,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     // One entry per reversible structural edit (currently: split). Holds the row list as it was,
     // so Undo can put it back exactly - text, times, clips, history and Include flags included.
-    private sealed record ReviewUndoEntry(string Description, List<ReviewRow> Rows, ReviewRow? Selected);
+    private sealed record ReviewUndoEntry(string Description, List<ReviewRow> Rows, int SelectedIndex);
 
     private readonly Stack<ReviewUndoEntry> _undoStack = new();
 
@@ -2428,9 +2443,16 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private void PushUndoSnapshot(string description)
     {
-        // The rows are the same instances that survive the edit (a split only adds/removes rows),
-        // so a shallow copy of the list plus the current selection is a complete before-image.
-        _undoStack.Push(new ReviewUndoEntry(description, new List<ReviewRow>(Lines), SelectedLine));
+        // Deep copy of every row (see ReviewRow.Clone): the edit that follows (text, regenerate,
+        // split, drag, include toggle, delete) mutates the live rows in place, so a snapshot of the
+        // same instances would not capture the "before" state.
+        var clones = new List<ReviewRow>(Lines.Count);
+        foreach (var row in Lines)
+        {
+            clones.Add(row.Clone());
+        }
+
+        _undoStack.Push(new ReviewUndoEntry(description, clones, Lines.IndexOf(SelectedLine)));
         CanUndo = _undoStack.Count > 0;
     }
 
@@ -2459,7 +2481,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
         RenumberRows();
         RebuildWaveformParagraphs();
 
-        SelectedLine = entry.Selected != null && Lines.Contains(entry.Selected) ? entry.Selected : Lines.FirstOrDefault();
+        var restored = entry.SelectedIndex >= 0 && entry.SelectedIndex < Lines.Count ? Lines[entry.SelectedIndex] : Lines.FirstOrDefault();
+        SelectedLine = restored;
         if (SelectedLine != null)
         {
             LineGrid.SelectedItem = SelectedLine;
