@@ -1,0 +1,20 @@
+{
+  "MD013": false,
+  "MD033": false,
+  "MD024": { "siblings_only": true },
+  "MD025": false,
+  "MD026": false,
+  "MD029": false,
+  "MD004": { "style": "dash" },
+  "MD009": true,
+  "MD010": true,
+  "MD022": true,
+  "MD032": true,
+  "MD036": false,
+  "MD034": false,
+  "MD040": false,
+  "MD038": false,
+  "MD060": false,
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules/**", ".git/**"]
+}

@@ -1,0 +1,66 @@
+{
+  "name": "@ctxr/skill-frontend-excellence",
+  "version": "0.3.1",
+  "description": "Agent Skills playbook (Claude Code, Codex CLI): framework-agnostic guide for shipping ultra-fast, accessible, search-friendly, visually distinctive web interfaces. Lighthouse mastery, UI/UX, design aesthetics, performance, accessibility, SEO, motion, forms, layout, data-viz, multi-page audit workflow, component standardization, geometry sweep.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ctxr-dev/skill-frontend-excellence.git"
+  },
+  "homepage": "https://github.com/ctxr-dev/skill-frontend-excellence#readme",
+  "bugs": {
+    "url": "https://github.com/ctxr-dev/skill-frontend-excellence/issues"
+  },
+  "keywords": [
+    "agent-skills",
+    "agents-md",
+    "codex",
+    "claude-code",
+    "skill",
+    "frontend",
+    "lighthouse",
+    "accessibility",
+    "seo",
+    "ui-ux",
+    "design",
+    "performance",
+    "core-web-vitals",
+    "ai",
+    "agents",
+    "ctxr"
+  ],
+  "files": [
+    "SKILL.md",
+    "references/",
+    "scripts/check-no-dashes.mjs",
+    "scripts/validate-structure.mjs",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "ctxr": {
+    "type": "skill",
+    "target": "folder"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "lint": "markdownlint-cli2 \"**/*.md\" \"#node_modules\"",
+    "lint:fix": "markdownlint-cli2 --fix \"**/*.md\" \"#node_modules\"",
+    "validate:no-dashes": "node scripts/check-no-dashes.mjs",
+    "validate:structure": "node scripts/validate-structure.mjs",
+    "validate:structure:fix": "node scripts/validate-structure.mjs --fix",
+    "validate": "npm run validate:no-dashes && npm run validate:structure && npm run lint",
+    "prepare": "husky",
+    "prepublishOnly": "npm run validate"
+  },
+  "devDependencies": {
+    "husky": "^9.1.0",
+    "markdownlint-cli2": "^0.14.0"
+  }
+}
