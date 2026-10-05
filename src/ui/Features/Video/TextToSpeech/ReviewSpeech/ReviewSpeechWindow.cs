@@ -6,6 +6,7 @@ using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Styling;
 using Nikse.SubtitleEdit.Controls.AudioVisualizerControl;
 using Nikse.SubtitleEdit.Features.Main.Layout;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.ElevenLabsSettings;
@@ -13,6 +14,8 @@ using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Engines;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.ValueConverters;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech.ReviewSpeech;
@@ -20,6 +23,28 @@ namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech.ReviewSpeech;
 public class ReviewSpeechWindow : Window
 {
     private readonly ReviewSpeechViewModel _vm;
+
+    // One entry per palette button: tracks whether its tag is currently "on" so the button can be
+    // tinted. Kept here (not in the VM) because the buttons are view-only.
+    private readonly List<TagChip> _tagChips = new();
+
+    // The three resizable columns of the three-column layout, kept so their splitter positions can
+    // be saved on close and restored on open.
+    private ColumnDefinition? _colTag;
+    private ColumnDefinition? _colGrid;
+    private ColumnDefinition? _colControls;
+
+    private sealed class TagChip
+    {
+        public string Tag { get; }
+        public Button? Button { get; set; }
+        public bool IsActive { get; set; }
+
+        public TagChip(string tag)
+        {
+            Tag = tag.Trim().TrimStart('[').TrimEnd(']').Trim();
+        }
+    }
 
     public ReviewSpeechWindow(ReviewSpeechViewModel vm)
     {
@@ -35,7 +60,7 @@ public class ReviewSpeechWindow : Window
         vm.Window = this;
         DataContext = vm;
 
-        var controls = MakeControls(vm);
+        var controls = MakeControls(vm, includeTags: !Se.Settings.Video.TextToSpeech.ThreeColumnReview);
         var lineGridView = MakeLineGrid(vm);
         var waveform = MakeWaveform(vm);
 
@@ -47,6 +72,20 @@ public class ReviewSpeechWindow : Window
         var buttonOk = UiUtil.MakeButtonOk(vm.OkCommand).WithBindEnabled(nameof(vm.IsRegenerateEnabled));
         var buttonCancel = UiUtil.MakeButtonCancel(vm.CancelCommand).WithBindEnabled(nameof(vm.IsRegenerateEnabled));
         var panelButtons = UiUtil.MakeButtonBar(buttonUndo, buttonExport, buttonOk, buttonCancel);
+
+        var threeColumn = Se.Settings.Video.TextToSpeech.ThreeColumnReview;
+
+        // Active tag chips get a pastel red background with dark text so the label stays readable
+        // on both light and dark themes; inactive ones keep the normal button look.
+        Styles.Add(new Style(x => x.OfType<Button>().Class("tag-chip").Class("active"))
+        {
+            Setters =
+            {
+                new Setter(Button.BackgroundProperty, new SolidColorBrush(Color.FromRgb(0xF5, 0xB7, 0xB1))),
+                new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.FromRgb(0x4A, 0x15, 0x12))),
+                new Setter(Button.FontWeightProperty, FontWeight.SemiBold),
+            },
+        });
 
         var grid = new Grid
         {
@@ -60,6 +99,7 @@ public class ReviewSpeechWindow : Window
             {
                 new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
                 new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
             },
             Margin = UiUtil.MakeWindowMargin(),
             ColumnSpacing = 10,
@@ -82,13 +122,61 @@ public class ReviewSpeechWindow : Window
         };
         ToolTip.SetTip(checkBoxSkipGeneralAccent, "Regenerate without the configured general accent for this line");
 
-        grid.Add(controls, 0, 0);
-        grid.Add(lineGridView, 0, 1);
-        grid.Add(waveform, 1, 0, 1, 2);
-        grid.Add(panelButtons, 2, 0, 1, 2);
-        grid.Add(checkBoxAutoContinue, 2, 0);
-        grid.Add(checkBoxSkipGeneralAccent, 2, 0);
-        grid.Add(MakePositionLabel(vm), 2, 0, 1, 2);
+        if (threeColumn)
+        {
+            // Three equal, resizable columns: tags | line grid | engine/voice controls. The two
+            // splitters redistribute the star widths, and every column keeps a MinWidth so nothing
+            // collapses or clips out of the window.
+            grid.ColumnDefinitions.Clear();
+            var saved = Se.Settings.Video.TextToSpeech;
+            var hasSavedWidths = saved.ThreeColumnTagWidth > 0 && saved.ThreeColumnGridWidth > 0 && saved.ThreeColumnControlsWidth > 0;
+            _colTag = new ColumnDefinition { Width = hasSavedWidths ? new GridLength(saved.ThreeColumnTagWidth, GridUnitType.Star) : new GridLength(22, GridUnitType.Star), MinWidth = 150 };
+            _colGrid = new ColumnDefinition { Width = hasSavedWidths ? new GridLength(saved.ThreeColumnGridWidth, GridUnitType.Star) : new GridLength(40, GridUnitType.Star), MinWidth = 200 };
+            _colControls = new ColumnDefinition { Width = hasSavedWidths ? new GridLength(saved.ThreeColumnControlsWidth, GridUnitType.Star) : new GridLength(38, GridUnitType.Star), MinWidth = 380 };
+            grid.ColumnDefinitions.Add(_colTag);
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });
+            grid.ColumnDefinitions.Add(_colGrid);
+            grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(6) });
+            grid.ColumnDefinitions.Add(_colControls);
+
+            grid.ColumnSpacing = 0;
+
+            var splitterLeft = new GridSplitter { Width = 6, Background = Brushes.Transparent, ResizeDirection = GridResizeDirection.Columns, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
+            var splitterRight = new GridSplitter { Width = 6, Background = Brushes.Transparent, ResizeDirection = GridResizeDirection.Columns, ResizeBehavior = GridResizeBehavior.PreviousAndNext };
+            splitterLeft.DragCompleted += (_, _) => SaveColumnWidths();
+            splitterRight.DragCompleted += (_, _) => SaveColumnWidths();
+
+            grid.Add(MakeTagColumn(vm), 0, 0);
+            vm.ActiveTags.CollectionChanged += (_, _) => RefreshTagChips();
+            RefreshTagChips();
+            grid.Add(splitterLeft, 0, 1);
+            grid.Add(lineGridView, 0, 2);
+            grid.Add(splitterRight, 0, 3);
+            grid.Add(controls, 0, 4);
+
+            grid.Add(waveform, 1, 0, 1, 5);
+            grid.Add(panelButtons, 2, 4);
+
+            // Options row, left of the button bar (row 2 spans the first four columns).
+            var optionsPanel = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 16,
+                VerticalAlignment = VerticalAlignment.Center,
+                Children = { checkBoxAutoContinue, checkBoxSkipGeneralAccent, MakePositionLabel(vm) },
+            };
+            grid.Add(optionsPanel, 2, 0, 1, 4);
+        }
+        else
+        {
+            grid.Add(controls, 0, 0);
+            grid.Add(lineGridView, 0, 1);
+            grid.Add(waveform, 1, 0, 1, 3);
+            grid.Add(panelButtons, 2, 0, 1, 3);
+            grid.Add(checkBoxAutoContinue, 2, 0);
+            grid.Add(checkBoxSkipGeneralAccent, 2, 0);
+            grid.Add(MakePositionLabel(vm), 2, 0, 1, 2);
+        }
 
         Content = grid;
 
@@ -256,6 +344,9 @@ public class ReviewSpeechWindow : Window
         }
         textBox.WithAccessibleName(Se.Language.General.Text); // edits the selected row's text; no visible label (#12087)
         vm.EditTextBox = textBox; // split reads the caret from here
+        // Refresh the palette highlights as the user hand-edits the text (typing a tag in, deleting
+        // one) so a tag typed manually lights up just like one inserted from the palette.
+        textBox.TextChanged += (_, _) => vm.RefreshActiveTags();
 
         // Right-click in the text box splits at the caret + play-head, mirroring the main window.
         // The caret (not a clicked row) is the text split point, so the menu belongs on the box.
@@ -290,10 +381,30 @@ public class ReviewSpeechWindow : Window
         return UiUtil.MakeBorderForControl(grid);
     }
 
-    private static Border MakeControls(ReviewSpeechViewModel vm)
+    private static Border MakeControls(ReviewSpeechViewModel vm, bool includeTags)
     {
-        var labelMinWidth = 100;
-        var controlMinWidth = 200;
+        // Narrow when the palette sits in its own left column (three-column layout), wide enough to
+        // keep the label + combo box on one row otherwise.
+        var labelMinWidth = includeTags ? 110 : 92;
+        var controlMinWidth = includeTags ? 220 : 150;
+
+        // In the original layout the combos are a fixed width next to a fixed label. In the
+        // three-column layout the controls live in a narrow star column, so let them stretch to
+        // fill the available width instead of clipping out of the panel.
+        T ComboWidth<T>(T control) where T : Layoutable
+        {
+            if (includeTags)
+            {
+                control.Width = controlMinWidth;
+            }
+            else
+            {
+                control.MinWidth = controlMinWidth;
+                control.HorizontalAlignment = HorizontalAlignment.Stretch;
+            }
+
+            return control;
+        }
 
         var comboBoxEngines = UiUtil.MakeComboBox(vm.Engines, vm, nameof(vm.SelectedEngine)).WithMinWidth(controlMinWidth);
         comboBoxEngines.SelectionChanged += vm.SelectedEngineChanged;
@@ -341,11 +452,11 @@ public class ReviewSpeechWindow : Window
                     Content = Se.Language.General.Voice,
                     MinWidth = labelMinWidth,
                 },
-                UiUtil.MakeComboBox(vm.Voices, vm, nameof(vm.SelectedVoice)).WithWidth(controlMinWidth),
+                ComboWidth(UiUtil.MakeComboBox(vm.Voices, vm, nameof(vm.SelectedVoice))),
             }
         };
 
-        var comboBoxModels = UiUtil.MakeComboBox(vm.Models, vm, nameof(vm.SelectedModel)).WithWidth(controlMinWidth);
+        var comboBoxModels = ComboWidth(UiUtil.MakeComboBox(vm.Models, vm, nameof(vm.SelectedModel)));
         var panelModel = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -377,12 +488,12 @@ public class ReviewSpeechWindow : Window
                     MinWidth = labelMinWidth,
                     [!ContentProperty] = new Binding(nameof(vm.RegionLabel)) { Mode = BindingMode.OneWay },
                 },
-                UiUtil.MakeComboBox(vm.Regions, vm, nameof(vm.SelectedRegion)).WithWidth(controlMinWidth),
+                ComboWidth(UiUtil.MakeComboBox(vm.Regions, vm, nameof(vm.SelectedRegion))),
             },
             [!StackPanel.IsVisibleProperty] = new Binding(nameof(vm.SelectedEngine) + "." + nameof(ITtsEngine.HasRegion)) { Mode = BindingMode.OneWay },
         };
 
-        var comboBoxLanguages = UiUtil.MakeComboBox(vm.Languages, vm, nameof(vm.SelectedLanguage)).WithWidth(controlMinWidth);
+        var comboBoxLanguages = ComboWidth(UiUtil.MakeComboBox(vm.Languages, vm, nameof(vm.SelectedLanguage)));
         var panelLanguage = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -402,7 +513,7 @@ public class ReviewSpeechWindow : Window
 
 
         var elevenLabsControls = MakeElevenLabsControls(vm);
-        var panelInstruction = MakeInstructionPanel(vm, labelMinWidth);
+        var panelInstruction = MakeInstructionPanel(vm, labelMinWidth, includeTags);
 
         var grid = new Grid
         {
@@ -435,17 +546,152 @@ public class ReviewSpeechWindow : Window
         grid.Add(panelVoice, 2, 0);
         grid.Add(panelRegion, 3, 0);
         grid.Add(panelLanguage, 4, 0);
-        // ElevenLabs sliders with the audio-tag palette docked right below them (same block, not
-        // the bottom of the whole window).
-        grid.Add(new StackPanel
+        if (includeTags)
         {
-            Orientation = Orientation.Vertical,
-            Children = { elevenLabsControls, MakeTagPanel(vm) },
-        }, 5, 0);
+            // Original layout: the ElevenLabs sliders with the tag palette docked right below them.
+            grid.Add(new StackPanel
+            {
+                Orientation = Orientation.Vertical,
+                Children = { elevenLabsControls, MakeTagPanel(vm) },
+            }, 5, 0);
+        }
+        else
+        {
+            // Three-column layout: the tag palette lives in its own left column instead.
+            grid.Add(elevenLabsControls, 5, 0);
+        }
+
         grid.Add(panelInstruction, 6, 0);
         // 7 is filler.
 
         return UiUtil.MakeBorderForControl(grid);
+    }
+
+    // Left column of the three-column review layout: a click-to-insert tag palette matching the
+    // original layout (category title, then its tags to the right on the same row) plus a
+    // Remove-all button. The block sits at the bottom, closest to the waveform.
+    private Control MakeTagColumn(ReviewSpeechViewModel vm)
+    {
+        var column = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Spacing = 4,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
+
+        foreach (var (header, tags) in TagCategories())
+        {
+            var headerLabel = new TextBlock
+            {
+                Text = header,
+                Width = 62,
+                FontSize = 12,
+                FontWeight = FontWeight.SemiBold,
+                Opacity = 0.8,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+
+            var wrap = new WrapPanel
+            {
+                Orientation = Orientation.Horizontal,
+            };
+
+            foreach (var tag in tags)
+            {
+                var chip = new TagChip(tag);
+                _tagChips.Add(chip);
+
+                // Plain button look when off (same as "Remove all tags"); the "active" class turns
+                // it red when the tag is present in the line.
+                var button = new Button
+                {
+                    Content = tag,
+                    Padding = new Thickness(6, 1, 6, 1),
+                    Margin = new Thickness(2, 2, 2, 2),
+                    FontSize = 12,
+                };
+                button.Classes.Add("tag-chip");
+                chip.Button = button;
+                button.Click += (_, _) => vm.InsertTagAtCaret(tag);
+                ToolTip.SetTip(button, $"Toggle {tag} on the selected line");
+                wrap.Children.Add(button);
+            }
+
+            var row = new Grid
+            {
+                ColumnDefinitions =
+                {
+                    new ColumnDefinition { Width = new GridLength(62) },
+                    new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                },
+                ColumnSpacing = 4,
+            };
+            row.Add(headerLabel, 0, 0);
+            row.Add(wrap, 0, 1);
+            column.Children.Add(row);
+        }
+
+        var removeAllButton = new Button
+        {
+            Content = "Remove all tags",
+            Padding = new Thickness(8, 1, 8, 1),
+            FontSize = 12,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Margin = new Thickness(66, 4, 0, 0),
+        };
+        removeAllButton.Click += (_, _) => vm.RemoveAllTags();
+        ToolTip.SetTip(removeAllButton, "Remove the whole [..] tag group from the selected line");
+        column.Children.Add(removeAllButton);
+
+        // Bottom-align the palette without ScrollViewer.VerticalContentAlignment (which triggers a
+        // layout/measure loop here): host it in a grid that is at least viewport-tall and align the
+        // column to its bottom. Content taller than the viewport still scrolls.
+        var host = new Grid();
+        column.VerticalAlignment = VerticalAlignment.Bottom;
+        host.Children.Add(column);
+
+        var scroll = new ScrollViewer
+        {
+            Content = host,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(4, 0, 4, 0),
+        };
+        host.Bind(Grid.MinHeightProperty, new Binding(nameof(ScrollViewer.Viewport))
+        {
+            Source = scroll,
+            Converter = new Avalonia.Data.Converters.FuncValueConverter<Avalonia.Size, double>(s => s.Height),
+        });
+        return scroll;
+    }
+
+    private static (string Header, string[] Tags)[] TagCategories()
+    {
+        return new (string Header, string[] Tags)[]
+        {
+            ("Intro", new[] { "[happy]", "[excited]", "[welcoming]", "[cheerful]", "[warmly]", "[friendly]", "[enthusiastic]", "[upbeat]", "[delighted]" }),
+            ("Steps", new[] { "[thoughtful]", "[measured]", "[calm]", "[matter-of-factly]", "[informative]", "[patiently]", "[clearly]", "[precise]", "[methodical]", "[detailed]" }),
+            ("Advice", new[] { "[reassuring]", "[encouraging]", "[gently]", "[kindly]", "[helpfully]", "[supportive]", "[caring]", "[attentive]" }),
+            ("Important", new[] { "[serious]", "[firmly]", "[with emphasis]", "[earnestly]", "[confident]", "[determined]", "[stern]" }),
+            ("Fun", new[] { "[chuckles]", "[laughs]", "[playful]", "[amused]", "[light-hearted]", "[cheeky]", "[impish]", "[jesting]" }),
+            ("Pauses", new[] { "[short pause]", "[pause]", "[long pause]", "[sighs]", "[exhales]", "[inhales]", "[clears throat]", "[breath]" }),
+            ("Ending", new[] { "[satisfied]", "[pleased]", "[proudly]", "[content]", "[gratified]", "[triumphant]", "[concluding]" }),
+            ("Accent", new[] { "[American accent]", "[British accent]", "[strong American accent]", "[South African accent]", "[Serbian accent]", "[warm, conversational]", "[narrator]" }),
+        };
+    }
+
+    // Recomputes every chip's highlight from the VM's active tag set.
+    private void RefreshTagChips()
+    {
+        foreach (var chip in _tagChips)
+        {
+            var active = _vm.ActiveTags.Any(t => string.Equals(t, chip.Tag, StringComparison.OrdinalIgnoreCase));
+            chip.IsActive = active;
+            chip.Button?.Classes.Set("active", active);
+        }
     }
 
     // A click-to-insert palette of the audio tags that make sense for a recipe voiceover. Each
@@ -546,11 +792,12 @@ public class ReviewSpeechWindow : Window
     // Voice-design controls shared with the main TTS window: free-text instruction (Qwen3
     // VoiceDesign model) and OmniVoice keyword picker. Visibility flags on the VM mirror those
     // in TextToSpeechViewModel — see ReviewSpeechViewModel.UpdateInstructionVisibility.
-    private static StackPanel MakeInstructionPanel(ReviewSpeechViewModel vm, int labelMinWidth)
+    private static StackPanel MakeInstructionPanel(ReviewSpeechViewModel vm, int labelMinWidth, bool includeTags)
     {
         var textBoxInstruction = new TextBox
         {
-            Width = 260,
+            Width = includeTags ? 260 : double.NaN,
+            MinWidth = includeTags ? 0 : 120,
             Height = 90,
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
@@ -579,7 +826,7 @@ public class ReviewSpeechWindow : Window
                     VerticalAlignment = VerticalAlignment.Top,
                 },
                 textBoxInstruction,
-                MakeInstructionKeywordPicker(vm),
+                MakeInstructionKeywordPicker(vm, includeTags),
             },
             [!StackPanel.IsVisibleProperty] = new Binding(nameof(vm.HasInstruction)) { Mode = BindingMode.OneWay },
         };
@@ -588,7 +835,7 @@ public class ReviewSpeechWindow : Window
     // OmniVoice keyword picker — gender/age/pitch/accent combos plus a whisper checkbox and a
     // "doesn't apply to cloned voices" hint. Mirrors the picker in the main TTS window so the
     // user sees the same control set regardless of which window they regenerate from.
-    private static Control MakeInstructionKeywordPicker(ReviewSpeechViewModel vm)
+    private static Control MakeInstructionKeywordPicker(ReviewSpeechViewModel vm, bool includeTags)
     {
         var grid = new Grid
         {
@@ -610,10 +857,10 @@ public class ReviewSpeechWindow : Window
             [!Grid.IsEnabledProperty] = new Binding(nameof(vm.IsInstructionPickerEnabled)) { Mode = BindingMode.OneWay },
         };
 
-        AddPickerRow(grid, 0, Se.Language.Video.TextToSpeech.VoiceGender, vm, vm.OmniVoiceGenders, nameof(vm.SelectedOmniVoiceGender));
-        AddPickerRow(grid, 1, Se.Language.Video.TextToSpeech.VoiceAge, vm, vm.OmniVoiceAges, nameof(vm.SelectedOmniVoiceAge));
-        AddPickerRow(grid, 2, Se.Language.Video.TextToSpeech.VoicePitch, vm, vm.OmniVoicePitches, nameof(vm.SelectedOmniVoicePitch));
-        AddPickerRow(grid, 3, Se.Language.Video.TextToSpeech.VoiceAccent, vm, vm.OmniVoiceAccents, nameof(vm.SelectedOmniVoiceAccent));
+        AddPickerRow(grid, 0, Se.Language.Video.TextToSpeech.VoiceGender, vm, vm.OmniVoiceGenders, nameof(vm.SelectedOmniVoiceGender), includeTags);
+        AddPickerRow(grid, 1, Se.Language.Video.TextToSpeech.VoiceAge, vm, vm.OmniVoiceAges, nameof(vm.SelectedOmniVoiceAge), includeTags);
+        AddPickerRow(grid, 2, Se.Language.Video.TextToSpeech.VoicePitch, vm, vm.OmniVoicePitches, nameof(vm.SelectedOmniVoicePitch), includeTags);
+        AddPickerRow(grid, 3, Se.Language.Video.TextToSpeech.VoiceAccent, vm, vm.OmniVoiceAccents, nameof(vm.SelectedOmniVoiceAccent), includeTags);
 
         var whisper = new CheckBox
         {
@@ -643,10 +890,21 @@ public class ReviewSpeechWindow : Window
     }
 
     private static void AddPickerRow(Grid grid, int row, string label, ReviewSpeechViewModel vm,
-        System.Collections.ObjectModel.ObservableCollection<string> items, string selectedPropertyPath)
+        System.Collections.ObjectModel.ObservableCollection<string> items, string selectedPropertyPath, bool includeTags)
     {
         grid.Add(new Label { Content = label, MinWidth = 60, VerticalAlignment = VerticalAlignment.Center }, row, 0);
-        grid.Add(UiUtil.MakeComboBox(items, vm, selectedPropertyPath).WithWidth(200), row, 1);
+        var combo = UiUtil.MakeComboBox(items, vm, selectedPropertyPath);
+        if (includeTags)
+        {
+            combo.Width = 200;
+        }
+        else
+        {
+            combo.MinWidth = 90;
+            combo.HorizontalAlignment = HorizontalAlignment.Stretch;
+        }
+
+        grid.Add(combo, row, 1);
     }
 
     private static Grid MakeElevenLabsControls(ReviewSpeechViewModel vm)
@@ -1044,6 +1302,28 @@ public class ReviewSpeechWindow : Window
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         base.OnClosing(e);
+        SaveColumnWidths();
         _vm.OnClosing(e);
+    }
+
+    // Persists the three-column splitter positions as relative weights. Using the ratio (not a
+    // fixed pixel width) keeps the layout responsive when the window itself is resized.
+    private void SaveColumnWidths()
+    {
+        if (_colTag == null || _colGrid == null || _colControls == null)
+        {
+            return;
+        }
+
+        var total = _colTag.ActualWidth + _colGrid.ActualWidth + _colControls.ActualWidth;
+        if (total <= 0)
+        {
+            return;
+        }
+
+        var settings = Se.Settings.Video.TextToSpeech;
+        settings.ThreeColumnTagWidth = _colTag.ActualWidth / total * 100.0;
+        settings.ThreeColumnGridWidth = _colGrid.ActualWidth / total * 100.0;
+        settings.ThreeColumnControlsWidth = _colControls.ActualWidth / total * 100.0;
     }
 }

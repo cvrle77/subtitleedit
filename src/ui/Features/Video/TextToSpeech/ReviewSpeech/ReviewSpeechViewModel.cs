@@ -111,6 +111,25 @@ public partial class ReviewSpeechViewModel : ObservableObject
     public TextBox? EditTextBox { get; set; }
     public AudioVisualizer? AudioVisualizer { get; set; }
 
+    // Bare tag names (without brackets) currently present in the selected line's leading "[...]"
+    // group. The tag palette highlights buttons whose tag is in this set, so the user can see which
+    // tags are on and click one to turn it off.
+    public ObservableCollection<string> ActiveTags { get; } = new();
+
+    // Rebuilds ActiveTags from the selected line's current text. Called on selection change and on
+    // every text edit (palette click or hand-typed text) so the highlights stay in sync.
+    public void RefreshActiveTags()
+    {
+        var inner = SelectedLine == null ? null : FindLeadingTagGroupInner(SelectedLine.Text ?? string.Empty);
+        var tags = inner == null ? new List<string>() : SplitTagGroup(inner);
+
+        ActiveTags.Clear();
+        foreach (var tag in tags)
+        {
+            ActiveTags.Add(tag);
+        }
+    }
+
     // Second waveform stacked under the original one: the generated speech of every row placed at
     // its cue's start, on the same time axis. The window keeps it in sync with AudioVisualizer
     // (scroll, zoom, selection, playhead).
@@ -1277,6 +1296,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
 
         row.Text = newText;
+        RefreshActiveTags();
 
         if (EditTextBox != null)
         {
@@ -1303,6 +1323,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         var newText = StripGroup(text);
         row.Text = newText;
+        RefreshActiveTags();
 
         if (EditTextBox != null)
         {
@@ -1593,13 +1614,17 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         // Start the picker in the subtitle's own folder (or the video's, for an unsaved
         // subtitle) - the OS-remembered last picker folder is rarely where this export
-        // belongs (#13881).
-        var suggestedStartFolder = GetFolderName(SubtitleFileName) ?? GetFolderName(_videoFileName);
+        // belongs (#13881). Prefer the folder the last TTS import/export used.
+        var suggestedStartFolder = Se.Settings.Video.TextToSpeech.LastImportExportFolder is { Length: > 0 } last && Directory.Exists(last)
+            ? last
+            : GetFolderName(SubtitleFileName) ?? GetFolderName(_videoFileName);
         var folder = await _folderHelper.PickFolderAsync(Window!, Se.Language.General.SelectSaveFolder, suggestedStartFolder);
         if (string.IsNullOrEmpty(folder))
         {
             return;
         }
+
+        Se.Settings.Video.TextToSpeech.LastImportExportFolder = folder;
 
         var jsonFileName = Path.Combine(folder, "SubtitleEditTts.json");
 
@@ -3501,6 +3526,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
         // Re-center the waveform on the newly selected row regardless of the left-panel sync
         // state — the visual cue should follow the user's click immediately.
         RefreshWaveformPosition();
+
+        // Highlight the tag buttons that are on for this line.
+        RefreshActiveTags();
 
         if (value == null)
         {

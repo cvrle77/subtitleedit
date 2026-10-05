@@ -348,6 +348,7 @@ public class LanguageSettings
         public string AiFixPrompt { get; set; }
 
     public string TextToSpeechDescriptiveFilenames { get; set; }
+    public string TextToSpeechThreeColumnReview { get; set; }
     public string AdjustSpeedParallelism { get; set; }
     public string ShowTestingTools { get; set; }
     public string UseFocusedButtonBackgroundColor { get; set; }
@@ -738,6 +739,7 @@ public class LanguageSettings
             AiFixPrompt = "AI prompt";
 
         TextToSpeechDescriptiveFilenames = "Export filenames: 001-text-00 (off = 0001)";
+        TextToSpeechThreeColumnReview = "Review window: three columns (tags | lines | controls)";
         AdjustSpeedParallelism = "Segments processed at once (adjust speed)";
         ShowTestingTools = "Show testing tools (re-run adjust speed)";
         UseFocusedButtonBackgroundColor = "Use focused button background color";

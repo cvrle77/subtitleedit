@@ -29,6 +29,21 @@ public class SeVideoTextToSpeech
     // A hidden accent applied to every line sent to ElevenLabs (v4) - inserted as a leading tag
     // ("[American accent] ...") without ever appearing in the visible text. Empty = none.
     public string ElevenLabsGeneralAccent { get; set; }
+
+    // Review window layout: true = three columns (tags left, line grid centre, engine/voice
+    // controls right); false = the original layout.
+    public bool ThreeColumnReview { get; set; }
+
+    // Last folder used for TTS import/export; used to open the import picker straight there so it
+    // does not start in a (possibly slow) remembered location such as Quick access.
+    public string LastImportExportFolder { get; set; } = string.Empty;
+
+    // Remembered widths (pixels) of the three columns in the three-column review layout, so the
+    // splitter positions survive reopening the window. 0 = not set yet (use the defaults).
+    public double ThreeColumnTagWidth { get; set; }
+    public double ThreeColumnGridWidth { get; set; }
+    public double ThreeColumnControlsWidth { get; set; }
+
     public double ElevenLabsStability { get; set; }
     public double ElevenLabsSimilarity { get; set; }
     public double ElevenLabsSpeakerBoost { get; set; }
@@ -239,6 +254,7 @@ public class SeVideoTextToSpeech
         ElevenLabsModel = "eleven_v4_turbo";
         ElevenLabsLanguage = string.Empty;
         ElevenLabsGeneralAccent = string.Empty;
+        ThreeColumnReview = false;
         ElevenLabsStability = 0.5;
         ElevenLabsSimilarity = 0.5;
         ElevenLabsSpeakerBoost = 0;

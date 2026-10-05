@@ -2719,13 +2719,26 @@ public partial class TextToSpeechViewModel : ObservableObject
         _cancellationTokenSource = new CancellationTokenSource();
         _cancellationToken = _cancellationTokenSource.Token;
 
+        // Open the picker straight at the folder the last TTS import/export used, so it does not
+        // start at a (possibly slow) remembered location such as Quick access.
+        var ttsSettings = Se.Settings.Video.TextToSpeech;
+        var startFolder = !string.IsNullOrEmpty(ttsSettings.LastImportExportFolder) && Directory.Exists(ttsSettings.LastImportExportFolder)
+            ? ttsSettings.LastImportExportFolder
+            : null;
+
         // The pattern must start with '*' as-is: passing "SubtitleEditTts.json" would get a "*."
         // prefix from PickOpenFile, and that pattern cannot match the exported file itself (Export
         // writes exactly "SubtitleEditTts.json"), hiding it in SE's own open dialog (#12093).
-        var fileName = await _fileHelper.PickOpenFile(Window, "Open SubtitleEditTts.json file", "TTS json files", "*SubtitleEditTts.json");
+        var fileName = await _fileHelper.PickOpenFile(Window, "Open SubtitleEditTts.json file", "TTS json files", "*SubtitleEditTts.json", suggestedStartFolder: startFolder);
         if (string.IsNullOrEmpty(fileName))
         {
             return;
+        }
+
+        var importedFolder = Path.GetDirectoryName(fileName);
+        if (!string.IsNullOrEmpty(importedFolder))
+        {
+            ttsSettings.LastImportExportFolder = importedFolder;
         }
 
         // Read the file fully and close it before opening the review window: the window is shown

@@ -1182,6 +1182,7 @@ public class SettingsPage : UserControl
             MakeGroupHeader("Text to speech"),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechFastMerge, nameof(_vm.TextToSpeechFastMerge)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechDescriptiveFilenames, nameof(_vm.TextToSpeechDescriptiveFilenames)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechThreeColumnReview, nameof(_vm.TextToSpeechThreeColumnReview)),
             new SettingsItem(Se.Language.Options.Settings.AdjustSpeedParallelism, () => UiUtil.MakeNumericUpDownInt(
                 1, 32, 4, 120, _vm, nameof(_vm.AdjustSpeedParallelism))),
             MakeCheckboxSetting(Se.Language.Options.Settings.ShowTestingTools, nameof(_vm.ShowTestingTools)),
