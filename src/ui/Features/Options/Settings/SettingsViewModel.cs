@@ -268,6 +268,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _aiFixModel;
     [ObservableProperty] private string _aiFixPrompt;
     [ObservableProperty] private bool _textToSpeechDescriptiveFilenames;
+    [ObservableProperty] private bool _textToSpeechThreeColumnReview;
     [ObservableProperty] private bool _openAiCompatibleSttAutoTranscribeOnAudioSelection;
 
     [ObservableProperty] private ObservableCollection<string> _spellCheckEngines;
@@ -999,6 +1000,7 @@ public partial class SettingsViewModel : ObservableObject
         AiFixModel = Se.Settings.Tools.AudioToText.AiFixModel;
         AiFixPrompt = Se.Settings.Tools.AudioToText.AiFixPrompt;
         TextToSpeechDescriptiveFilenames = !string.Equals(Se.Settings.Video.TextToSpeech.ExportFileNaming, "numeric", StringComparison.OrdinalIgnoreCase);
+        TextToSpeechThreeColumnReview = Se.Settings.Video.TextToSpeech.ThreeColumnReview;
         OpenAiCompatibleSttAutoTranscribeOnAudioSelection = Se.Settings.Tools.OpenAiCompatibleSttAutoTranscribeOnAudioSelection;
         FixCommonErrorsSkipStep1 = Se.Settings.Tools.FixCommonErrors.SkipStep1;
         MusicSymbol = Se.Settings.Tools.MusicSymbol;
@@ -1908,6 +1910,7 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Tools.TextToSpeechPromptSkipNoiseLines = TextToSpeechPromptSkipNoiseLines;
         Se.Settings.Tools.TextToSpeechPromptDetectSpeakers = TextToSpeechPromptDetectSpeakers;
         Se.Settings.Video.TextToSpeech.FastMerge = TextToSpeechFastMerge;
+        Se.Settings.Video.TextToSpeech.ThreeColumnReview = TextToSpeechThreeColumnReview;
         Se.Settings.Tools.AudioToText.SmartBreak = SmartBreak;
         Se.Settings.Tools.AudioToText.AiFix = AiFix;
         Se.Settings.Tools.AudioToText.AiFixUrl = AiFixUrl;
