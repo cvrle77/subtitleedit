@@ -256,6 +256,14 @@ public class AudioVisualizer : Control
 
     public double MinGapSeconds { get; set; } = 0.1;
 
+
+    /// <summary>
+    /// When true, a dragged paragraph can never overlap its neighbours - the drag is clamped at the
+    /// neighbour's edge regardless of Shift, the "allow overlap" setting or a pre-existing overlap.
+    /// Used by the TTS review waveform, where blocks must stay disjoint.
+    /// </summary>
+    public bool PreventOverlap { get; set; }
+
     /// <summary>Fallback capture distance when the pixel distance cannot be converted (no peaks yet).</summary>
     public double ShotChangeSnapSeconds { get; set; } = 0.05;
     public WaveformDrawStyle WaveformDrawStyle { get; set; } = WaveformDrawStyle.Classic;
@@ -1737,7 +1745,7 @@ public class AudioVisualizer : Control
         var previous = previousIndex >= 0 ? _displayableParagraphs[previousIndex] : null;
         var next = nextIndex >= 0 ? _displayableParagraphs[nextIndex] : null;
 
-        if (_isShiftDown || Se.Settings.Waveform.AllowOverlap)
+        if (!PreventOverlap && (_isShiftDown || Se.Settings.Waveform.AllowOverlap))
         {
             previous = null;
             next = null;
@@ -1783,8 +1791,9 @@ public class AudioVisualizer : Control
                 }
 
                 // Allow overlap if shift key, setting, or already overlapping
-                // (previous and next are already null if _isShiftDown or Se.Settings.Waveform.AllowOverlap)
-                bool allowOverlap = (previous == null && next == null) || alreadyOverlapping;
+                // (previous and next are already null if _isShiftDown or Se.Settings.Waveform.AllowOverlap);
+                // PreventOverlap (TTS review) forbids it outright.
+                bool allowOverlap = !PreventOverlap && ((previous == null && next == null) || alreadyOverlapping);
 
                 // SE4 parity: a whole-paragraph drag snaps to shot changes too, not just an edge
                 // resize (issue #13953). Whichever cue is captured first wins, and the other cue

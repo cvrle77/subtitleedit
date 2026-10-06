@@ -111,6 +111,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
     public TextBox? EditTextBox { get; set; }
     public AudioVisualizer? AudioVisualizer { get; set; }
 
+    // The tag palette control. Used to let keyboard shortcuts (bare R = regenerate) fire while the
+    // mouse is over the palette even though clicking a tag moved focus to the text box.
+    public InputElement? TagPalette { get; set; }
+
     // Bare tag names (without brackets) currently present in the selected line's leading "[...]"
     // group. The tag palette highlights buttons whose tag is in this set, so the user can see which
     // tags are on and click one to turn it off.
@@ -3147,10 +3151,13 @@ public partial class ReviewSpeechViewModel : ObservableObject
             e.Handled = true;
             _ = ShowGoToPosition();
         }
-        else if (e.Key == Key.R && e.KeyModifiers == KeyModifiers.None && !isTextBoxFocused)
+        else if (e.Key == Key.R && e.KeyModifiers == KeyModifiers.None &&
+                 (!isTextBoxFocused || TagPalette?.IsPointerOver == true))
         {
             // Bare R = regenerate the selected line: pairs with Space for fast keyboard-only
-            // review (space to listen, R to redo), as requested in #12093.
+            // review (space to listen, R to redo), as requested in #12093. It also fires while the
+            // mouse hovers the tag palette - a tag click moves focus to the text box, and R there
+            // should redo, not type a letter.
             e.Handled = true;
             RegenerateSelectedLine();
         }
@@ -3186,7 +3193,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
             e.Handled = true;
         }
-        else if (e.Key == Key.R && e.KeyModifiers == KeyModifiers.None && !isTextBoxFocused)
+        else if (e.Key == Key.R && e.KeyModifiers == KeyModifiers.None &&
+                 (!isTextBoxFocused || TagPalette?.IsPointerOver == true))
         {
             e.Handled = true;
         }
