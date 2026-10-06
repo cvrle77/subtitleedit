@@ -34,6 +34,11 @@ public class SeVideoTextToSpeech
     // controls right); false = the original layout.
     public bool ThreeColumnReview { get; set; }
 
+    // When true, clicking OK in the review first saves the TTS session next to the subtitle being
+    // worked on - the same export as the Export button, but silently (no picker, no prompts) - and
+    // then does what OK normally does. See the cvrle77 options section.
+    public bool ReviewOkAlsoExports { get; set; }
+
     // Last folder used for TTS import/export; used to open the import picker straight there so it
     // does not start in a (possibly slow) remembered location such as Quick access.
     public string LastImportExportFolder { get; set; } = string.Empty;
@@ -255,6 +260,7 @@ public class SeVideoTextToSpeech
         ElevenLabsLanguage = string.Empty;
         ElevenLabsGeneralAccent = string.Empty;
         ThreeColumnReview = false;
+        ReviewOkAlsoExports = true;
         ElevenLabsStability = 0.5;
         ElevenLabsSimilarity = 0.5;
         ElevenLabsSpeakerBoost = 0;

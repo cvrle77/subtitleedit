@@ -1145,6 +1145,10 @@ public class SettingsPage : UserControl
             new SettingsItem(Se.Language.Options.Settings.ContextMenuWaveform, () => MakeContextMenuComboBox(_vm.ContextMenuWaveform)),
 
             MakeSeparator(),
+            MakeGroupHeader("TTS review (OK)"),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ReviewOkAlsoExports, nameof(_vm.ReviewOkAlsoExports)),
+
+            MakeSeparator(),
             MakeGroupHeader("Split: trim the leading silence"),
             MakeCheckboxSetting(Se.Language.Options.Settings.TrimSilenceAfterSplit, nameof(_vm.TrimSilenceAfterSplit)),
             MakeCheckboxSetting(Se.Language.Options.Settings.SplitTrimUseVoiceDetection, nameof(_vm.SplitTrimUseVoiceDetection)),

@@ -1809,33 +1809,48 @@ public partial class ReviewSpeechViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task Export()
+    private Task Export() => ExportSessionAsync(forcedFolder: null, isSilent: false);
+
+    /// <summary>
+    /// Writes the session (SubtitleEditTts.json + wav/ clips + refs/) to <paramref name="forcedFolder"/>,
+    /// or to a folder the user picks when it is null. <paramref name="isSilent"/> skips the picker, the
+    /// overwrite prompt and the result dialogs - OK uses it to keep a session next to the subtitle.
+    /// </summary>
+    private async Task ExportSessionAsync(string? forcedFolder, bool isSilent)
     {
         if (Window == null)
         {
             return;
         }
 
-        // Start the picker in the subtitle's own folder (or the video's, for an unsaved subtitle), so
-        // the session lands next to the file being worked on - not the folder a previous session used.
-        // LastImportExportFolder is only the fallback when there is no subtitle/video folder.
-        var subtitleFolder = GetFolderName(SubtitleFileName) ?? GetFolderName(_videoFileName);
-        var lastImportExportFolder = Se.Settings.Video.TextToSpeech.LastImportExportFolder is { Length: > 0 } last && Directory.Exists(last)
-            ? last
-            : null;
-        var suggestedStartFolder = subtitleFolder ?? lastImportExportFolder;
-        var folder = await _folderHelper.PickFolderAsync(Window!, Se.Language.General.SelectSaveFolder, suggestedStartFolder);
-        if (string.IsNullOrEmpty(folder))
+        string? folder;
+        if (!string.IsNullOrEmpty(forcedFolder))
         {
-            return;
+            folder = forcedFolder;
         }
+        else
+        {
+            // Start the picker in the subtitle's own folder (or the video's, for an unsaved subtitle), so
+            // the session lands next to the file being worked on - not the folder a previous session used.
+            // LastImportExportFolder is only the fallback when there is no subtitle/video folder.
+            var subtitleFolder = GetFolderName(SubtitleFileName) ?? GetFolderName(_videoFileName);
+            var lastImportExportFolder = Se.Settings.Video.TextToSpeech.LastImportExportFolder is { Length: > 0 } last && Directory.Exists(last)
+                ? last
+                : null;
+            var suggestedStartFolder = subtitleFolder ?? lastImportExportFolder;
+            folder = await _folderHelper.PickFolderAsync(Window!, Se.Language.General.SelectSaveFolder, suggestedStartFolder);
+            if (string.IsNullOrEmpty(folder))
+            {
+                return;
+            }
 
-        Se.Settings.Video.TextToSpeech.LastImportExportFolder = folder;
+            Se.Settings.Video.TextToSpeech.LastImportExportFolder = folder;
+        }
 
         var jsonFileName = Path.Combine(folder, "SubtitleEditTts.json");
 
         // ask if overwrite if jsonFileName exists
-        if (File.Exists(jsonFileName))
+        if (!isSilent && File.Exists(jsonFileName))
         {
             var answer = await MessageBox.Show(
                 Window,
@@ -2012,6 +2027,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 Environment.NewLine + Environment.NewLine + writeError,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
+            return;
+        }
+
+        if (isSilent)
+        {
             return;
         }
 
@@ -3170,9 +3190,27 @@ public partial class ReviewSpeechViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Ok()
+    private async Task Ok()
     {
         Se.WriteToolsLog("TTS review: OK clicked - closing");
+
+        // Optionally keep a session next to the subtitle being worked on first - the same export the
+        // Export button writes, but silently (no picker, no prompts). Enabled in Settings > cvrle77.
+        if (Se.Settings.Video.TextToSpeech.ReviewOkAlsoExports)
+        {
+            var exportFolder = GetFolderName(SubtitleFileName) ?? GetFolderName(_videoFileName);
+            if (!string.IsNullOrEmpty(exportFolder))
+            {
+                try
+                {
+                    await ExportSessionAsync(exportFolder, isSilent: true);
+                }
+                catch (Exception ex)
+                {
+                    SeLogger.Error(ex, "TTS review: silent export on OK failed");
+                }
+            }
+        }
 
         // Push any edits the user made to row.Text back into the step results so
         // the caller sees them, then publish the included rows as StepResults.

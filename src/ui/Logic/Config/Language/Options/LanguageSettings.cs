@@ -103,6 +103,7 @@ public class LanguageSettings
     public string MoveLinesShortenNeighbor { get; set; }
     public string PromptBeforeDelete { get; set; }
     public string MinimalContextMenus { get; set; }
+    public string ReviewOkAlsoExports { get; set; }
     public string CustomizeContextMenus { get; set; }
     public string ContextMenuTextBox { get; set; }
     public string ContextMenuGrid { get; set; }
@@ -496,6 +497,7 @@ public class LanguageSettings
         MoveLinesShortenNeighbor = "Move lines: shorten previous/next line instead of overlapping it";
         PromptBeforeDelete = "Prompt before delete";
         MinimalContextMenus = "Minimal right-click menus (text box, grid, waveform)";
+        ReviewOkAlsoExports = "On OK, also save the TTS session next to the subtitle (silently, like Export)";
         CustomizeContextMenus = "Customize right-click menus...";
         ContextMenuTextBox = "Text box menu";
         ContextMenuGrid = "Subtitle grid menu";

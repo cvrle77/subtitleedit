@@ -134,6 +134,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private int _adjustSpeedParallelism;
     [ObservableProperty] private bool _showTestingTools;
     [ObservableProperty] private bool _textToSpeechElevenLabsParallel;
+    [ObservableProperty] private bool _reviewOkAlsoExports;
     [ObservableProperty] private string _textToSpeechElevenLabsPlan = string.Empty;
 
     // Detected plan shown next to the parallel checkbox. The tier is read from the API once, in the
@@ -877,6 +878,7 @@ public partial class SettingsViewModel : ObservableObject
         AdjustSpeedParallelism = Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism;
         ShowTestingTools = Se.Settings.Video.TextToSpeech.ShowTestingTools;
         TextToSpeechElevenLabsParallel = Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel;
+        ReviewOkAlsoExports = Se.Settings.Video.TextToSpeech.ReviewOkAlsoExports;
         TextToSpeechElevenLabsPlan = BuildElevenLabsPlanText();
         TrimSilenceAfterSplit = general.TrimSilenceAfterSplit;
         SplitTrimUseVoiceDetection = general.SplitTrimUseVoiceDetection;
@@ -1815,6 +1817,7 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism = AdjustSpeedParallelism < 1 ? 1 : AdjustSpeedParallelism;
         Se.Settings.Video.TextToSpeech.ShowTestingTools = ShowTestingTools;
         Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel = TextToSpeechElevenLabsParallel;
+        Se.Settings.Video.TextToSpeech.ReviewOkAlsoExports = ReviewOkAlsoExports;
         general.TrimSilenceAfterSplit = TrimSilenceAfterSplit;
         general.SplitTrimUseVoiceDetection = SplitTrimUseVoiceDetection;
         general.CapitalizeAfterSplit = CapitalizeAfterSplit;
