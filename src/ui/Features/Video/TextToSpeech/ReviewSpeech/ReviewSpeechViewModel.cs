@@ -1616,12 +1616,14 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return;
         }
 
-        // Start the picker in the subtitle's own folder (or the video's, for an unsaved
-        // subtitle) - the OS-remembered last picker folder is rarely where this export
-        // belongs (#13881). Prefer the folder the last TTS import/export used.
-        var suggestedStartFolder = Se.Settings.Video.TextToSpeech.LastImportExportFolder is { Length: > 0 } last && Directory.Exists(last)
+        // Start the picker in the subtitle's own folder (or the video's, for an unsaved subtitle), so
+        // the session lands next to the file being worked on - not the folder a previous session used.
+        // LastImportExportFolder is only the fallback when there is no subtitle/video folder.
+        var subtitleFolder = GetFolderName(SubtitleFileName) ?? GetFolderName(_videoFileName);
+        var lastImportExportFolder = Se.Settings.Video.TextToSpeech.LastImportExportFolder is { Length: > 0 } last && Directory.Exists(last)
             ? last
-            : GetFolderName(SubtitleFileName) ?? GetFolderName(_videoFileName);
+            : null;
+        var suggestedStartFolder = subtitleFolder ?? lastImportExportFolder;
         var folder = await _folderHelper.PickFolderAsync(Window!, Se.Language.General.SelectSaveFolder, suggestedStartFolder);
         if (string.IsNullOrEmpty(folder))
         {
