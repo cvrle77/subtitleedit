@@ -827,9 +827,15 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 }
             }
         }
-        catch (Exception exception)
+        catch
         {
-            SeLogger.Error(exception, $"ReviewSpeech: cannot read audio length of \"{fileName}\"");
+            // Not a WAV - ElevenLabs (and the chunk cuts) produce MP3, and WaveHeader2 throws on it.
+            // The MP3 reader below handles it; logging an error per clip would just be noise.
+        }
+
+        if (seconds <= 0)
+        {
+            seconds = Mp3DurationReader.TryGetDurationSeconds(fileName) ?? 0;
         }
 
         _audioLengthCache[fileName] = seconds;
