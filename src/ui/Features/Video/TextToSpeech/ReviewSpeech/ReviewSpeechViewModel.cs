@@ -1256,7 +1256,122 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
     }
 
-    // Audio-tag palette: every click works on the tag group at the START of the line.
+    // The palette's "Pauses" entries. These are the tags that make sense mid-sentence, so they are
+    // inserted at the caret instead of being folded into the leading tag group.
+    private static readonly HashSet<string> PauseTags = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "short pause", "pause", "long pause", "sighs", "exhales", "inhales", "clears throat", "breath",
+    };
+
+    /// <summary>
+    /// Inserts a pause tag at the caret, snapped to the nearest word boundary so it never lands
+    /// inside a word (or inside another "[...]" tag). Clicking the same pause where it already sits
+    /// removes it. Returns false to fall back to the leading-group behaviour (caret at the very
+    /// start, or no text box).
+    /// </summary>
+    private bool TryInsertPauseTagAtCaret(ReviewRow row, string bare)
+    {
+        if (EditTextBox == null)
+        {
+            return false;
+        }
+
+        var text = row.Text ?? string.Empty;
+        var caret = Math.Clamp(EditTextBox.CaretIndex, 0, text.Length);
+        if (caret == 0)
+        {
+            return false; // at the very start - keep the leading-group toggle
+        }
+
+        caret = SnapToWordBoundary(text, caret);
+
+        var tagText = "[" + bare + "]";
+        var before = text.Substring(0, caret).TrimEnd();
+        var after = text.Substring(caret).TrimStart();
+
+        int newCaret;
+        if (before.EndsWith(tagText, StringComparison.OrdinalIgnoreCase))
+        {
+            before = before.Substring(0, before.Length - tagText.Length).TrimEnd();
+            newCaret = before.Length;
+        }
+        else if (after.StartsWith(tagText, StringComparison.OrdinalIgnoreCase))
+        {
+            after = after.Substring(tagText.Length).TrimStart();
+            newCaret = before.Length;
+        }
+        else
+        {
+            before = before.Length == 0 ? tagText : before + " " + tagText;
+            newCaret = before.Length;
+        }
+
+        var newText = before.Length == 0 ? after : after.Length == 0 ? before : before + " " + after;
+
+        row.Text = newText;
+        EditTextBox.Text = newText;
+        if (newCaret < newText.Length && newText[newCaret] == ' ')
+        {
+            newCaret++;
+        }
+
+        EditTextBox.CaretIndex = Math.Clamp(newCaret, 0, newText.Length);
+        EditTextBox.Focus();
+        return true;
+    }
+
+    // Moves an in-text insertion point onto the nearest word boundary, and out of any "[...]" tag,
+    // so a pause tag cannot split a word or corrupt a tag.
+    private static int SnapToWordBoundary(string text, int caret)
+    {
+        caret = Math.Clamp(caret, 0, text.Length);
+
+        // Inside a tag: if the nearest '[' before the caret has no ']' between it and the caret,
+        // jump past that tag's closing ']'.
+        if (caret > 0)
+        {
+            var open = text.LastIndexOf('[', caret - 1);
+            var closeBefore = text.LastIndexOf(']', caret - 1);
+            if (open >= 0 && open > closeBefore)
+            {
+                var closeAfter = text.IndexOf(']', caret);
+                return closeAfter < 0 ? text.Length : closeAfter + 1;
+            }
+        }
+
+        if (caret == 0 || caret == text.Length)
+        {
+            return caret;
+        }
+
+        // Inside a word (no separator on either side): snap to the closer end of that word.
+        if (!IsTagOrSpace(text[caret - 1]) && !IsTagOrSpace(text[caret]))
+        {
+            var start = caret;
+            while (start > 0 && !IsTagOrSpace(text[start - 1]))
+            {
+                start--;
+            }
+
+            var end = caret;
+            while (end < text.Length && !IsTagOrSpace(text[end]))
+            {
+                end++;
+            }
+
+            return caret - start <= end - caret ? start : end;
+        }
+
+        return caret;
+    }
+
+    private static bool IsTagOrSpace(char c)
+    {
+        return char.IsWhiteSpace(c) || c == '[' || c == ']';
+    }
+
+    // Audio-tag palette: pause tags (see PauseTags) go at the caret, snapped to a word boundary.
+    // Every other tag works on the tag group at the START of the line:
     //   - no group yet          -> insert "[tag] "
     //   - group without the tag -> add it after the existing tags
     //   - group already has it  -> remove it
@@ -1274,6 +1389,13 @@ public partial class ReviewSpeechViewModel : ObservableObject
         var bare = tag.Trim().TrimStart('[').TrimEnd(']').Trim();
         if (bare.Length == 0)
         {
+            return;
+        }
+
+        // Pause tags belong between words, wherever the caret is - not only in the leading group.
+        if (PauseTags.Contains(bare) && TryInsertPauseTagAtCaret(row, bare))
+        {
+            RefreshActiveTags();
             return;
         }
 
