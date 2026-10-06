@@ -1,5 +1,6 @@
 ﻿using Avalonia.Platform;
 using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Features.Video.SpeechToText.OpenAiCompatible;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Voices;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
@@ -570,31 +571,73 @@ public class ElevenLabs : ITtsEngine
         var ffmpeg = FfmpegHelper.GetFfmpegLocation();
         var outputDir = TtsOutputFolder.Resolve(outputFolder, GetSetElevenLabsFolder);
         var results = new List<TtsResult>();
-        // Cue boundaries: each cut sits just before the next cue's first phoneme (a fixed lead-in),
-        // but never before this cue's own last phoneme ends. Placing it at the raw character time
-        // clipped the next attack; placing it at the pause midpoint let the next sentence's opening
-        // letters bleed into the previous clip on the short pauses. This keeps the next cue's
-        // letters out of the previous clip while still leaving a lead-in so its attack is intact.
+        // Cut placement. The endpoint's character timestamps are only approximate - they routinely
+        // attribute the pause (and some of the next sentence's onset) to the last character of the
+        // previous cue, so a cut derived from them either clips the next attack or leaks the next
+        // sentence's opening letters into the previous clip. The timestamps are still good enough
+        // to say WHICH pause belongs to each cue boundary, so detect the actual pauses on the
+        // generated audio and cut in the middle of the pause nearest each boundary. Only a boundary
+        // with no pause near it (a cue broken mid-sentence) keeps the timestamp guess.
         const double leadInSeconds = 0.09;
+        const double snapRadiusSeconds = 0.8;
+
+        IReadOnlyList<OpenAiSttChunker.SilenceInterval> silences;
+        try
+        {
+            silences = await OpenAiSttChunker.DetectSilenceIntervalsAsync(ffmpeg, chunkFile, -35.0, 0.08, cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            SeLogger.Error(ex, "ElevenLabs chunk: silence detection failed - falling back to the timestamps");
+            silences = Array.Empty<OpenAiSttChunker.SilenceInterval>();
+        }
+
         var boundaries = new double[cueTexts.Count + 1];
         boundaries[0] = 0.0;
         for (var i = 1; i < cueTexts.Count; i++)
         {
-            var boundary = t0[i] - leadInSeconds;
-            if (boundary < t1[i - 1])
-            {
-                boundary = t1[i - 1];
-            }
+            var approx = t0[i] - leadInSeconds;
+            // Prefer the longest pause near this boundary: a sentence gap is longer than the short
+            // intra-word silences the detector also reports.
+            var snapped = silences
+                .Where(s => Math.Abs(s.Midpoint - approx) <= snapRadiusSeconds)
+                .OrderByDescending(s => s.DurationSeconds)
+                .ThenBy(s => Math.Abs(s.Midpoint - approx))
+                .FirstOrDefault();
 
-            if (boundary > t0[i])
+            if (snapped != null)
             {
-                boundary = t0[i];
+                boundaries[i] = snapped.Midpoint;
             }
+            else
+            {
+                var boundary = Math.Min(approx, t0[i]);
+                if (boundary < t1[i - 1])
+                {
+                    boundary = t1[i - 1];
+                }
 
-            boundaries[i] = boundary;
+                boundaries[i] = boundary;
+            }
         }
 
         boundaries[cueTexts.Count] = t1[cueTexts.Count - 1] + 0.30;
+
+        // Keep the boundaries strictly increasing, so a snapped pause can never reorder the cues.
+        for (var i = 1; i < boundaries.Length; i++)
+        {
+            if (boundaries[i] <= boundaries[i - 1])
+            {
+                boundaries[i] = boundaries[i - 1] + 0.05;
+            }
+        }
+
+        Se.WriteToolsLog($"ElevenLabs chunk: {cueTexts.Count} cues, {silences.Count} pauses detected; cut boundaries = " +
+                         string.Join(", ", boundaries.Select(b => b.ToString("0.00", CultureInfo.InvariantCulture))));
 
         try
         {
