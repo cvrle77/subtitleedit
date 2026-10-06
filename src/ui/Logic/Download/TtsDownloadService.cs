@@ -548,24 +548,28 @@ public class TtsDownloadService : ITtsDownloadService
         // Request stitching (Eleven v4): previous_request_ids names the earlier generations whose
         // audio this one should continue (max 3, each lasts two hours); previous_text/future_text
         // give the surrounding words when no id is available yet (the first line, or the parallel
-        // path). The API ignores the text once ids are present, so both are sent and the text is
-        // simply the graceful fallback. v3 does not support request stitching - the caller
-        // withholds the context for it - and the fields stay out when empty.
+        // path). The dialogue endpoint REJECTS previous_request_ids together with previous_text
+        // ("Provide only one of previous_request_ids or previous_text"), so the two are mutually
+        // exclusive here - the ids win when present, the text is the fallback otherwise. v3 does
+        // not support request stitching - the caller withholds the context for it - and the fields
+        // stay out when empty.
         var stitchFragment = string.Empty;
         if (previousRequestIds is { Count: > 0 })
         {
-            stitchFragment += ", \"previous_request_ids\": [" +
-                              string.Join(", ", previousRequestIds.Select(id => "\"" + id + "\"")) + "]";
+            stitchFragment = ", \"previous_request_ids\": [" +
+                             string.Join(", ", previousRequestIds.Select(id => "\"" + id + "\"")) + "]";
         }
-
-        if (!string.IsNullOrEmpty(previousText))
+        else
         {
-            stitchFragment += ", \"previous_text\": \"" + Json.EncodeJsonText(previousText) + "\"";
-        }
+            if (!string.IsNullOrEmpty(previousText))
+            {
+                stitchFragment += ", \"previous_text\": \"" + Json.EncodeJsonText(previousText) + "\"";
+            }
 
-        if (!string.IsNullOrEmpty(nextText))
-        {
-            stitchFragment += ", \"future_text\": \"" + Json.EncodeJsonText(nextText) + "\"";
+            if (!string.IsNullOrEmpty(nextText))
+            {
+                stitchFragment += ", \"future_text\": \"" + Json.EncodeJsonText(nextText) + "\"";
+            }
         }
 
         // The dialogue endpoint defaults to eleven_v3, so model_id must be sent explicitly to
