@@ -2894,13 +2894,44 @@ public partial class ReviewSpeechViewModel : ObservableObject
         return next;
     }
 
+    // True while the play-head still sits on this row's block. The parked play-head is written
+    // exactly to the block start, so a small epsilon keeps that "on the block".
+    private bool IsPlayheadOnRow(ReviewRow row)
+    {
+        var seconds = AudioVisualizer?.CurrentVideoPositionSeconds ?? double.NaN;
+        if (double.IsNaN(seconds))
+        {
+            return false;
+        }
+
+        var paragraph = row.WaveformParagraph ?? row.StepResult.Paragraph;
+        return seconds >= paragraph.StartTime.TotalSeconds - 0.001 &&
+               seconds < paragraph.EndTime.TotalSeconds;
+    }
+
+    // The block Play should start from: the selected one while the play-head is on it, otherwise
+    // the clip at the play-head (the first block to its right when it sits in a gap). The selection
+    // is the fallback when the play-head is unknown or past the last clip, matching the old
+    // behaviour in those cases.
+    private ReviewRow? ResolvePlayRow()
+    {
+        var selected = SelectedLine;
+        if (selected != null && IsPlayheadOnRow(selected))
+        {
+            return selected;
+        }
+
+        return FindRowToPlayFromPlayhead() ?? selected;
+    }
+
     [RelayCommand]
     private async Task Play()
     {
-        // Play the selected block - the one the user clicked (clicking a block parks the playhead
-        // on its start). Falling back to the play-head only when nothing is selected. Looking up by
-        // play-head instead replayed the previous clip whenever blocks overlap the selection.
-        var line = SelectedLine ?? FindRowToPlayFromPlayhead();
+        // Start from the selected block while the play-head is still on it (clicking a block parks
+        // the play-head on its start). Once the play-head is moved off the selection - e.g. clicking
+        // empty waveform to its left - start from the clip at the play-head instead of replaying the
+        // selection.
+        var line = ResolvePlayRow();
         if (line == null)
         {
             return;
@@ -3236,9 +3267,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return;
         }
 
-        // Same rule as Play: the selected (clicked) block wins, falling back to the play-head only
-        // when nothing is selected.
-        var line = SelectedLine ?? FindRowToPlayFromPlayhead();
+        // Same rule as Play: the selected block wins only while the play-head is still on it.
+        var line = ResolvePlayRow();
         if (line is { IsPlayingEnabled: true } && PlayRowCommand.CanExecute(line))
         {
             PlayRowCommand.Execute(line);
