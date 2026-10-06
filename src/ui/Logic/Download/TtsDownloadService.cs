@@ -654,6 +654,12 @@ public class TtsDownloadService : ITtsDownloadService
         }
 
         var requestId = ReadRequestId(result);
+        // character-cost is ElevenLabs' own billing figure for this request, so the tools log can
+        // settle "were these chunk requests actually generated (and charged)?" without guessing.
+        var characterCost = result.Headers.TryGetValues("character-cost", out var costValues)
+            ? costValues.FirstOrDefault() ?? string.Empty
+            : string.Empty;
+        Se.WriteToolsLog($"ElevenLabs TTS (timestamps): HTTP {(int)result.StatusCode} {result.StatusCode}, request-id=\"{requestId}\", character-cost=\"{characterCost}\", textLen={text.Length}");
         var json = await result.Content.ReadAsStringAsync(cancellationToken);
         try
         {
