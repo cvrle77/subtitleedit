@@ -19,6 +19,18 @@ using System.Threading.Tasks;
 
 namespace Nikse.SubtitleEdit.Logic.Download;
 
+/// <summary>
+/// Audio plus per-character timings from ElevenLabs' timestamped dialogue endpoint
+/// (<c>/v1/text-to-dialogue/with-timestamps</c>). The arrays are parallel to the characters of the
+/// exact text that was sent, so a cue's spoken start/end can be read off by its character range.
+/// </summary>
+public sealed record ElevenLabsTimedAudio(
+    string[] Characters,
+    double[] StartTimes,
+    double[] EndTimes,
+    byte[] Audio,
+    string RequestId);
+
 public interface ITtsDownloadService
 {
     Task DownloadPiper(string destinationFileName, IProgress<float>? progress, CancellationToken cancellationToken);
@@ -46,6 +58,14 @@ public interface ITtsDownloadService
         string previousText = "",
         string nextText = "",
         IReadOnlyList<string>? previousRequestIds = null);
+
+    Task<(bool Ok, string Error, ElevenLabsTimedAudio? Result)> DownloadElevenLabsDialogueWithTimestamps(
+        string inputText,
+        ElevenLabVoice voice,
+        string model,
+        string apiKey,
+        string languageCode,
+        CancellationToken cancellationToken);
 
     Task<bool> DownloadAzureVoiceSpeak(
         string inputText,
@@ -584,6 +604,80 @@ public class TtsDownloadService : ITtsDownloadService
                    ", \"settings\": { \"stability\": " + stability + " } }";
 
         return await SendElevenLabsSpeakRequestAsync(url, data, apiKey, acceptAudioMpeg: false, stream, "ElevenLabs TTS v3", cancellationToken);
+    }
+
+    /// <summary>
+    /// The timestamped dialogue endpoint: same request shape as the plain one, but the response is
+    /// JSON carrying the audio plus the start/end time of every character of the sent text. A whole
+    /// run of cues is sent as one request (see the ElevenLabs v4 chunked generation), and the
+    /// per-character timings are what map the single audio back onto each cue.
+    /// </summary>
+    public async Task<(bool Ok, string Error, ElevenLabsTimedAudio? Result)> DownloadElevenLabsDialogueWithTimestamps(
+        string inputText,
+        ElevenLabVoice voice,
+        string model,
+        string apiKey,
+        string languageCode,
+        CancellationToken cancellationToken)
+    {
+        var url = "https://api.elevenlabs.io/v1/text-to-dialogue/with-timestamps";
+
+        // Same text preparation as the plain dialogue path: v3/v4 use audio tags rather than SSML.
+        var text = ConvertBreakTagsToV3AudioTags(Utilities.UnbreakLine(inputText));
+        var stability = Se.Settings.Video.TextToSpeech.ElevenLabsStability.ToString(CultureInfo.InvariantCulture);
+        var languageFragment = string.IsNullOrEmpty(languageCode)
+            ? string.Empty
+            : ", \"language_code\": \"" + languageCode + "\"";
+        var data = "{ \"inputs\": [{ " +
+                   "\"text\": \"" + Json.EncodeJsonText(text) + "\", " +
+                   "\"voice_id\": \"" + voice.VoiceId + "\"" +
+                   " }]" +
+                   ", \"model_id\": \"" + model + "\"" +
+                   languageFragment +
+                   ", \"settings\": { \"stability\": " + stability + " } }";
+
+        Se.WriteToolsLog($"ElevenLabs TTS (timestamps): POST {url} body={data}");
+
+        using var requestMessage = new HttpRequestMessage(HttpMethod.Post, url);
+        requestMessage.Content = new StringContent(data, Encoding.UTF8);
+        requestMessage.Content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json");
+        requestMessage.Headers.TryAddWithoutValidation("Content-Type", "application/json");
+        requestMessage.Headers.TryAddWithoutValidation("xi-api-key", apiKey.Trim());
+
+        using var result = await _httpClient.SendAsync(requestMessage, cancellationToken);
+        if (!result.IsSuccessStatusCode)
+        {
+            var errorBody = TruncateForLog((await result.Content.ReadAsStringAsync(cancellationToken)).Trim());
+            var error = $"HTTP {(int)result.StatusCode} {result.StatusCode}: {errorBody}";
+            SeLogger.Error($"ElevenLabs TTS (timestamps) failed calling {url}: {error}" + Environment.NewLine + "Data=" + data);
+            return (false, error, null);
+        }
+
+        var requestId = ReadRequestId(result);
+        var json = await result.Content.ReadAsStringAsync(cancellationToken);
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            var audioBase64 = root.TryGetProperty("audio_base64", out var audioElement) ? audioElement.GetString() ?? string.Empty : string.Empty;
+            if (audioBase64.Length == 0
+                || !root.TryGetProperty("alignment", out var alignment)
+                || alignment.ValueKind != JsonValueKind.Object)
+            {
+                return (false, "ElevenLabs returned no audio/timestamps for the chunked request.", null);
+            }
+
+            var characters = alignment.GetProperty("characters").EnumerateArray().Select(e => e.GetString() ?? " ").ToArray();
+            var startTimes = alignment.GetProperty("character_start_times_seconds").EnumerateArray().Select(e => e.GetDouble()).ToArray();
+            var endTimes = alignment.GetProperty("character_end_times_seconds").EnumerateArray().Select(e => e.GetDouble()).ToArray();
+            var audio = Convert.FromBase64String(audioBase64);
+            return (true, string.Empty, new ElevenLabsTimedAudio(characters, startTimes, endTimes, audio, requestId));
+        }
+        catch (Exception ex)
+        {
+            SeLogger.Error(ex, "ElevenLabs TTS (timestamps): could not parse the response");
+            return (false, "Could not parse the ElevenLabs timestamped response: " + ex.Message, null);
+        }
     }
 
     // Matches SSML break tags like <break time="1.5s"/>, <break time="500ms" />, <break time='2s'>.

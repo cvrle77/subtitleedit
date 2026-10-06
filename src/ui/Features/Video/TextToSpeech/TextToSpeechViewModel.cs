@@ -3911,6 +3911,26 @@ public partial class TextToSpeechViewModel : ObservableObject
                 }
             }
 
+            // ElevenLabs v4: synthesise whole runs of cues as one request each (chunked) - the
+            // per-line requests gave the model no context, and one continuous reading is what v4
+            // needs to sound natural. Falls through to the per-line paths when it does not apply.
+            if (ShouldUseElevenLabsChunking(castContext, engine))
+            {
+                var chunkedResults = await GenerateSpeechElevenLabsChunked(castContext, engine, voice, errorMessages, cancellationToken);
+                if (chunkedResults == null)
+                {
+                    return null; // cancelled
+                }
+
+                ProgressValue = 100;
+                if (skippedNoiseCount > 0)
+                {
+                    Se.WriteToolsLog($"TTS generation: left {skippedNoiseCount} sound/music lines silent (skipped by user choice)");
+                }
+
+                return await FinishGenerateSpeech(chunkedResults, errorMessages);
+            }
+
             var parallelConcurrency = GetElevenLabsParallelConcurrency(castContext, engine);
             if (parallelConcurrency > 1)
             {
@@ -4181,6 +4201,193 @@ public partial class TextToSpeechViewModel : ObservableObject
             ProgressText = $"Generating speech (parallel): {done} of {total} done, {inFlight} running";
             ProgressValue = total > 0 ? (double)done / total * 100.0 : 0;
         });
+    }
+
+    // Chunked ElevenLabs v4 generation applies to a uniform ElevenLabs run on a v4 model. A
+    // per-actor cast can switch engine/voice per line, and the older models are not served by the
+    // timestamped dialogue endpoint, so those keep the per-line paths.
+    private bool ShouldUseElevenLabsChunking(CastContext castContext, ITtsEngine engine)
+    {
+        return engine is ElevenLabs
+            && castContext.ByActor.Count == 0
+            && SelectedModel is "eleven_v4" or "eleven_v4_turbo";
+    }
+
+    /// <summary>
+    /// Synthesises the run in ElevenLabs chunks (whole runs of cues per request), keeping the
+    /// per-line result shape downstream: one <see cref="TtsStepResult"/> per cue with its own cut
+    /// clip. Chunks run concurrently (the account's plan concurrency), and a chunk that fails -
+    /// request error or ffmpeg cut - falls back to per-line generation for just its cues, so one bad
+    /// request does not lose the run.
+    /// </summary>
+    private async Task<List<TtsStepResult>?> GenerateSpeechElevenLabsChunked(
+        CastContext castContext,
+        ITtsEngine engine,
+        Voice voice,
+        List<string> errorMessages,
+        CancellationToken cancellationToken)
+    {
+        var eleven = (ElevenLabs)engine;
+        var paragraphs = _subtitle.Paragraphs;
+
+        // The cues the model will actually read, in order, with their plain text (the chunker only
+        // sizes the request; the engine rebuilds the exact text it sends).
+        var speakable = new List<(int Index, string Text)>();
+        for (var i = 0; i < paragraphs.Count; i++)
+        {
+            if (_skipNoiseParagraphs.Contains(paragraphs[i]))
+            {
+                continue;
+            }
+
+            var text = Utilities.UnbreakLine(paragraphs[i].Text ?? string.Empty);
+            if (text.Trim().Length == 0)
+            {
+                continue;
+            }
+
+            speakable.Add((i, text));
+        }
+
+        if (speakable.Count == 0)
+        {
+            return new List<TtsStepResult>();
+        }
+
+        var textByIndex = speakable.ToDictionary(c => c.Index, c => c.Text);
+        var chunks = ElevenLabsChunker.Build(speakable);
+        Se.WriteToolsLog($"TTS generation: ElevenLabs v4 chunked mode - {chunks.Count} request(s) for {speakable.Count} lines");
+
+        var concurrency = Se.Settings.Video.TextToSpeech.ElevenLabsMaxConcurrency;
+        if (concurrency <= 0)
+        {
+            concurrency = 2;
+        }
+
+        var results = new TtsStepResult?[paragraphs.Count];
+        var errorLock = new Lock();
+        var completed = 0;
+        var total = chunks.Count;
+        UpdateParallelProgress(0, total, concurrency);
+
+        using var throttler = new SemaphoreSlim(concurrency);
+        var tasks = new List<Task>();
+        try
+        {
+            foreach (var chunk in chunks)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return null;
+                }
+
+                await throttler.WaitAsync(cancellationToken);
+                tasks.Add(Task.Run(async () =>
+                {
+                    try
+                    {
+                        var cueTexts = chunk.ParagraphIndexes.Select(pi => textByIndex[pi]).ToList();
+
+                        List<TtsResult> cueResults;
+                        string error;
+                        try
+                        {
+                            (cueResults, error) = await eleven.SpeakCueTextsAsChunkAsync(
+                                cueTexts, _waveFolder, voice, SelectedLanguage, SelectedModel, cancellationToken);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            cueResults = new List<TtsResult>();
+                            error = ex.Message;
+                        }
+
+                        if (cueResults.Count == cueTexts.Count)
+                        {
+                            for (var k = 0; k < cueResults.Count; k++)
+                            {
+                                var paragraphIndex = chunk.ParagraphIndexes[k];
+                                results[paragraphIndex] = new TtsStepResult
+                                {
+                                    Text = cueResults[k].Text,
+                                    CurrentFileName = cueResults[k].FileName,
+                                    Paragraph = paragraphs[paragraphIndex],
+                                    SpeedFactor = 1.0f,
+                                    Voice = voice,
+                                    EngineName = engine.Name,
+                                    Model = SelectedModel ?? string.Empty,
+                                };
+                            }
+                        }
+                        else
+                        {
+                            // Fall back to per-line generation for just this chunk's cues.
+                            if (!string.IsNullOrEmpty(error))
+                            {
+                                lock (errorLock)
+                                {
+                                    if (!errorMessages.Contains(error))
+                                    {
+                                        errorMessages.Add(error);
+                                    }
+                                }
+                            }
+
+                            foreach (var paragraphIndex in chunk.ParagraphIndexes)
+                            {
+                                var paragraph = paragraphs[paragraphIndex];
+                                var resolution = ResolveVoiceForParagraph(paragraph, castContext, engine, voice);
+                                var speakResult = await SpeakOneParagraphAsync(
+                                    resolution, SelectedLanguage, SelectedRegion, SelectedModel, null, cancellationToken);
+                                results[paragraphIndex] = new TtsStepResult
+                                {
+                                    Text = resolution.Text,
+                                    CurrentFileName = speakResult.FileName,
+                                    Paragraph = paragraph,
+                                    SpeedFactor = 1.0f,
+                                    Voice = resolution.Voice,
+                                    EngineName = resolution.Engine.Name,
+                                    Model = SelectedModel ?? string.Empty,
+                                    Instruction = resolution.Instruction,
+                                };
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        throttler.Release();
+                        var done = Interlocked.Increment(ref completed);
+                        Se.WriteToolsLog($"TTS generation: chunk {done}/{total} done");
+                        UpdateParallelProgress(done, total, concurrency);
+                    }
+                }, cancellationToken));
+            }
+
+            await Task.WhenAll(tasks);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+
+        var list = new List<TtsStepResult>(paragraphs.Count);
+        foreach (var result in results)
+        {
+            if (result != null)
+            {
+                list.Add(result);
+            }
+        }
+
+        return list;
     }
 
     /// <summary>
