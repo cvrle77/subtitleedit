@@ -570,15 +570,38 @@ public class ElevenLabs : ITtsEngine
         var ffmpeg = FfmpegHelper.GetFfmpegLocation();
         var outputDir = TtsOutputFolder.Resolve(outputFolder, GetSetElevenLabsFolder);
         var results = new List<TtsResult>();
+        // Cue boundaries: each cut sits just before the next cue's first phoneme (a fixed lead-in),
+        // but never before this cue's own last phoneme ends. Placing it at the raw character time
+        // clipped the next attack; placing it at the pause midpoint let the next sentence's opening
+        // letters bleed into the previous clip on the short pauses. This keeps the next cue's
+        // letters out of the previous clip while still leaving a lead-in so its attack is intact.
+        const double leadInSeconds = 0.09;
+        var boundaries = new double[cueTexts.Count + 1];
+        boundaries[0] = 0.0;
+        for (var i = 1; i < cueTexts.Count; i++)
+        {
+            var boundary = t0[i] - leadInSeconds;
+            if (boundary < t1[i - 1])
+            {
+                boundary = t1[i - 1];
+            }
+
+            if (boundary > t0[i])
+            {
+                boundary = t0[i];
+            }
+
+            boundaries[i] = boundary;
+        }
+
+        boundaries[cueTexts.Count] = t1[cueTexts.Count - 1] + 0.30;
+
         try
         {
             for (var i = 0; i < cueTexts.Count; i++)
             {
-                // Cut in the middle of the pause between this cue and its neighbour: that gives the
-                // first phoneme some lead-in (no clipped attack) while never overlapping the
-                // previous or the next cue's audio.
-                var start = i == 0 ? 0.0 : (t1[i - 1] + t0[i]) / 2.0;
-                var end = i == cueTexts.Count - 1 ? t1[i] + 0.30 : (t1[i] + t0[i + 1]) / 2.0;
+                var start = boundaries[i];
+                var end = boundaries[i + 1];
                 if (end <= start)
                 {
                     end = start + 0.05;
