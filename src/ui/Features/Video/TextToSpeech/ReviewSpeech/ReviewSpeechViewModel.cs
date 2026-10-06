@@ -16,6 +16,7 @@ using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Voices;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.VoiceCloneConsent;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Download;
 using Nikse.SubtitleEdit.Logic.Media;
 using Nikse.SubtitleEdit.Logic.VideoPlayers.LibMpvDynamic;
 using System;
@@ -175,6 +176,18 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // picker was last used (#13881).
     public string SubtitleFileName { get; set; } = string.Empty;
 
+    // Character usage on the ElevenLabs account captured before the generate run, so the review
+    // can show what the run cost. Set by the TTS window before the review opens; null when unknown
+    // (an imported session, a non-ElevenLabs engine, or a failed lookup).
+    public int? ElevenLabsUsedBeforeSession { get; set; }
+
+    // Text of the live credit line above the tag palette. Updated from the account itself
+    // (GET /v1/user/subscription), not by tallying requests.
+    [ObservableProperty] private string _elevenLabsCreditsText = string.Empty;
+    [ObservableProperty] private bool _isElevenLabsCreditsVisible;
+
+    private int? _elevenLabsCreditsBaseline;
+
     // What the video says during a paragraph - the transcript for a reference clip cut here (see
     // ResolvePerLineCloneVoiceAsync). Supplied by the TTS window, which knows the original-language
     // subtitle a translation was dubbed from; null when it does not, and the line's own text is
@@ -189,6 +202,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private readonly IFolderHelper _folderHelper;
     private readonly IWindowService _windowService;
+    private readonly ITtsDownloadService _ttsDownloadService;
 
     private LibMpvDynamicPlayer? _mpvContext;
     private Lock _playLock;
@@ -207,10 +221,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // from SelectedLine - grid selection is two-way and can move during playback.
     private ReviewRow? _playingRow;
 
-    public ReviewSpeechViewModel(IFolderHelper folderHelper, IWindowService windowService)
+    public ReviewSpeechViewModel(IFolderHelper folderHelper, IWindowService windowService, ITtsDownloadService ttsDownloadService)
     {
         _folderHelper = folderHelper;
         _windowService = windowService;
+        _ttsDownloadService = ttsDownloadService;
 
         LineGrid = new TableView();
         Lines = new ObservableCollection<ReviewRow>();
@@ -528,6 +543,63 @@ public partial class ReviewSpeechViewModel : ObservableObject
             LineGrid.SelectedIndex = 0;
             LineGrid.ScrollIntoView(Lines[0]);
         }
+
+        // Pull the current ElevenLabs balance (the run has just spent credits) - off the UI thread
+        // and not awaited, so opening the review is not delayed by a network round trip.
+        _ = RefreshElevenLabsCreditsAsync();
+    }
+
+    /// <summary>
+    /// Refreshes the credit line by asking the ElevenLabs account itself (GET /v1/user/subscription)
+    /// rather than tallying the requests, so it shows the real balance. Called when the review opens
+    /// and after every regenerate.
+    /// </summary>
+    public async Task RefreshElevenLabsCreditsAsync()
+    {
+        if (SelectedEngine is not ElevenLabs || string.IsNullOrWhiteSpace(Se.Settings.Video.TextToSpeech.ElevenLabsApiKey))
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                IsElevenLabsCreditsVisible = false;
+                ElevenLabsCreditsText = string.Empty;
+            });
+            return;
+        }
+
+        (int Used, int Limit)? credits;
+        try
+        {
+            credits = await _ttsDownloadService.GetElevenLabsCredits(_cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            SeLogger.Error(ex, "ReviewSpeech: could not read the ElevenLabs credit balance");
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            IsElevenLabsCreditsVisible = true;
+            if (credits == null)
+            {
+                ElevenLabsCreditsText = "ElevenLabs credits: n/a";
+                return;
+            }
+
+            var (used, limit) = credits.Value;
+            // The baseline is the usage before the run when the TTS window supplied it, otherwise the
+            // first reading - so "session" counts every credit spent since then.
+            _elevenLabsCreditsBaseline ??= ElevenLabsUsedBeforeSession ?? used;
+            var remaining = Math.Max(0, limit - used);
+            var spent = Math.Max(0, used - _elevenLabsCreditsBaseline.Value);
+            ElevenLabsCreditsText = spent > 0
+                ? $"ElevenLabs: {remaining:N0} / {limit:N0} left  ·  −{spent:N0} this session"
+                : $"ElevenLabs: {remaining:N0} / {limit:N0} left";
+        });
     }
 
     // Duration of the loaded video in seconds, 0 when there is no video or it cannot be read.
@@ -2375,6 +2447,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 l.IsPlayingEnabled = true;
             }
         }
+
+        // The regenerate just spent credits - refresh the balance from the account.
+        _ = RefreshElevenLabsCreditsAsync();
     }
 
     // Engine/voice preparation shared by the single-row regenerate and the split's two
@@ -2815,6 +2890,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 l.IsPlayingEnabled = true;
             }
         }
+
+        // The two halves just spent credits - refresh the balance from the account.
+        _ = RefreshElevenLabsCreditsAsync();
     }
 
     // Re-wraps one half of a split with the same algorithm/settings as the main window's

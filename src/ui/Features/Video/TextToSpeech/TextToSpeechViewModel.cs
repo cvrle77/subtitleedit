@@ -176,6 +176,10 @@ public partial class TextToSpeechViewModel : ObservableObject
     // Import.
     private TtsStepResult[]? _lastGeneratedResults;
 
+    // ElevenLabs characters used before the current generate run, so the review can show what the
+    // run cost. Null for non-ElevenLabs engines or when the balance lookup failed.
+    private int? _elevenLabsUsedBeforeRun;
+
     private readonly IFileHelper _fileHelper;
     private readonly IFolderHelper _folderHelper;
     private readonly IAceStepAudioCppDownloadService _aceStepDownloadService;
@@ -1766,6 +1770,13 @@ public partial class TextToSpeechViewModel : ObservableObject
         // last progress text forever - the "stuck on Adjusting speed" state in #12093.
         try
         {
+            // Remember the account's character usage before the run so the review can show what it
+            // cost (the live counter itself pulls the balance from ElevenLabs, not a local tally).
+            if (SelectedEngine is ElevenLabs)
+            {
+                _elevenLabsUsedBeforeRun = (await _ttsDownloadService.GetElevenLabsCredits(_cancellationToken))?.Used;
+            }
+
             // Generate
             var generateSpeechResult = await GenerateSpeech(_cancellationToken);
             if (generateSpeechResult == null)
@@ -2890,6 +2901,8 @@ public partial class TextToSpeechViewModel : ObservableObject
             // of writing ActorVoiceMappings = [] back to SubtitleEditTts.json.
             vm.ActorVoiceMappings.AddRange(_actorVoiceMappings);
             vm.SubtitleFileName = GetLoadedSubtitleFileName();
+            // Balance captured before the run, so the review shows what generation cost.
+            vm.ElevenLabsUsedBeforeSession = _elevenLabsUsedBeforeRun;
             // So a regenerate that has to cut its own reference clip transcribes it with what the
             // video says, not with the translation being dubbed over it.
             vm.ReferenceTextOf = GetSpokenTextInVideo;
