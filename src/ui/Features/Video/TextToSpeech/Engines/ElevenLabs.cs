@@ -1,12 +1,17 @@
 ﻿using Avalonia.Platform;
 using Nikse.SubtitleEdit.Core.Common;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Voices;
+using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Download;
+using Nikse.SubtitleEdit.Logic.Media;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -479,6 +484,184 @@ public class ElevenLabs : ITtsEngine
         var fileName = Path.Combine(TtsOutputFolder.Resolve(outputFolder, GetSetElevenLabsFolder), Guid.NewGuid() + ".mp3");
         await File.WriteAllBytesAsync(fileName, ms.ToArray(), cancellationToken);
         return new TtsResult { Text = text, FileName = fileName, RequestId = requestId };
+    }
+
+    /// <summary>
+    /// Synthesises a whole run of cues as one ElevenLabs request (the timestamped dialogue
+    /// endpoint) and cuts the returned audio into one clip per cue. This is what gives the model the
+    /// continuous context that per-line requests lack; the per-character timings place each cut in
+    /// the middle of the pause between cues, so the first phoneme is never clipped and neighbouring
+    /// clips never overlap. Returns one result per cue, in order - or an empty list plus an error
+    /// the caller can fall back from (per-line).
+    /// </summary>
+    public async Task<(List<TtsResult> Results, string Error)> SpeakCueTextsAsChunkAsync(
+        IReadOnlyList<string> cueTexts,
+        string outputFolder,
+        Voice voice,
+        TtsLanguage? language,
+        string? model,
+        CancellationToken cancellationToken)
+    {
+        if (voice.EngineVoice is not ElevenLabVoice elevenLabVoice)
+        {
+            throw new ArgumentException("Voice is not an ElevenLabVoice");
+        }
+
+        if (string.IsNullOrEmpty(model))
+        {
+            model = Se.Settings.Video.TextToSpeech.ElevenLabsModel;
+        }
+
+        // Build the chunk text exactly as it will be sent - the general accent once at the front,
+        // each cue's break tags translated for v3/v4, then the cues joined by single spaces - and
+        // keep each cue's character range so the alignment can be mapped back to it.
+        var converted = new string[cueTexts.Count];
+        for (var i = 0; i < cueTexts.Count; i++)
+        {
+            converted[i] = TtsDownloadService.ConvertBreakTagsToV3AudioTags(Utilities.UnbreakLine(cueTexts[i] ?? string.Empty));
+        }
+
+        var joined = new StringBuilder();
+        var starts = new int[cueTexts.Count];
+        var ends = new int[cueTexts.Count];
+        for (var i = 0; i < converted.Length; i++)
+        {
+            if (i > 0)
+            {
+                joined.Append(' ');
+            }
+
+            starts[i] = joined.Length;
+            joined.Append(converted[i]);
+            ends[i] = joined.Length - 1;
+        }
+
+        var accentTag = BuildAccentTag(model);
+        var text = accentTag + joined.ToString();
+
+        var (ok, error, timed) = await _ttsDownloadService.DownloadElevenLabsDialogueWithTimestamps(
+            text, elevenLabVoice, model, Se.Settings.Video.TextToSpeech.ElevenLabsApiKey,
+            language?.Code ?? string.Empty, cancellationToken);
+        if (!ok || timed == null)
+        {
+            Se.WriteToolsLog($"ElevenLabs chunk: request failed ({cueTexts.Count} cues): {error}", true);
+            return (new List<TtsResult>(), error);
+        }
+
+        var alignCount = Math.Min(timed.StartTimes.Length, timed.EndTimes.Length);
+        if (alignCount == 0)
+        {
+            return (new List<TtsResult>(), "ElevenLabs returned no character timings.");
+        }
+
+        var t0 = new double[cueTexts.Count];
+        var t1 = new double[cueTexts.Count];
+        for (var i = 0; i < cueTexts.Count; i++)
+        {
+            var s = Math.Clamp(accentTag.Length + starts[i], 0, alignCount - 1);
+            var e = Math.Clamp(accentTag.Length + ends[i], 0, alignCount - 1);
+            t0[i] = timed.StartTimes[s];
+            t1[i] = timed.EndTimes[e];
+        }
+
+        var chunkFile = Path.Combine(Path.GetTempPath(), "se-tts-chunk-" + Guid.NewGuid().ToString("N") + ".mp3");
+        await File.WriteAllBytesAsync(chunkFile, timed.Audio, cancellationToken);
+
+        var ffmpeg = FfmpegHelper.GetFfmpegLocation();
+        var outputDir = TtsOutputFolder.Resolve(outputFolder, GetSetElevenLabsFolder);
+        var results = new List<TtsResult>();
+        try
+        {
+            for (var i = 0; i < cueTexts.Count; i++)
+            {
+                // Cut in the middle of the pause between this cue and its neighbour: that gives the
+                // first phoneme some lead-in (no clipped attack) while never overlapping the
+                // previous or the next cue's audio.
+                var start = i == 0 ? 0.0 : (t1[i - 1] + t0[i]) / 2.0;
+                var end = i == cueTexts.Count - 1 ? t1[i] + 0.30 : (t1[i] + t0[i + 1]) / 2.0;
+                if (end <= start)
+                {
+                    end = start + 0.05;
+                }
+
+                var fileName = Path.Combine(outputDir, Guid.NewGuid() + ".mp3");
+                if (!await CutChunkAudioAsync(ffmpeg, chunkFile, start, end, fileName, cancellationToken))
+                {
+                    return (new List<TtsResult>(), "Could not cut the ElevenLabs chunk audio (ffmpeg failed).");
+                }
+
+                results.Add(new TtsResult { Text = cueTexts[i], FileName = fileName, RequestId = i == 0 ? timed.RequestId : string.Empty });
+            }
+        }
+        finally
+        {
+            try { File.Delete(chunkFile); } catch { /* best-effort temp cleanup */ }
+        }
+
+        return (results, string.Empty);
+    }
+
+    private static async Task<bool> CutChunkAudioAsync(
+        string ffmpegPath,
+        string inputFileName,
+        double startSeconds,
+        double endSeconds,
+        string outputFileName,
+        CancellationToken cancellationToken)
+    {
+        var start = startSeconds.ToString("0.###", CultureInfo.InvariantCulture);
+        var duration = Math.Max(0.01, endSeconds - startSeconds).ToString("0.###", CultureInfo.InvariantCulture);
+        var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = ffmpegPath,
+                // -ss before -i is the fast (keyframe) seek; re-encoding makes the result exact.
+                Arguments = $"-nostdin -y -ss {start} -i \"{inputFileName}\" -t {duration} -vn -c:a libmp3lame -b:a 192k \"{outputFileName}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            }
+        };
+
+        var exitCode = -1;
+        try
+        {
+            await process.StartAndWaitAsync(cancellationToken, TimeSpan.FromMinutes(2));
+            exitCode = process.ExitCode;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            SeLogger.Error(ex, "ElevenLabs chunk: ffmpeg cut failed");
+            return false;
+        }
+        finally
+        {
+            process.Dispose();
+        }
+
+        return exitCode == 0 && File.Exists(outputFileName) && new FileInfo(outputFileName).Length > 0;
+    }
+
+    // The general accent as a leading tag for one request. Unlike ApplyGeneralAccent, which merges
+    // it into the FIRST cue's own leading tag, the chunk prepends it once and leaves every cue's
+    // text untouched - a merged tag only makes sense per line, and the point here is one continuous
+    // reading of the whole run.
+    private static string BuildAccentTag(string model)
+    {
+        var accent = Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent?.Trim();
+        if (string.IsNullOrEmpty(accent) || model is not ("eleven_v3" or "eleven_v4" or "eleven_v4_turbo"))
+        {
+            return string.Empty;
+        }
+
+        accent = accent.TrimStart('[').TrimEnd(']').Trim();
+        return "[" + accent + "] ";
     }
 
     // Prepends the configured general accent tag to the leading tag group of the line, for the
