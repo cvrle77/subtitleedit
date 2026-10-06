@@ -146,7 +146,9 @@ public class ReviewSpeechWindow : Window
             splitterLeft.DragCompleted += (_, _) => SaveColumnWidths();
             splitterRight.DragCompleted += (_, _) => SaveColumnWidths();
 
-            grid.Add(MakeTagColumn(vm), 0, 0);
+            var tagColumn = MakeTagColumn(vm);
+            vm.TagPalette = tagColumn;
+            grid.Add(tagColumn, 0, 0);
             vm.ActiveTags.CollectionChanged += (_, _) => RefreshTagChips();
             RefreshTagChips();
             grid.Add(splitterLeft, 0, 1);
@@ -1160,6 +1162,8 @@ public class ReviewSpeechWindow : Window
             FocusOnMouseOver = settings.FocusOnMouseOver,
             IsReadOnly = Se.Settings.General.LockTimeCodes,
             WaveformHeightPercentage = settings.SpectrogramCombinedWaveformHeight,
+            // TTS review blocks must not overlap: a dragged block stops at its neighbour's edge.
+            PreventOverlap = true,
         };
     }
 
