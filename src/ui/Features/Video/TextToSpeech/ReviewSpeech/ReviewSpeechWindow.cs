@@ -653,6 +653,21 @@ public class ReviewSpeechWindow : Window
         column.VerticalAlignment = VerticalAlignment.Bottom;
         host.Children.Add(column);
 
+        // Live ElevenLabs credit balance, top-left above the palette. Pulled from the account
+        // itself, so it refreshed after every credit-spending action.
+        var creditText = new TextBlock
+        {
+            FontSize = 12,
+            FontWeight = FontWeight.SemiBold,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(2, 2, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            [!TextBlock.TextProperty] = new Binding(nameof(ReviewSpeechViewModel.ElevenLabsCreditsText)),
+            [!Visual.IsVisibleProperty] = new Binding(nameof(ReviewSpeechViewModel.IsElevenLabsCreditsVisible)),
+        };
+        host.Children.Add(creditText);
+
         var scroll = new ScrollViewer
         {
             Content = host,

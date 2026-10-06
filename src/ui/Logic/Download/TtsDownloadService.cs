@@ -43,6 +43,7 @@ public interface ITtsDownloadService
     Task<bool> AllTalkIsInstalled();
     Task DownloadElevenLabsVoiceList(Stream stream, IProgress<float>? progress, CancellationToken cancellationToken);
     Task<string?> GetElevenLabsSubscriptionTier(CancellationToken cancellationToken);
+    Task<(int Used, int Limit)?> GetElevenLabsCredits(CancellationToken cancellationToken);
     Task DownloadAzureVoiceList(Stream stream, IProgress<float>? progress, CancellationToken cancellationToken);
     Task DownloadMurfVoiceList(MemoryStream stream, IProgress<float>? progress, CancellationToken cancellationToken);
 
@@ -309,6 +310,55 @@ public class TtsDownloadService : ITtsDownloadService
         }
     }
 
+    /// <summary>
+    /// The account's character usage and limit from GET /v1/user/subscription, so the UI can show
+    /// how many credits are left without tallying requests locally. Returns null when the request
+    /// fails (offline, invalid key, or a key without the user_read permission).
+    /// </summary>
+    public async Task<(int Used, int Limit)?> GetElevenLabsCredits(CancellationToken cancellationToken)
+    {
+        var apiKey = Se.Settings.Video.TextToSpeech.ElevenLabsApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Get, "https://api.elevenlabs.io/v1/user/subscription");
+            requestMessage.Headers.TryAddWithoutValidation("Accept", "application/json");
+            requestMessage.Headers.TryAddWithoutValidation("xi-api-key", apiKey.Trim());
+
+            using var result = await _httpClient.SendAsync(requestMessage, cancellationToken);
+            if (!result.IsSuccessStatusCode)
+            {
+                return null;
+            }
+
+            var json = await result.Content.ReadAsStringAsync(cancellationToken);
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.TryGetProperty("character_count", out var usedElement)
+                && usedElement.TryGetInt32(out var used)
+                && root.TryGetProperty("character_limit", out var limitElement)
+                && limitElement.TryGetInt32(out var limit))
+            {
+                return (used, limit);
+            }
+
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, "ElevenLabs: could not read the subscription credits");
+            return null;
+        }
+    }
+
     public async Task DownloadMurfVoiceList(MemoryStream ms, IProgress<float>? progress, CancellationToken cancellationToken)
     {
         var url = "https://api.murf.ai/v1/speech/voices";
@@ -461,7 +511,11 @@ public class TtsDownloadService : ITtsDownloadService
             {
                 stream.SetLength(0);
                 await result.Content.CopyToAsync(stream, cancellationToken);
-                return (true, string.Empty, ReadRequestId(result));
+                var requestId = ReadHeader(result, "request-id");
+                // character-cost is ElevenLabs' own billing figure for the call, logged the same way
+                // the chunk requests log it so the per-line spend is visible in the tools log.
+                Se.WriteToolsLog($"{logContext}: HTTP 200, request-id=\"{requestId}\", character-cost=\"{ReadHeader(result, "character-cost")}\"");
+                return (true, string.Empty, requestId);
             }
 
             var errorBody = TruncateForLog((await result.Content.ReadAsStringAsync(cancellationToken)).Trim());
@@ -482,21 +536,20 @@ public class TtsDownloadService : ITtsDownloadService
         }
     }
 
-    // The id of a finished generation, read from the response headers, so the next request can be
-    // conditioned on this exact audio (ElevenLabs request stitching). ElevenLabs sends it as
-    // "request-id"; some endpoints put custom headers on the content instead of the response.
-    private static string ReadRequestId(HttpResponseMessage response)
+    // A response header by name - ElevenLabs sends request-id and character-cost, on the response
+    // headers or (for some endpoints) the content headers.
+    private static string ReadHeader(HttpResponseMessage response, string name)
     {
-        if (response.Headers.TryGetValues("request-id", out var headerValues) &&
-            headerValues.FirstOrDefault() is { Length: > 0 } headerId)
+        if (response.Headers.TryGetValues(name, out var headerValues) &&
+            headerValues.FirstOrDefault() is { Length: > 0 } headerValue)
         {
-            return headerId;
+            return headerValue;
         }
 
-        if (response.Content.Headers.TryGetValues("request-id", out var contentValues) &&
-            contentValues.FirstOrDefault() is { Length: > 0 } contentId)
+        if (response.Content.Headers.TryGetValues(name, out var contentValues) &&
+            contentValues.FirstOrDefault() is { Length: > 0 } contentValue)
         {
-            return contentId;
+            return contentValue;
         }
 
         return string.Empty;
@@ -653,7 +706,7 @@ public class TtsDownloadService : ITtsDownloadService
             return (false, error, null);
         }
 
-        var requestId = ReadRequestId(result);
+        var requestId = ReadHeader(result, "request-id");
         // character-cost is ElevenLabs' own billing figure for this request, so the tools log can
         // settle "were these chunk requests actually generated (and charged)?" without guessing.
         var characterCost = result.Headers.TryGetValues("character-cost", out var costValues)
