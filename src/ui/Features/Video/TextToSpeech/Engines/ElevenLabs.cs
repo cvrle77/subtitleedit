@@ -580,6 +580,10 @@ public class ElevenLabs : ITtsEngine
         // with no pause near it (a cue broken mid-sentence) keeps the timestamp guess.
         const double leadInSeconds = 0.09;
         const double snapRadiusSeconds = 0.8;
+        // A boundary is only trusted when the pause it snapped to is a real sentence pause: long
+        // enough (a breath leaves two short silences around it), and near the expected spot.
+        const double minReliablePauseSeconds = 0.18;
+        const double maxReliableDistanceSeconds = 0.6;
 
         IReadOnlyList<OpenAiSttChunker.SilenceInterval> silences;
         try
@@ -597,12 +601,14 @@ public class ElevenLabs : ITtsEngine
         }
 
         var boundaries = new double[cueTexts.Count + 1];
+        var boundaryReliable = new bool[cueTexts.Count + 1];
         boundaries[0] = 0.0;
+        boundaryReliable[0] = true;
         for (var i = 1; i < cueTexts.Count; i++)
         {
             var approx = t0[i] - leadInSeconds;
             // Prefer the longest pause near this boundary: a sentence gap is longer than the short
-            // intra-word silences the detector also reports.
+            // intra-word silences (and the two a breath leaves behind) the detector also reports.
             var snapped = silences
                 .Where(s => Math.Abs(s.Midpoint - approx) <= snapRadiusSeconds)
                 .OrderByDescending(s => s.DurationSeconds)
@@ -612,6 +618,8 @@ public class ElevenLabs : ITtsEngine
             if (snapped != null)
             {
                 boundaries[i] = snapped.Midpoint;
+                boundaryReliable[i] = snapped.DurationSeconds >= minReliablePauseSeconds
+                    && Math.Abs(snapped.Midpoint - approx) <= maxReliableDistanceSeconds;
             }
             else
             {
@@ -622,10 +630,12 @@ public class ElevenLabs : ITtsEngine
                 }
 
                 boundaries[i] = boundary;
+                boundaryReliable[i] = false;
             }
         }
 
         boundaries[cueTexts.Count] = t1[cueTexts.Count - 1] + 0.30;
+        boundaryReliable[cueTexts.Count] = true; // no cue starts here, so the tail is harmless
 
         // Keep the boundaries strictly increasing, so a snapped pause can never reorder the cues.
         for (var i = 1; i < boundaries.Length; i++)
@@ -636,13 +646,33 @@ public class ElevenLabs : ITtsEngine
             }
         }
 
-        Se.WriteToolsLog($"ElevenLabs chunk: {cueTexts.Count} cues, {silences.Count} pauses detected; cut boundaries = " +
+        var unreliableCues = 0;
+        for (var i = 0; i < cueTexts.Count; i++)
+        {
+            if (!boundaryReliable[i] || !boundaryReliable[i + 1])
+            {
+                unreliableCues++;
+            }
+        }
+
+        Se.WriteToolsLog($"ElevenLabs chunk: {cueTexts.Count} cues, {silences.Count} pauses detected, {unreliableCues} cue(s) without a confident pause; cut boundaries = " +
                          string.Join(", ", boundaries.Select(b => b.ToString("0.00", CultureInfo.InvariantCulture))));
 
         try
         {
             for (var i = 0; i < cueTexts.Count; i++)
             {
+                // No confident pause at one of this cue's edges: the chunk cut would clip the next
+                // line's opening or leak it into this one. Regenerate just this cue as a single line,
+                // exactly like manual per-line regeneration, and keep that clip instead.
+                if (!boundaryReliable[i] || !boundaryReliable[i + 1])
+                {
+                    var single = await Speak(cueTexts[i], outputFolder, voice, language, null, model, cancellationToken);
+                    results.Add(single);
+                    Se.WriteToolsLog($"ElevenLabs chunk: cue {i + 1}/{cueTexts.Count} had no confident pause - regenerated as a single line");
+                    continue;
+                }
+
                 var start = boundaries[i];
                 var end = boundaries[i + 1];
                 if (end <= start)
