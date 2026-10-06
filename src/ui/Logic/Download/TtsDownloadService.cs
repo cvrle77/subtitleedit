@@ -4,6 +4,7 @@ using Nikse.SubtitleEdit.Core.SubtitleFormats;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Voices;
 using Nikse.SubtitleEdit.Logic.Config;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -33,7 +34,7 @@ public interface ITtsDownloadService
     Task DownloadAzureVoiceList(Stream stream, IProgress<float>? progress, CancellationToken cancellationToken);
     Task DownloadMurfVoiceList(MemoryStream stream, IProgress<float>? progress, CancellationToken cancellationToken);
 
-    Task<(bool Ok, string Error)> DownloadElevenLabsVoiceSpeak(
+    Task<(bool Ok, string Error, string RequestId)> DownloadElevenLabsVoiceSpeak(
         string inputText,
         ElevenLabVoice voice,
         string model,
@@ -41,7 +42,10 @@ public interface ITtsDownloadService
         string languageCode,
         MemoryStream stream,
         IProgress<float>? progress,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        string previousText = "",
+        string nextText = "",
+        IReadOnlyList<string>? previousRequestIds = null);
 
     Task<bool> DownloadAzureVoiceSpeak(
         string inputText,
@@ -328,7 +332,7 @@ public class TtsDownloadService : ITtsDownloadService
         await result.Content.CopyToAsync(stream, cancellationToken);
     }
 
-    public async Task<(bool Ok, string Error)> DownloadElevenLabsVoiceSpeak(
+    public async Task<(bool Ok, string Error, string RequestId)> DownloadElevenLabsVoiceSpeak(
         string inputText,
         ElevenLabVoice voice,
         string model,
@@ -336,14 +340,17 @@ public class TtsDownloadService : ITtsDownloadService
         string languageCode,
         MemoryStream stream,
         IProgress<float>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string previousText = "",
+        string nextText = "",
+        IReadOnlyList<string>? previousRequestIds = null)
     {
         // Eleven v3 and the Eleven v4 family are only available through the text-to-dialogue
         // endpoint (they are not served by /v1/text-to-speech). The request body below is the
         // same shape for all of them.
         if (model is "eleven_v3" or "eleven_v4" or "eleven_v4_turbo")
         {
-            return await DownloadElevenLabsVoiceSpeak3(inputText, voice, model, apiKey, languageCode, stream, progress, cancellationToken);
+            return await DownloadElevenLabsVoiceSpeak3(inputText, voice, model, apiKey, languageCode, stream, progress, cancellationToken, previousText, nextText, previousRequestIds);
         }
 
         var url = "https://api.elevenlabs.io/v1/text-to-speech/" + voice.VoiceId;
@@ -401,7 +408,7 @@ public class TtsDownloadService : ITtsDownloadService
     /// honors the Retry-After header instead of failing the segment outright (#12093). Returns a
     /// human-readable error for the UI when all attempts fail.
     /// </summary>
-    private async Task<(bool Ok, string Error)> SendElevenLabsSpeakRequestAsync(
+    private async Task<(bool Ok, string Error, string RequestId)> SendElevenLabsSpeakRequestAsync(
         string url,
         string jsonData,
         string apiKey,
@@ -434,7 +441,7 @@ public class TtsDownloadService : ITtsDownloadService
             {
                 stream.SetLength(0);
                 await result.Content.CopyToAsync(stream, cancellationToken);
-                return (true, string.Empty);
+                return (true, string.Empty, ReadRequestId(result));
             }
 
             var errorBody = TruncateForLog((await result.Content.ReadAsStringAsync(cancellationToken)).Trim());
@@ -451,8 +458,28 @@ public class TtsDownloadService : ITtsDownloadService
                 ? $"ElevenLabs rate limit (HTTP 429) still hit after {maxAttempts} attempts with backoff - the plan's concurrency/request limit is likely exceeded. {errorBody}"
                 : $"HTTP {(int)result.StatusCode} {result.StatusCode}: {errorBody}";
             SeLogger.Error($"{logContext} failed calling {url}: {error}" + Environment.NewLine + "Data=" + jsonData);
-            return (false, error);
+            return (false, error, string.Empty);
         }
+    }
+
+    // The id of a finished generation, read from the response headers, so the next request can be
+    // conditioned on this exact audio (ElevenLabs request stitching). ElevenLabs sends it as
+    // "request-id"; some endpoints put custom headers on the content instead of the response.
+    private static string ReadRequestId(HttpResponseMessage response)
+    {
+        if (response.Headers.TryGetValues("request-id", out var headerValues) &&
+            headerValues.FirstOrDefault() is { Length: > 0 } headerId)
+        {
+            return headerId;
+        }
+
+        if (response.Content.Headers.TryGetValues("request-id", out var contentValues) &&
+            contentValues.FirstOrDefault() is { Length: > 0 } contentId)
+        {
+            return contentId;
+        }
+
+        return string.Empty;
     }
 
     private static TimeSpan GetRetryDelay(HttpResponseMessage response, int attempt)
@@ -485,7 +512,7 @@ public class TtsDownloadService : ITtsDownloadService
         return text.Length <= maxLength ? text : text.Substring(0, maxLength) + "...";
     }
 
-    private async Task<(bool Ok, string Error)> DownloadElevenLabsVoiceSpeak3(
+    private async Task<(bool Ok, string Error, string RequestId)> DownloadElevenLabsVoiceSpeak3(
         string inputText, 
         ElevenLabVoice voice, 
         string model, 
@@ -493,7 +520,10 @@ public class TtsDownloadService : ITtsDownloadService
         string languageCode, 
         MemoryStream stream, 
         IProgress<float>? progress, 
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string previousText = "",
+        string nextText = "",
+        IReadOnlyList<string>? previousRequestIds = null)
     {
         var url = "https://api.elevenlabs.io/v1/text-to-dialogue";
 
@@ -515,6 +545,29 @@ public class TtsDownloadService : ITtsDownloadService
         var languageFragment = string.IsNullOrEmpty(languageCode)
             ? string.Empty
             : ", \"language_code\": \"" + languageCode + "\"";
+        // Request stitching (Eleven v4): previous_request_ids names the earlier generations whose
+        // audio this one should continue (max 3, each lasts two hours); previous_text/future_text
+        // give the surrounding words when no id is available yet (the first line, or the parallel
+        // path). The API ignores the text once ids are present, so both are sent and the text is
+        // simply the graceful fallback. v3 does not support request stitching - the caller
+        // withholds the context for it - and the fields stay out when empty.
+        var stitchFragment = string.Empty;
+        if (previousRequestIds is { Count: > 0 })
+        {
+            stitchFragment += ", \"previous_request_ids\": [" +
+                              string.Join(", ", previousRequestIds.Select(id => "\"" + id + "\"")) + "]";
+        }
+
+        if (!string.IsNullOrEmpty(previousText))
+        {
+            stitchFragment += ", \"previous_text\": \"" + Json.EncodeJsonText(previousText) + "\"";
+        }
+
+        if (!string.IsNullOrEmpty(nextText))
+        {
+            stitchFragment += ", \"future_text\": \"" + Json.EncodeJsonText(nextText) + "\"";
+        }
+
         // The dialogue endpoint defaults to eleven_v3, so model_id must be sent explicitly to
         // actually select the Eleven v4 / v4 Turbo model the caller asked for.
         var data = "{ \"inputs\": [{ " +
@@ -523,6 +576,7 @@ public class TtsDownloadService : ITtsDownloadService
                    " }]" +
                    ", \"model_id\": \"" + model + "\"" +
                    languageFragment +
+                   stitchFragment +
                    ", \"settings\": { \"stability\": " + stability + " } }";
 
         return await SendElevenLabsSpeakRequestAsync(url, data, apiKey, acceptAudioMpeg: false, stream, "ElevenLabs TTS v3", cancellationToken);

@@ -393,13 +393,45 @@ public class ElevenLabs : ITtsEngine
         return await GetVoices(language);
     }
 
-    public async Task<TtsResult> Speak(
+    public Task<TtsResult> Speak(
         string text,
         string outputFolder,
         Voice voice,
         TtsLanguage? language,
         string? region,
         string? model,
+        CancellationToken cancellationToken)
+    {
+        return SpeakInternal(text, outputFolder, voice, language, model, null, cancellationToken);
+    }
+
+    /// <summary>
+    /// Like <see cref="Speak"/>, but carries the request-stitching context for the surrounding
+    /// lines so this line's delivery continues the previous one (ElevenLabs "request stitching").
+    /// Only the Eleven v4 family honours it: v3 has no request stitching, and the older models are
+    /// conditioned differently, so for them the context is dropped and the call is identical to
+    /// <see cref="Speak"/>.
+    /// </summary>
+    public Task<TtsResult> SpeakStitched(
+        string text,
+        string outputFolder,
+        Voice voice,
+        TtsLanguage? language,
+        string? region,
+        string? model,
+        TtsStitchContext stitch,
+        CancellationToken cancellationToken)
+    {
+        return SpeakInternal(text, outputFolder, voice, language, model, stitch, cancellationToken);
+    }
+
+    private async Task<TtsResult> SpeakInternal(
+        string text,
+        string outputFolder,
+        Voice voice,
+        TtsLanguage? language,
+        string? model,
+        TtsStitchContext? stitch,
         CancellationToken cancellationToken)
     {
         if (voice.EngineVoice is not ElevenLabVoice elevenLabVoice)
@@ -420,7 +452,14 @@ public class ElevenLabs : ITtsEngine
             model = "eleven_v4_turbo";
         }
 
-        Se.WriteToolsLog($"ElevenLabs: voice={elevenLabVoice.Voice}, voiceId={elevenLabVoice.VoiceId}, model={model}, textLen={text.Length}");
+        // Request stitching is a v4-only feature (v3 explicitly does not support it). Keep the
+        // context out of every other model so their request body is byte-for-byte what it was.
+        var isV4 = model is "eleven_v4" or "eleven_v4_turbo";
+        var previousText = isV4 ? stitch?.PreviousText ?? string.Empty : string.Empty;
+        var nextText = isV4 ? stitch?.NextText ?? string.Empty : string.Empty;
+        var previousRequestIds = isV4 ? stitch?.PreviousRequestIds : null;
+
+        Se.WriteToolsLog($"ElevenLabs: voice={elevenLabVoice.Voice}, voiceId={elevenLabVoice.VoiceId}, model={model}, textLen={text.Length}, stitchIds={previousRequestIds?.Count ?? 0}");
 
         // A configured general accent is applied invisibly to every line (v4/v3, which read audio
         // tags): prepend it to the leading tag group so "[warmly] text" becomes
@@ -428,7 +467,7 @@ public class ElevenLabs : ITtsEngine
         var accentedText = ApplyGeneralAccent(text, model);
 
         var ms = new MemoryStream();
-        var (ok, error) = await _ttsDownloadService.DownloadElevenLabsVoiceSpeak(accentedText, elevenLabVoice, model, Se.Settings.Video.TextToSpeech.ElevenLabsApiKey, language?.Code ?? string.Empty, ms, null, cancellationToken);
+        var (ok, error, requestId) = await _ttsDownloadService.DownloadElevenLabsVoiceSpeak(accentedText, elevenLabVoice, model, Se.Settings.Video.TextToSpeech.ElevenLabsApiKey, language?.Code ?? string.Empty, ms, null, cancellationToken, previousText, nextText, previousRequestIds);
         if (!ok)
         {
             // Forced: a failed API call must land in the tools log even when the setting is off,
@@ -439,7 +478,7 @@ public class ElevenLabs : ITtsEngine
 
         var fileName = Path.Combine(TtsOutputFolder.Resolve(outputFolder, GetSetElevenLabsFolder), Guid.NewGuid() + ".mp3");
         await File.WriteAllBytesAsync(fileName, ms.ToArray(), cancellationToken);
-        return new TtsResult { Text = text, FileName = fileName };
+        return new TtsResult { Text = text, FileName = fileName, RequestId = requestId };
     }
 
     // Prepends the configured general accent tag to the leading tag group of the line, for the

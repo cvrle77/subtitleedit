@@ -3884,6 +3884,16 @@ public partial class TextToSpeechViewModel : ObservableObject
             _speakRetryFailures = 0;
             var skippedNoiseCount = 0;
 
+            // Request stitching: only a uniform ElevenLabs v4 run gets the surrounding lines as
+            // context (a per-actor cast can switch engine/voice per line, and the older models do
+            // not support it). The linear path below chains the actual request ids of the lines
+            // already generated; the parallel path cannot (no prior request has finished yet) and
+            // falls back to the 100-character text window.
+            var stitchV4 = engine is ElevenLabs
+                && castContext.ByActor.Count == 0
+                && SelectedModel is "eleven_v4" or "eleven_v4_turbo";
+            var previousRequestIds = new List<string>();
+
             // Parallel mode: a bounded pool of ElevenLabs requests instead of one-at-a-time. Only
             // when the whole run is ElevenLabs (a per-actor cast can mix engines, and the local
             // CrispASR servers can't take concurrent calls). Off by default, so the linear path
@@ -3954,8 +3964,14 @@ public partial class TextToSpeechViewModel : ObservableObject
                 // the row's engine isn't CrispASR-backed. Off the UI thread because Kill +
                 // WaitForExit can take a few seconds per stuck process.
                 await Task.Run(() => StopOtherCrispAsrServers(resolution.Engine));
+                var stitch = stitchV4
+                    ? new TtsStitchContext(
+                        GetStitchNeighbourText(index, -1, fromEnd: true),
+                        GetStitchNeighbourText(index, +1, fromEnd: false),
+                        previousRequestIds.ToArray())
+                    : null;
                 var speakResult = await SpeakOneParagraphAsync(
-                    resolution, language, region, model, cancellationToken);
+                    resolution, language, region, model, stitch, cancellationToken);
                 if (speakResult.Error || string.IsNullOrEmpty(speakResult.FileName))
                 {
                     var swapped = await SpeakWithFallbackReferenceAsync(
@@ -3964,6 +3980,16 @@ public partial class TextToSpeechViewModel : ObservableObject
                     {
                         resolution = swapped.Value.Resolution;
                         speakResult = swapped.Value.Result;
+                    }
+                }
+
+                if (stitchV4 && !string.IsNullOrEmpty(speakResult.RequestId))
+                {
+                    // Keep only the last three ids - the API's window for previous_request_ids.
+                    previousRequestIds.Add(speakResult.RequestId);
+                    if (previousRequestIds.Count > 3)
+                    {
+                        previousRequestIds.RemoveAt(0);
                     }
                 }
 
@@ -4177,6 +4203,11 @@ public partial class TextToSpeechViewModel : ObservableObject
         var completed = 0;
         var total = paragraphs.Count;
 
+        // Parallel mode is already a uniform ElevenLabs run, so stitching here is the 100-character
+        // text fallback only: no earlier request is guaranteed to have finished, so there are no
+        // request ids to chain (see the linear path for the id-chained form).
+        var stitchV4Parallel = SelectedModel is "eleven_v4" or "eleven_v4_turbo";
+
         Se.WriteToolsLog($"TTS generation: parallel mode with {concurrency} concurrent ElevenLabs request(s) for {total} lines");
 
         // Say up front how many run at once, so the status shows this is the parallel path even
@@ -4217,7 +4248,13 @@ public partial class TextToSpeechViewModel : ObservableObject
                         var region = isCrossEngine ? null : SelectedRegion;
                         var model = resolution.Model ?? (isCrossEngine ? null : SelectedModel);
 
-                        var speakResult = await SpeakOneParagraphAsync(resolution, language, region, model, cancellationToken);
+                        var stitch = stitchV4Parallel
+                            ? new TtsStitchContext(
+                                GetStitchNeighbourText(i, -1, fromEnd: true),
+                                GetStitchNeighbourText(i, +1, fromEnd: false),
+                                Array.Empty<string>())
+                            : null;
+                        var speakResult = await SpeakOneParagraphAsync(resolution, language, region, model, stitch, cancellationToken);
                         if (speakResult.Error || string.IsNullOrEmpty(speakResult.FileName))
                         {
                             var swapped = await SpeakWithFallbackReferenceAsync(resolution, i, language, region, model, cancellationToken);
@@ -4292,6 +4329,39 @@ public partial class TextToSpeechViewModel : ObservableObject
     /// </summary>
     private int _speakRetryFailures;
 
+    // 100 is the API's own limit for the previous_text / future_text stitching window.
+    private const int StitchContextMaxChars = 100;
+
+    /// <summary>
+    /// The nearest non-silent neighbour's text, trimmed to the API's stitching window:
+    /// <paramref name="direction"/> -1 looks backwards (previous_text, tail) and +1 forwards
+    /// (future_text, head). Empty at the start/end of the subtitle. Used as the request-stitching
+    /// fallback when no prior request id exists (the first line, or the parallel path).
+    /// </summary>
+    private string GetStitchNeighbourText(int index, int direction, bool fromEnd)
+    {
+        for (var i = index + direction; i >= 0 && i < _subtitle.Paragraphs.Count; i += direction)
+        {
+            var paragraph = _subtitle.Paragraphs[i];
+            if (_skipNoiseParagraphs.Contains(paragraph))
+            {
+                continue;
+            }
+
+            var text = HtmlUtil.RemoveHtmlTags(Utilities.UnbreakLine(paragraph.Text ?? string.Empty), alsoSsaTags: true).Trim();
+            if (text.Length == 0)
+            {
+                continue;
+            }
+
+            return text.Length <= StitchContextMaxChars
+                ? text
+                : fromEnd ? text[^StitchContextMaxChars..] : text[..StitchContextMaxChars];
+        }
+
+        return string.Empty;
+    }
+
     /// <summary>
     /// Synthesises one paragraph, turning an engine that *throws* into an errored
     /// <see cref="TtsResult"/> instead of letting the failure unwind the whole run.
@@ -4315,15 +4385,24 @@ public partial class TextToSpeechViewModel : ObservableObject
         TtsLanguage? language,
         string? region,
         string? model,
+        TtsStitchContext? stitch,
         CancellationToken cancellationToken)
     {
+        // ElevenLabs v4 can be conditioned on the surrounding lines (request stitching); every
+        // other engine ignores the context and speaks exactly as before.
+        Task<TtsResult> Speak()
+        {
+            return stitch != null && resolution.Engine is ElevenLabs eleven
+                ? eleven.SpeakStitched(resolution.Text, _waveFolder, resolution.Voice, language, region, model, stitch, cancellationToken)
+                : resolution.Engine.Speak(resolution.Text, _waveFolder, resolution.Voice, language, region, model, cancellationToken);
+        }
+
         try
         {
             var result = await TtsInstructionSwap.RunAsync(
                 resolution.Engine,
                 resolution.Instruction,
-                () => resolution.Engine.Speak(resolution.Text, _waveFolder, resolution.Voice,
-                    language, region, model, cancellationToken));
+                () => Speak());
 
             // The counter tracks failures *in a row*, so a line that succeeds first time
             // clears it. Without this it accumulated over the whole run and retries were
@@ -4350,8 +4429,7 @@ public partial class TextToSpeechViewModel : ObservableObject
                 var retried = await TtsInstructionSwap.RunAsync(
                     resolution.Engine,
                     resolution.Instruction,
-                    () => resolution.Engine.Speak(resolution.Text, _waveFolder, resolution.Voice,
-                        language, region, model, cancellationToken));
+                    () => Speak());
                 _speakRetryFailures = 0; // see the reset on first-attempt success below too
                 Se.WriteToolsLog("TTS generation: the segment succeeded on retry");
                 return retried;
