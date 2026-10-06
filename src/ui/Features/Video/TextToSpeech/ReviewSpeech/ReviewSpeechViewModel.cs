@@ -2912,9 +2912,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return false;
         }
 
-        var paragraph = row.WaveformParagraph ?? row.StepResult.Paragraph;
-        return seconds >= paragraph.StartTime.TotalSeconds - 0.001 &&
-               seconds < paragraph.EndTime.TotalSeconds;
+        var start = row.WaveformParagraph?.StartTime.TotalSeconds ?? row.StepResult.Paragraph.StartTime.TotalSeconds;
+        var end = row.WaveformParagraph?.EndTime.TotalSeconds ?? row.StepResult.Paragraph.EndTime.TotalSeconds;
+        return seconds >= start - 0.001 && seconds < end;
     }
 
     // The block Play should start from: the selected one while the play-head is on it, otherwise
