@@ -2475,6 +2475,23 @@
     <Word to="bajadera" from="bandjera" />
     <Word to="bajaderu" from="pajaderu" />
     <Word to="bajadera" from="pajadera" />
+    <Word from="krukno" to="krupno" />
+    <Word from="vraÅ¡nje" to="braÅ¡na" />
+    <Word from="Uzmate" to="Uzmete" />
+    <Word to="puna ova" from="punova" />
+    <Word to="ne stavite" from="nestavite" />
+    <Word to="brašna" from="vrašnje" />
+    <Word to="zadebljane" from="zazebljane" />
+    <Word to="kockice" from="koèkice" />
+    <Word to="pekmez" from="pekmed" />
+    <Word to="pekmez" from="pekmer" />
+    <Word to="pekmez" from="pekmes" />
+    <Word to="vruæom" from="vremom" />
+    <Word to="slatka" from="sladka" />
+    <Word to="Kolaè" from="Kolac" />
+    <Word to="utapkate" from="utavkate" />
+    <Word to="promešamo" from="promješamo" />
+    <Word to="promešate" from="promješate" />
   </WholeWords>
   <PartialLines>
     <LinePart to="napraviÄ‡u" from="napravit Ä‡u" />
@@ -2705,6 +2722,7 @@
     <LinePart from="da zlaÄenja" to="razvlaÄenja" />
     <LinePart to="decilitar ulja" from="deci ulja" />
     <LinePart from="posluÅ¾it Ä‡e" to="posluÅ¾iÄ‡e" />
+    <LinePart from="zavisit Ä‡e" to="zavisiÄ‡e" />
   </PartialLines>
   <BeginLines />
   <EndLines />
