@@ -7,6 +7,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Nikse.SubtitleEdit.Controls;
 using Nikse.SubtitleEdit.Controls.AudioVisualizerControl;
 using Nikse.SubtitleEdit.Features.Main.Layout;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.ElevenLabsSettings;
@@ -75,14 +76,13 @@ public class ReviewSpeechWindow : Window
 
         var threeColumn = Se.Settings.Video.TextToSpeech.ThreeColumnReview;
 
-        // Active tag chips get a pastel red background with dark text so the label stays readable
-        // on both light and dark themes; inactive ones keep the normal button look.
+        // An active tag chip is tinted with its CATEGORY color (set inline in RefreshTagChips, so
+        // each category has its own); this style only carries the weight, since per-chip colors
+        // must not be overridden by a shared style.
         Styles.Add(new Style(x => x.OfType<Button>().Class("tag-chip").Class("active"))
         {
             Setters =
             {
-                new Setter(Button.BackgroundProperty, new SolidColorBrush(Color.FromRgb(0xF5, 0xB7, 0xB1))),
-                new Setter(Button.ForegroundProperty, new SolidColorBrush(Color.FromRgb(0x4A, 0x15, 0x12))),
                 new Setter(Button.FontWeightProperty, FontWeight.SemiBold),
             },
         });
@@ -327,11 +327,12 @@ public class ReviewSpeechWindow : Window
         lineGrid.DoubleTapped += (s, e) => vm.LineGridDoubleClicked();
         vm.LineGrid = lineGrid;
 
-        var textBox = new TextBox
+        var textBox = new SyntaxHighlightingTextBox
         {
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             Height = 80,
+            SourceHighlighter = new TtsTagSyntaxHighlighter(),
             [!TextBox.TextProperty] = new Binding(nameof(vm.SelectedLine) + "." + nameof(ReviewRow.Text))
             {
                 Mode = BindingMode.TwoWay
@@ -349,6 +350,16 @@ public class ReviewSpeechWindow : Window
         // Refresh the palette highlights as the user hand-edits the text (typing a tag in, deleting
         // one) so a tag typed manually lights up just like one inserted from the palette.
         textBox.TextChanged += (_, _) => vm.RefreshActiveTags();
+
+        // A plain click (no drag-select) ON an "[...]" tag removes that tag - the whole group when it
+        // is the only tag, otherwise just the tag under the click.
+        textBox.PointerReleased += (_, e) =>
+        {
+            if (e.InitialPressMouseButton == MouseButton.Left && textBox.SelectionStart == textBox.SelectionEnd)
+            {
+                vm.RemoveTagAtCaret();
+            }
+        };
 
         // Right-click in the text box splits at the caret + play-head, mirroring the main window.
         // The caret (not a clicked row) is the text split point, so the menu belongs on the box.
@@ -582,15 +593,16 @@ public class ReviewSpeechWindow : Window
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
 
-        foreach (var (header, tags) in TagCategories())
+        foreach (var category in TtsTagPalette.Categories)
         {
+            var tags = category.Tags;
             var headerLabel = new TextBlock
             {
-                Text = header,
+                Text = category.Header,
                 Width = 62,
                 FontSize = 12,
                 FontWeight = FontWeight.SemiBold,
-                Opacity = 0.8,
+                Foreground = new SolidColorBrush(category.Color),
                 VerticalAlignment = VerticalAlignment.Center,
             };
 
@@ -604,8 +616,8 @@ public class ReviewSpeechWindow : Window
                 var chip = new TagChip(tag);
                 _tagChips.Add(chip);
 
-                // Plain button look when off (same as "Remove all tags"); the "active" class turns
-                // it red when the tag is present in the line.
+                // Plain button look when off (same as "Remove all tags"); RefreshTagChips tints an
+                // active chip with its category color.
                 var button = new Button
                 {
                     Content = tag,
@@ -685,21 +697,6 @@ public class ReviewSpeechWindow : Window
         return scroll;
     }
 
-    private static (string Header, string[] Tags)[] TagCategories()
-    {
-        return new (string Header, string[] Tags)[]
-        {
-            ("Intro", new[] { "[happy]", "[excited]", "[welcoming]", "[cheerful]", "[warmly]", "[friendly]", "[enthusiastic]", "[upbeat]", "[delighted]" }),
-            ("Steps", new[] { "[thoughtful]", "[measured]", "[calm]", "[matter-of-factly]", "[informative]", "[patiently]", "[clearly]", "[precise]", "[methodical]", "[detailed]" }),
-            ("Advice", new[] { "[reassuring]", "[encouraging]", "[gently]", "[kindly]", "[helpfully]", "[supportive]", "[caring]", "[attentive]" }),
-            ("Important", new[] { "[serious]", "[firmly]", "[with emphasis]", "[earnestly]", "[confident]", "[determined]", "[stern]" }),
-            ("Fun", new[] { "[chuckles]", "[laughs]", "[playful]", "[amused]", "[light-hearted]", "[cheeky]", "[impish]", "[jesting]" }),
-            ("Pauses", new[] { "[short pause]", "[pause]", "[long pause]", "[sighs]", "[exhales]", "[inhales]", "[clears throat]", "[breath]" }),
-            ("Ending", new[] { "[satisfied]", "[pleased]", "[proudly]", "[content]", "[gratified]", "[triumphant]", "[concluding]" }),
-            ("Accent", new[] { "[American accent]", "[British accent]", "[strong American accent]", "[South African accent]", "[Serbian accent]", "[warm, conversational]", "[narrator]" }),
-        };
-    }
-
     // Recomputes every chip's highlight from the VM's active tag set.
     private void RefreshTagChips()
     {
@@ -708,6 +705,23 @@ public class ReviewSpeechWindow : Window
             var active = _vm.ActiveTags.Any(t => string.Equals(t, chip.Tag, StringComparison.OrdinalIgnoreCase));
             chip.IsActive = active;
             chip.Button?.Classes.Set("active", active);
+
+            // Tint the active chip with its CATEGORY color (pastel background, dark same-hue text);
+            // inactive chips fall back to the normal button look.
+            if (chip.Button is { } button)
+            {
+                if (active)
+                {
+                    var color = TtsTagPalette.ColorForTag(chip.Tag);
+                    button.Background = new SolidColorBrush(TtsTagPalette.Pastel(color));
+                    button.Foreground = new SolidColorBrush(TtsTagPalette.DarkText(color));
+                }
+                else
+                {
+                    button.ClearValue(Button.BackgroundProperty);
+                    button.ClearValue(Button.ForegroundProperty);
+                }
+            }
         }
     }
 
@@ -715,17 +729,7 @@ public class ReviewSpeechWindow : Window
     // button drops its tag at the caret of the selected line's text box.
     private static Control MakeTagPanel(ReviewSpeechViewModel vm)
     {
-        var rows = new (string Header, string[] Tags)[]
-        {
-            ("Intro", new[] { "[happy]", "[excited]", "[welcoming]", "[cheerful]", "[warmly]", "[friendly]", "[enthusiastic]", "[upbeat]", "[delighted]" }),
-            ("Steps", new[] { "[thoughtful]", "[measured]", "[calm]", "[matter-of-factly]", "[informative]", "[patiently]", "[clearly]", "[precise]", "[methodical]", "[detailed]" }),
-            ("Advice", new[] { "[reassuring]", "[encouraging]", "[gently]", "[kindly]", "[helpfully]", "[supportive]", "[caring]", "[attentive]" }),
-            ("Important", new[] { "[serious]", "[firmly]", "[with emphasis]", "[earnestly]", "[confident]", "[determined]", "[stern]" }),
-            ("Fun", new[] { "[chuckles]", "[laughs]", "[playful]", "[amused]", "[light-hearted]", "[cheeky]", "[impish]", "[jesting]" }),
-            ("Pauses", new[] { "[short pause]", "[pause]", "[long pause]", "[sighs]", "[exhales]", "[inhales]", "[clears throat]", "[breath]" }),
-            ("Ending", new[] { "[satisfied]", "[pleased]", "[proudly]", "[content]", "[gratified]", "[triumphant]", "[concluding]" }),
-            ("Accent", new[] { "[American accent]", "[British accent]", "[strong American accent]", "[South African accent]", "[Serbian accent]", "[warm, conversational]", "[narrator]" }),
-        };
+        var rows = TtsTagPalette.Categories;
 
         var panel = new StackPanel
         {
@@ -746,14 +750,15 @@ public class ReviewSpeechWindow : Window
         ToolTip.SetTip(removeAllButton, "Remove the whole [..] tag group from the selected line");
         panel.Children.Add(removeAllButton);
 
-        foreach (var (header, tags) in rows)
+        foreach (var category in rows)
         {
+            var tags = category.Tags;
             var headerLabel = new TextBlock
             {
-                Text = header,
+                Text = category.Header,
                 Width = 70,
                 VerticalAlignment = VerticalAlignment.Center,
-                Opacity = 0.75,
+                Foreground = new SolidColorBrush(category.Color),
             };
 
             // Split the category into two rows so it fits without a horizontal scrollbar.
