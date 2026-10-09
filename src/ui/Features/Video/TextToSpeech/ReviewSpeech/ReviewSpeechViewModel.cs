@@ -202,24 +202,19 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
 
         var inner = text.Substring(open + 1, close - open - 1);
-        var tags = SplitTagGroup(inner);
+        var tokens = TtsTagPalette.TokenizeGroup(inner);
         var offset = caret - (open + 1);
 
-        // Find the tag token containing the caret. Tags are space separated, and a known multi-word
-        // tag (e.g. "short pause") stays one token, so a click on either word removes the whole tag.
+        // Find the tag token containing the caret, using the real character offsets. A known
+        // multi-word tag (e.g. "short pause") stays one token, so a click on either word removes it.
         var removeIndex = -1;
-        var pos = 0;
-        for (var i = 0; i < tags.Count; i++)
+        for (var i = 0; i < tokens.Count; i++)
         {
-            var start = pos;
-            var end = pos + tags[i].Length - 1;
-            if (offset >= start - 1 && offset <= end + 1)
+            if (offset >= tokens[i].Start && offset <= tokens[i].Start + tokens[i].Length)
             {
                 removeIndex = i;
                 break;
             }
-
-            pos = end + 2;
         }
 
         if (removeIndex < 0)
@@ -227,20 +222,14 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return;
         }
 
-        var remaining = new List<string>(tags);
-        remaining.RemoveAt(removeIndex);
+        var remaining = tokens
+            .Where((_, i) => i != removeIndex)
+            .Select(t => t.Tag)
+            .ToList();
 
-        string newText;
-        if (remaining.Count == 0)
-        {
-            var left = text.Substring(0, open);
-            var right = text.Substring(close + 1);
-            newText = TrimOneSpace(left, right);
-        }
-        else
-        {
-            newText = text.Substring(0, open + 1) + string.Join(" ", remaining) + text.Substring(close);
-        }
+        var newText = remaining.Count == 0
+            ? TrimOneSpace(text.Substring(0, open), text.Substring(close + 1))
+            : text.Substring(0, open) + "[" + string.Join(" ", remaining) + "]" + text.Substring(close + 1);
 
         row.Text = newText;
         RefreshActiveTags();
@@ -250,20 +239,16 @@ public partial class ReviewSpeechViewModel : ObservableObject
         EditTextBox.Focus();
     }
 
-    // Joins the two sides of a removed tag with a single space, so the surrounding words don't run
-    // together and no double space is left behind.
+    // Joins the two sides of a removed tag: exactly one space when either side had one (so words
+    // don't run together), and none when the tag was glued to both sides.
     private static string TrimOneSpace(string left, string right)
     {
-        if (left.EndsWith(' '))
+        if (!left.EndsWith(' ') && !right.StartsWith(' '))
         {
-            left = left.Substring(0, left.Length - 1);
-        }
-        else if (right.StartsWith(' '))
-        {
-            right = right.Substring(1);
+            return left + right;
         }
 
-        return left + right;
+        return (left.TrimEnd() + " " + right.TrimStart()).Trim();
     }
 
     // Second waveform stacked under the original one: the generated speech of every row placed at
@@ -1604,9 +1589,17 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         var text = row.Text ?? string.Empty;
         var inner = FindLeadingTagGroupInner(text);
+        var inLeadingGroup = inner != null &&
+            SplitTagGroup(inner).Any(t => string.Equals(t, bare, StringComparison.OrdinalIgnoreCase));
 
         string newText;
-        if (inner != null)
+        if (!inLeadingGroup && TryRemoveMidTextTag(text, bare, out var withoutMidText))
+        {
+            // The tag was typed outside the leading group (mid-line). Turn it off where it is,
+            // instead of adding a second copy to the leading group.
+            newText = withoutMidText;
+        }
+        else if (inner != null)
         {
             // Split the group into tags, keeping a hand-typed multi-word tag like "American accent"
             // together by matching known palette entries greedily; unknown runs stay as one tag.
@@ -1639,6 +1632,48 @@ public partial class ReviewSpeechViewModel : ObservableObject
             EditTextBox.CaretIndex = 0;
             EditTextBox.Focus();
         }
+    }
+
+    // Removes the first "bare" tag that sits outside the leading group (a tag typed mid-line), so a
+    // palette click turns it off where it is instead of adding a second one. True when it removed one.
+    private static bool TryRemoveMidTextTag(string text, string bare, out string newText)
+    {
+        newText = text;
+        var index = 0;
+        while (index < text.Length)
+        {
+            var open = text.IndexOf('[', index);
+            if (open < 0)
+            {
+                return false;
+            }
+
+            var close = text.IndexOf(']', open + 1);
+            if (close < 0)
+            {
+                return false;
+            }
+
+            var tokens = TtsTagPalette.TokenizeGroup(text.Substring(open + 1, close - open - 1));
+            if (tokens.Any(t => string.Equals(t.Tag, bare, StringComparison.OrdinalIgnoreCase)))
+            {
+                var remaining = tokens
+                    .Where(t => !string.Equals(t.Tag, bare, StringComparison.OrdinalIgnoreCase))
+                    .Select(t => t.Tag)
+                    .ToList();
+
+                var left = text.Substring(0, open);
+                var right = text.Substring(close + 1);
+                newText = remaining.Count == 0
+                    ? TrimOneSpace(left, right)
+                    : left + "[" + string.Join(" ", remaining) + "]" + right;
+                return true;
+            }
+
+            index = close + 1;
+        }
+
+        return false;
     }
 
     // Removes the whole leading "[...]" tag group from the selected line, if present.
@@ -1693,8 +1728,6 @@ public partial class ReviewSpeechViewModel : ObservableObject
         return rest.TrimStart();
     }
 
-    // Splits a tag group into tags. A single word is always one tag; a multi-word run is kept
-    // together when it matches a known palette tag (e.g. "American accent", "short pause").
     // Splits the inside of a "[...]" group into tags, keeping a known multi-word palette tag (e.g.
     // "drawn out", "American accent") together as one tag. The palette is the single source of
     // truth for what counts as a multi-word tag.

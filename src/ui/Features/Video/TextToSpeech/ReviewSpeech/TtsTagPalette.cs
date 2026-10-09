@@ -33,27 +33,33 @@ public static class TtsTagPalette
         new("Pauses", ["[short pause]", "[pause]", "[long pause]", "[sighs]", "[exhales]", "[inhales]", "[clears throat]", "[breath]"], Rgb(0x455A64)),
     ];
 
-    /// <summary>The color of the category a bare tag (no brackets) belongs to, or the Pauses gray.</summary>
-    public static Color ColorForTag(string bareTag)
+    // Tag (no brackets) -> category color, built once so a lookup does not rescan the whole palette
+    // on every keystroke. Case-insensitive, like the old linear scan.
+    private static readonly Dictionary<string, Color> TagColors = BuildTagColors();
+
+    private static Dictionary<string, Color> BuildTagColors()
     {
+        var map = new Dictionary<string, Color>(System.StringComparer.OrdinalIgnoreCase);
         foreach (var category in Categories)
         {
             foreach (var tag in category.Tags)
             {
-                if (string.Equals(tag.Trim().TrimStart('[').TrimEnd(']').Trim(), bareTag, System.StringComparison.OrdinalIgnoreCase))
-                {
-                    return category.Color;
-                }
+                map[Bare(tag)] = category.Color;
             }
         }
 
-        return Categories[^1].Color;
+        return map;
+    }
+
+    /// <summary>The color of the category a bare tag (no brackets) belongs to, or the Pauses gray.</summary>
+    public static Color ColorForTag(string bareTag)
+    {
+        return TagColors.TryGetValue(bareTag, out var color) ? color : Categories[^1].Color;
     }
 
     // Multi-word palette tags (e.g. "drawn out", "short pause", "American accent"), derived from the
-    // palette so a new multi-word tag is recognised without a second list to keep in sync. Longest
-    // first when matching, so a multi-word tag wins over its parts.
-    public static readonly HashSet<string> MultiWordTags = BuildMultiWordTags();
+    // palette so a new multi-word tag is recognised without a second list to keep in sync.
+    private static readonly HashSet<string> MultiWordTags = BuildMultiWordTags();
 
     private static HashSet<string> BuildMultiWordTags()
     {
@@ -62,7 +68,7 @@ public static class TtsTagPalette
         {
             foreach (var tag in category.Tags)
             {
-                var bare = tag.Trim().TrimStart('[').TrimEnd(']').Trim();
+                var bare = Bare(tag);
                 if (bare.Contains(' '))
                 {
                     set.Add(bare);
@@ -72,6 +78,9 @@ public static class TtsTagPalette
 
         return set;
     }
+
+    // A palette entry without its brackets, e.g. "[drawn out]" -> "drawn out".
+    private static string Bare(string tag) => tag.Trim().TrimStart('[').TrimEnd(']').Trim();
 
     /// <summary>
     /// Splits the inside of a "[...]" group into tag tokens with their character offsets (relative

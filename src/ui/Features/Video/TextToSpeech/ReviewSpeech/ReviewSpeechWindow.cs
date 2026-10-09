@@ -39,7 +39,6 @@ public class ReviewSpeechWindow : Window
     {
         public string Tag { get; }
         public Button? Button { get; set; }
-        public bool IsActive { get; set; }
 
         public TagChip(string tag)
         {
@@ -703,7 +702,6 @@ public class ReviewSpeechWindow : Window
         foreach (var chip in _tagChips)
         {
             var active = _vm.ActiveTags.Any(t => string.Equals(t, chip.Tag, StringComparison.OrdinalIgnoreCase));
-            chip.IsActive = active;
             chip.Button?.Classes.Set("active", active);
 
             // Tint the active chip with its CATEGORY color (pastel background, dark same-hue text);
