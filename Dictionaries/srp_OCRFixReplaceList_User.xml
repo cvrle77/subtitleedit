@@ -2480,7 +2480,6 @@
     <Word from="Uzmate" to="Uzmete" />
     <Word to="puna ova" from="punova" />
     <Word to="ne stavite" from="nestavite" />
-    <Word to="brašna" from="vrašnje" />
     <Word to="zadebljane" from="zazebljane" />
     <Word to="kockice" from="kočkice" />
     <Word to="pekmez" from="pekmed" />
@@ -2490,8 +2489,6 @@
     <Word to="slatka" from="sladka" />
     <Word to="Kolač" from="Kolac" />
     <Word to="utapkate" from="utavkate" />
-    <Word to="promešamo" from="promješamo" />
-    <Word to="promešate" from="promješate" />
     <Word to="namestimo" from="nameštimo" />
   </WholeWords>
   <PartialLines>
