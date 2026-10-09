@@ -1695,51 +1695,13 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     // Splits a tag group into tags. A single word is always one tag; a multi-word run is kept
     // together when it matches a known palette tag (e.g. "American accent", "short pause").
+    // Splits the inside of a "[...]" group into tags, keeping a known multi-word palette tag (e.g.
+    // "drawn out", "American accent") together as one tag. The palette is the single source of
+    // truth for what counts as a multi-word tag.
     private static List<string> SplitTagGroup(string inner)
     {
-        if (string.IsNullOrWhiteSpace(inner))
-        {
-            return new List<string>();
-        }
-
-        var words = inner.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-        var tags = new List<string>();
-        var i = 0;
-        while (i < words.Length)
-        {
-            // Try the longest known multi-word tag starting here (up to 3 words).
-            var matched = false;
-            for (var len = Math.Min(3, words.Length - i); len >= 2; len--)
-            {
-                var candidate = string.Join(" ", words, i, len);
-                if (KnownMultiWordTags.Contains(candidate))
-                {
-                    tags.Add(candidate);
-                    i += len;
-                    matched = true;
-                    break;
-                }
-            }
-
-            if (!matched)
-            {
-                tags.Add(words[i]);
-                i++;
-            }
-        }
-
-        return tags;
+        return TtsTagPalette.TokenizeGroup(inner).Select(t => t.Tag).ToList();
     }
-
-    // Multi-word palette tags, so an inserted "American accent" is treated as one tag (and removed
-    // as one) instead of being split into "American" and "accent".
-    private static readonly HashSet<string> KnownMultiWordTags = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "American accent", "British accent", "strong American accent", "South African accent",
-        "Serbian accent", "warm, conversational", "short pause", "long pause",
-        "clears throat", "inhales deeply", "exhales sharply", "with emphasis", "matter-of-factly",
-        "light-hearted", "well done", "nice work", "that's it", "here we go",
-    };
 
     // Keys that act on the waveform when it has focus (the grid handles its own Up/Down):
     // Home/End jump to the first/last row; Ctrl+Left/Right nudge the selected cue 100 ms

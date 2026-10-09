@@ -1,4 +1,6 @@
 using Avalonia.Media;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech.ReviewSpeech;
 
@@ -46,6 +48,93 @@ public static class TtsTagPalette
         }
 
         return Categories[^1].Color;
+    }
+
+    // Multi-word palette tags (e.g. "drawn out", "short pause", "American accent"), derived from the
+    // palette so a new multi-word tag is recognised without a second list to keep in sync. Longest
+    // first when matching, so a multi-word tag wins over its parts.
+    public static readonly HashSet<string> MultiWordTags = BuildMultiWordTags();
+
+    private static HashSet<string> BuildMultiWordTags()
+    {
+        var set = new HashSet<string>(System.StringComparer.OrdinalIgnoreCase);
+        foreach (var category in Categories)
+        {
+            foreach (var tag in category.Tags)
+            {
+                var bare = tag.Trim().TrimStart('[').TrimEnd(']').Trim();
+                if (bare.Contains(' '))
+                {
+                    set.Add(bare);
+                }
+            }
+        }
+
+        return set;
+    }
+
+    /// <summary>
+    /// Splits the inside of a "[...]" group into tag tokens with their character offsets (relative
+    /// to <paramref name="inner"/>). A known multi-word tag stays one token; anything else is one
+    /// token per word.
+    /// </summary>
+    public static List<(int Start, int Length, string Tag)> TokenizeGroup(string inner)
+    {
+        var result = new List<(int Start, int Length, string Tag)>();
+        if (string.IsNullOrWhiteSpace(inner))
+        {
+            return result;
+        }
+
+        var words = new List<(int Start, string Word)>();
+        var i = 0;
+        while (i < inner.Length)
+        {
+            while (i < inner.Length && inner[i] == ' ')
+            {
+                i++;
+            }
+
+            if (i >= inner.Length)
+            {
+                break;
+            }
+
+            var start = i;
+            while (i < inner.Length && inner[i] != ' ')
+            {
+                i++;
+            }
+
+            words.Add((start, inner.Substring(start, i - start)));
+        }
+
+        var w = 0;
+        while (w < words.Count)
+        {
+            var matched = false;
+            for (var len = System.Math.Min(3, words.Count - w); len >= 2; len--)
+            {
+                var candidate = string.Join(" ", words.Skip(w).Take(len).Select(x => x.Word));
+                if (MultiWordTags.Contains(candidate))
+                {
+                    var start = words[w].Start;
+                    var end = words[w + len - 1].Start + words[w + len - 1].Word.Length;
+                    result.Add((start, end - start, candidate));
+                    w += len;
+                    matched = true;
+                    break;
+                }
+            }
+
+            if (!matched)
+            {
+                result.Add((words[w].Start, words[w].Word.Length, words[w].Word));
+                w++;
+            }
+        }
+
+        return result;
     }
 
     // Light tint of a category color, used as the active chip's background so the label stays
