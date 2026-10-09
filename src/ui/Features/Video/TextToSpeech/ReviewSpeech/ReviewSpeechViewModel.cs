@@ -125,14 +125,145 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // every text edit (palette click or hand-typed text) so the highlights stay in sync.
     public void RefreshActiveTags()
     {
-        var inner = SelectedLine == null ? null : FindLeadingTagGroupInner(SelectedLine.Text ?? string.Empty);
-        var tags = inner == null ? new List<string>() : SplitTagGroup(inner);
-
         ActiveTags.Clear();
-        foreach (var tag in tags)
+        if (SelectedLine == null)
         {
-            ActiveTags.Add(tag);
+            return;
         }
+
+        // Every "[...]" group in the line, not only the leading one, so a tag inserted mid-text
+        // (e.g. a pause) lights up its palette chip too.
+        var text = SelectedLine.Text ?? string.Empty;
+        var index = 0;
+        while (index < text.Length)
+        {
+            var open = text.IndexOf('[', index);
+            if (open < 0)
+            {
+                break;
+            }
+
+            var close = text.IndexOf(']', open + 1);
+            if (close < 0)
+            {
+                break;
+            }
+
+            var inner = text.Substring(open + 1, close - open - 1);
+            if (inner.Trim().Length > 0)
+            {
+                foreach (var tag in SplitTagGroup(inner))
+                {
+                    ActiveTags.Add(tag);
+                }
+            }
+
+            index = close + 1;
+        }
+    }
+
+    /// <summary>
+    /// Removes the "[...]" tag the caret sits in: the whole group when it holds only one tag, or
+    /// just the tag under the caret when the group is a multi-tag leading group. Called when the
+    /// user clicks a tag in the edit box.
+    /// </summary>
+    public void RemoveTagAtCaret()
+    {
+        var row = SelectedLine;
+        if (row == null || EditTextBox == null)
+        {
+            return;
+        }
+
+        var text = row.Text ?? string.Empty;
+        var caret = Math.Clamp(EditTextBox.CaretIndex, 0, text.Length);
+        if (caret == 0)
+        {
+            return;
+        }
+
+        var open = text.LastIndexOf('[', caret - 1);
+        if (open < 0)
+        {
+            return;
+        }
+
+        var close = text.IndexOf(']', open + 1);
+        if (close < 0)
+        {
+            return;
+        }
+
+        // Only a caret INSIDE the group counts as "on the tag": a click before '[' or after ']'
+        // must not remove it.
+        if (caret <= open || caret > close)
+        {
+            return;
+        }
+
+        var inner = text.Substring(open + 1, close - open - 1);
+        var tags = SplitTagGroup(inner);
+        var offset = caret - (open + 1);
+
+        // Find the tag token containing the caret. Tags are space separated, and a known multi-word
+        // tag (e.g. "short pause") stays one token, so a click on either word removes the whole tag.
+        var removeIndex = -1;
+        var pos = 0;
+        for (var i = 0; i < tags.Count; i++)
+        {
+            var start = pos;
+            var end = pos + tags[i].Length - 1;
+            if (offset >= start - 1 && offset <= end + 1)
+            {
+                removeIndex = i;
+                break;
+            }
+
+            pos = end + 2;
+        }
+
+        if (removeIndex < 0)
+        {
+            return;
+        }
+
+        var remaining = new List<string>(tags);
+        remaining.RemoveAt(removeIndex);
+
+        string newText;
+        if (remaining.Count == 0)
+        {
+            var left = text.Substring(0, open);
+            var right = text.Substring(close + 1);
+            newText = TrimOneSpace(left, right);
+        }
+        else
+        {
+            newText = text.Substring(0, open + 1) + string.Join(" ", remaining) + text.Substring(close);
+        }
+
+        row.Text = newText;
+        RefreshActiveTags();
+
+        EditTextBox.Text = newText;
+        EditTextBox.CaretIndex = Math.Clamp(open, 0, newText.Length);
+        EditTextBox.Focus();
+    }
+
+    // Joins the two sides of a removed tag with a single space, so the surrounding words don't run
+    // together and no double space is left behind.
+    private static string TrimOneSpace(string left, string right)
+    {
+        if (left.EndsWith(' '))
+        {
+            left = left.Substring(0, left.Length - 1);
+        }
+        else if (right.StartsWith(' '))
+        {
+            right = right.Substring(1);
+        }
+
+        return left + right;
     }
 
     // Second waveform stacked under the original one: the generated speech of every row placed at
