@@ -99,6 +99,29 @@ public static class SmartBreak
         return set;
     }
 
+    // Words that must not be the last word of a cue: conjunctions, prepositions, clitics. The pause
+    // that ends a block often falls right after one of these ("... brasna, | i sad ..."), which
+    // leaves it dangling on the previous cue; the cue post-pass moves it to the next cue. This is
+    // NoBreakAfter without the abbreviations, so a cue that ends on "g." is left alone.
+    private static readonly HashSet<string> DanglingEnd = BuildDanglingEnd();
+
+    private static HashSet<string> BuildDanglingEnd()
+    {
+        var set = new HashSet<string>(Prepositions, StringComparer.OrdinalIgnoreCase);
+        set.UnionWith(Clitics);
+        set.UnionWith(Strong);
+        set.UnionWith(Weak);
+        set.Add("da");
+        set.Add("li");
+        return set;
+    }
+
+    private static bool IsDanglingEnd(string word)
+    {
+        var bare = Bare(word);
+        return bare.Length > 0 && DanglingEnd.Contains(bare);
+    }
+
     private static readonly Regex NumRe = new(@"^[0-9]+([.,][0-9]+)?$", RegexOptions.Compiled);
 
     private static string Bare(string w) => new string(w.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
@@ -965,6 +988,51 @@ public static class SmartBreak
             else
             {
                 merged.Add(cues[i]);
+            }
+        }
+
+        // Never leave a cue ending on a lone connector: the pause that ended the block can fall right
+        // after it ("Treba jos malo brasna, | i sad ..."), so move it onto the next cue and mark the
+        // newly exposed clause end with a comma (the same convention the soft split uses below).
+        // The Lines lists are mutated in place - the tuples hold the same references.
+        for (var ci = 0; ci + 1 < merged.Count; ci++)
+        {
+            var lines = merged[ci].Lines;
+            if (lines.Count == 0)
+            {
+                continue;
+            }
+
+            var lastLineIndex = lines.Count - 1;
+            var lastLine = lines[lastLineIndex].TrimEnd();
+            var space = lastLine.LastIndexOf(' ');
+            if (space < 0)
+            {
+                continue; // a one-word cue keeps its word, dangling or not
+            }
+
+            var lastWord = lastLine[(space + 1)..];
+            if (!IsDanglingEnd(lastWord))
+            {
+                continue;
+            }
+
+            var head = lastLine[..space].TrimEnd();
+            if (head.Length > 0 && LastChar(head) is not (',' or ';' or ':' or '.' or '!' or '?' or '…'))
+            {
+                head += ",";
+            }
+
+            lines[lastLineIndex] = head;
+
+            var nextLines = merged[ci + 1].Lines;
+            if (nextLines.Count == 0)
+            {
+                nextLines.Add(lastWord);
+            }
+            else
+            {
+                nextLines[0] = lastWord + " " + nextLines[0];
             }
         }
 
