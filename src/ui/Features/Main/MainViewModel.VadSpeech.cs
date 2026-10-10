@@ -231,15 +231,9 @@ public partial class MainViewModel
 
         lock (_speechSegmentsLock)
         {
-            foreach (var segment in _speechSegments)
-            {
-                if (segment.Start > positionSeconds)
-                {
-                    return segment.Start;
-                }
-            }
+            // The pure lookup lives in SileroVad so the unit test covers the code the split trim
+            // actually runs.
+            return SileroVad.FindSpeechStartAfter(_speechSegments, positionSeconds);
         }
-
-        return null;
     }
 }

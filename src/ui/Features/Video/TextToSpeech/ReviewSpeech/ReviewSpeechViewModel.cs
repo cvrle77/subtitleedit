@@ -1041,6 +1041,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // an entry can never go stale for a changed clip; the cache is what makes a rebuild cheap
     // (only the placement is redone, not the wav reads).
     private readonly Dictionary<string, WavePeakData2?> _ttsClipPeaks = new(StringComparer.OrdinalIgnoreCase);
+    // A cancelled rebuild can still be inside GetClipPeaks when the next one starts, so both the
+    // cache read and the write are locked.
+    private readonly Lock _ttsClipPeaksLock = new();
     private CancellationTokenSource? _ttsWaveformCts;
     // Peaks-per-second the generated track is (re)built at - the original track's rate. Published
     // to AudioVisualizerTts.FallbackSampleRate so the two controls measure time identically even
@@ -1049,9 +1052,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private WavePeakData2? GetClipPeaks(string fileName)
     {
-        if (_ttsClipPeaks.TryGetValue(fileName, out var cached))
+        lock (_ttsClipPeaksLock)
         {
-            return cached;
+            if (_ttsClipPeaks.TryGetValue(fileName, out var cached))
+            {
+                return cached;
+            }
         }
 
         WavePeakData2? peaks = null;
@@ -1073,7 +1079,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
             SeLogger.Error(exception, $"ReviewSpeech: cannot read wave peaks of \"{fileName}\"");
         }
 
-        _ttsClipPeaks[fileName] = peaks;
+        lock (_ttsClipPeaksLock)
+        {
+            _ttsClipPeaks[fileName] = peaks;
+        }
+
         return peaks;
     }
 
@@ -2855,6 +2865,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
         Lines.Clear();
         foreach (var row in entry.Rows)
         {
+            // Clone() does not copy IsPlayingEnabled, and ResetPlaybackUiState above ran on the old
+            // rows - without this every restored row's Play/Regenerate/Split button is dead.
+            row.IsPlayingEnabled = true;
             Lines.Add(row);
         }
 
@@ -2943,6 +2956,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
         // line wider than the configured max, or two short lines that fit on one.
         var firstText = RebalanceSplitText(list[0].Text, language);
         var secondText = RebalanceSplitText(list[1].Text, language);
+        if (string.IsNullOrWhiteSpace(firstText) || string.IsNullOrWhiteSpace(secondText))
+        {
+            // Nothing to split into (a single unbreakable word): leave the line alone instead of
+            // inserting a blank row and asking the engine to speak an empty string.
+            return;
+        }
 
         var gapMs = Se.Settings.General.MinimumBetweenLines.GetMilliseconds();
         var splitMs = playheadSeconds * 1000.0;

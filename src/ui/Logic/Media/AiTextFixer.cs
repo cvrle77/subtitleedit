@@ -95,6 +95,10 @@ public static class AiTextFixer
     /// Maps the returned tokens onto the original words (1:1 when the count matches, else LCS with
     /// distribution of extra/missing tokens), keeping each word's timing.
     /// </summary>
+    // Above this many words per side the DP table (n*m ints) would allocate hundreds of megabytes
+    // on a long transcript, so the alignment is done in windows of this size instead.
+    private const int MaxAlignWords = 1200;
+
     private static List<SmartBreakWord> Align(IReadOnlyList<SmartBreakWord> chunk, IReadOnlyList<string> toks)
     {
         var n = chunk.Count;
@@ -104,9 +108,58 @@ public static class AiTextFixer
             return chunk.ToList();
         }
 
+        if ((long)n * m <= (long)MaxAlignWords * MaxAlignWords)
+        {
+            return AlignRange(chunk, 0, n, toks, 0, m);
+        }
+
+        // Long transcript: the model keeps word order, so splitting both sides proportionally gives
+        // each window the matching words and keeps every DP table small.
+        var result = new List<SmartBreakWord>(n);
+        var wordStart = 0;
+        while (wordStart < n)
+        {
+            var wordEnd = Math.Min(n, wordStart + MaxAlignWords);
+            var tokenStart = (int)((long)wordStart * m / n);
+            var tokenEnd = wordEnd == n ? m : (int)((long)wordEnd * m / n);
+            result.AddRange(AlignRange(chunk, wordStart, wordEnd, toks, tokenStart, tokenEnd));
+            wordStart = wordEnd;
+        }
+
+        return result;
+    }
+
+    // Aligns the words [wStart, wEnd) against the tokens [tStart, tEnd) and returns one word per
+    // input word, keeping its timing.
+    private static List<SmartBreakWord> AlignRange(IReadOnlyList<SmartBreakWord> chunk, int wStart, int wEnd,
+        IReadOnlyList<string> toks, int tStart, int tEnd)
+    {
+        var n = wEnd - wStart;
+        var m = tEnd - tStart;
+        var result = new List<SmartBreakWord>(n);
+        if (n == 0)
+        {
+            return result;
+        }
+
+        if (m == 0)
+        {
+            for (var i = wStart; i < wEnd; i++)
+            {
+                result.Add(chunk[i]);
+            }
+
+            return result;
+        }
+
         if (n == m)
         {
-            return chunk.Select((w, i) => new SmartBreakWord(toks[i], w.Start, w.End)).ToList();
+            for (var i = 0; i < n; i++)
+            {
+                result.Add(new SmartBreakWord(toks[tStart + i], chunk[wStart + i].Start, chunk[wStart + i].End));
+            }
+
+            return result;
         }
 
         var dp = new int[n + 1, m + 1];
@@ -114,7 +167,7 @@ public static class AiTextFixer
         {
             for (var j = m - 1; j >= 0; j--)
             {
-                dp[i, j] = Norm(chunk[i].Word) == Norm(toks[j])
+                dp[i, j] = Norm(chunk[wStart + i].Word) == Norm(toks[tStart + j])
                     ? dp[i + 1, j + 1] + 1
                     : Math.Max(dp[i + 1, j], dp[i, j + 1]);
             }
@@ -131,9 +184,9 @@ public static class AiTextFixer
         var lastOld = -1;
         while (a < n && b < m)
         {
-            if (Norm(chunk[a].Word) == Norm(toks[b]))
+            if (Norm(chunk[wStart + a].Word) == Norm(toks[tStart + b]))
             {
-                assigned[a].Add(toks[b]);
+                assigned[a].Add(toks[tStart + b]);
                 lastOld = a;
                 a++;
                 b++;
@@ -144,22 +197,21 @@ public static class AiTextFixer
             }
             else
             {
-                assigned[lastOld >= 0 ? lastOld : Math.Min(a, n - 1)].Add(toks[b]);
+                assigned[lastOld >= 0 ? lastOld : Math.Min(a, n - 1)].Add(toks[tStart + b]);
                 b++;
             }
         }
 
         while (b < m)
         {
-            assigned[lastOld >= 0 ? lastOld : n - 1].Add(toks[b]);
+            assigned[lastOld >= 0 ? lastOld : n - 1].Add(toks[tStart + b]);
             b++;
         }
 
-        var result = new List<SmartBreakWord>(n);
         for (var i = 0; i < n; i++)
         {
-            var text = assigned[i].Count > 0 ? string.Join(" ", assigned[i]) : chunk[i].Word.Trim();
-            result.Add(new SmartBreakWord(text, chunk[i].Start, chunk[i].End));
+            var text = assigned[i].Count > 0 ? string.Join(" ", assigned[i]) : chunk[wStart + i].Word.Trim();
+            result.Add(new SmartBreakWord(text, chunk[wStart + i].Start, chunk[wStart + i].End));
         }
 
         return result;
