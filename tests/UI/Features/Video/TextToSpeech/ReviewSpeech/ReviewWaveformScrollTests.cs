@@ -2,7 +2,9 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Nikse.SubtitleEdit.Features.Main;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.ReviewSpeech;
+using Nikse.SubtitleEdit.Logic.Download;
 using Nikse.SubtitleEdit.Logic.Media;
+using System.Net.Http;
 
 namespace UITests.Features.Video.TextToSpeech.ReviewSpeech;
 
@@ -27,7 +29,7 @@ public class ReviewWaveformScrollTests : IDisposable
 
     private ReviewSpeechViewModel BuildWindowWithLines()
     {
-        var vm = new ReviewSpeechViewModel(new FolderHelper(), new StubWindowService());
+        var vm = new ReviewSpeechViewModel(new FolderHelper(), new StubWindowService(), new TtsDownloadService(new HttpClient()));
         _windows.Add(new ReviewSpeechWindow(vm));
 
         // One line every 10 seconds for 10 minutes.
