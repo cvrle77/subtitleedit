@@ -317,10 +317,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         _isOriginalAudioActive = true;
         ApplyVideoAudio();
-        if (SelectedLine != null)
-        {
-            _ = PlayAudio(SelectedLine.StepResult.CurrentFileName);
-        }
+        _ = PlayAudio(SelectedLine?.StepResult.CurrentFileName ?? string.Empty);
     }
 
     public void UseTtsAudio()
