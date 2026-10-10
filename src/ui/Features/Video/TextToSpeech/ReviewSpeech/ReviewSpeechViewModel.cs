@@ -18,6 +18,7 @@ using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Download;
 using Nikse.SubtitleEdit.Logic.Media;
+using Nikse.SubtitleEdit.Controls.VideoPlayer;
 using Nikse.SubtitleEdit.Logic.VideoPlayers.LibMpvDynamic;
 using System;
 using System.Collections.Generic;
@@ -305,6 +306,55 @@ public partial class ReviewSpeechViewModel : ObservableObject
     [ObservableProperty] private bool _isElevenLabsCreditsVisible;
 
     private int? _elevenLabsCreditsBaseline;
+
+    // The review's video surface (left column, above the tags). Its sound follows the
+    // "Original"/"Generated" waveform labels: muted while the generated clips play.
+    public VideoPlayerControl? VideoPlayerControl { get; set; }
+    private double _videoVolume = 100;
+    private bool _isOriginalAudioActive;
+
+    public void UseOriginalAudio()
+    {
+        _isOriginalAudioActive = true;
+        ApplyVideoAudio();
+    }
+
+    public void UseTtsAudio()
+    {
+        _isOriginalAudioActive = false;
+        ApplyVideoAudio();
+    }
+
+    private void ApplyVideoAudio()
+    {
+        if (VideoPlayerControl != null)
+        {
+            VideoPlayerControl.Volume = _isOriginalAudioActive ? _videoVolume : 0;
+        }
+    }
+
+    // Opens the loaded video in the review's video surface and parks it on the playhead. Silent
+    // unless the user picked the original audio.
+    public async Task OpenReviewVideoAsync()
+    {
+        if (VideoPlayerControl == null || string.IsNullOrEmpty(_videoFileName) || !File.Exists(_videoFileName))
+        {
+            return;
+        }
+
+        try
+        {
+            await VideoPlayerControl.Open(_videoFileName);
+            await VideoPlayerControl.WaitForPlayersReadyAsync();
+            _videoVolume = VideoPlayerControl.Volume > 0 ? VideoPlayerControl.Volume : 100;
+            ApplyVideoAudio();
+            VideoPlayerControl.SeekTo(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, "ReviewSpeech: could not open the video player");
+        }
+    }
 
     // What the video says during a paragraph - the transcript for a reference clip cut here (see
     // ResolvePerLineCloneVoiceAsync). Supplied by the TTS window, which knows the original-language
@@ -854,6 +904,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
         {
             avTts.CurrentVideoPositionSeconds = seconds;
         }
+
+        // The video follows the playhead.
+        VideoPlayerControl?.SeekTo(seconds);
 
         // Center mode is opt-in. Either the snap toggle (CenterVideoPosition) or the smooth one
         // (CenterVideoPositionSmooth) enables it - the main window treats them as one "center any"
@@ -4349,6 +4402,24 @@ public partial class ReviewSpeechViewModel : ObservableObject
         {
             player = _mpvContext;
             _mpvContext = null;
+        }
+
+        // The review's video surface is a second mpv instance - tear it down the same way.
+        var video = VideoPlayerControl;
+        VideoPlayerControl = null;
+        if (video != null)
+        {
+            Task.Run(() =>
+            {
+                try
+                {
+                    video.CloseAndDisposePlayer();
+                }
+                catch (Exception exception)
+                {
+                    SeLogger.Error(exception, "ReviewSpeech: disposing the video player failed");
+                }
+            });
         }
 
         if (player == null)

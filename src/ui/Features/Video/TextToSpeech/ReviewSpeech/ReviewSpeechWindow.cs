@@ -8,6 +8,7 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
 using Nikse.SubtitleEdit.Controls;
+using Nikse.SubtitleEdit.Controls.VideoPlayer;
 using Nikse.SubtitleEdit.Controls.AudioVisualizerControl;
 using Nikse.SubtitleEdit.Features.Main.Layout;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.ElevenLabsSettings;
@@ -711,7 +712,34 @@ public class ReviewSpeechWindow : Window
             Source = scroll,
             Converter = new Avalonia.Data.Converters.FuncValueConverter<Avalonia.Size, double>(s => s.Height),
         });
-        return scroll;
+
+        // Video surface above the palette: shows the loaded video and follows the playhead. Its
+        // sound follows the "Original"/"Generated" waveform labels (muted unless Original).
+        var videoPlayer = new VideoPlayerControl(new EmptyVideoPlayer())
+        {
+            Margin = new Thickness(2),
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            VerticalAlignment = VerticalAlignment.Stretch,
+        };
+        videoPlayer.FullScreenIsVisible = false;
+        videoPlayer.ClickToTogglePlay = true;
+        videoPlayer.SurfacePointerPressed += (_, _) => videoPlayer.TogglePlayPause();
+        vm.VideoPlayerControl = videoPlayer;
+        Opened += (_, _) => _ = vm.OpenReviewVideoAsync();
+
+        var leftColumn = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+        };
+        Grid.SetRow(videoPlayer, 0);
+        Grid.SetRow(scroll, 1);
+        leftColumn.Children.Add(videoPlayer);
+        leftColumn.Children.Add(scroll);
+        return leftColumn;
     }
 
     // Recomputes every chip's highlight from the VM's active tag set.
@@ -1125,8 +1153,8 @@ public class ReviewSpeechWindow : Window
         WireWaveform(vm, audioVisualizer, audioVisualizerTts, isTts: false);
         WireWaveform(vm, audioVisualizerTts, audioVisualizer, isTts: true);
 
-        var labelOriginal = MakeWaveformLabel(Se.Language.Video.TextToSpeech.WaveformOriginalAudio);
-        var labelTts = MakeWaveformLabel(Se.Language.Video.TextToSpeech.WaveformGeneratedAudio);
+        var labelOriginal = MakeWaveformLabel(Se.Language.Video.TextToSpeech.WaveformOriginalAudio, vm.UseOriginalAudio);
+        var labelTts = MakeWaveformLabel(Se.Language.Video.TextToSpeech.WaveformGeneratedAudio, vm.UseTtsAudio);
 
         var grid = new Grid
         {
@@ -1159,15 +1187,24 @@ public class ReviewSpeechWindow : Window
         };
     }
 
-    private static TextBlock MakeWaveformLabel(string text)
+    private static TextBlock MakeWaveformLabel(string text, Action? onClick = null)
     {
-        return new TextBlock
+        var label = new TextBlock
         {
             Text = text,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(4, 0, 0, 0),
             Opacity = 0.75,
         };
+
+        if (onClick != null)
+        {
+            label.Cursor = new Cursor(StandardCursorType.Hand);
+            ToolTip.SetTip(label, "Click to hear this track's sound");
+            label.PointerPressed += (_, _) => onClick();
+        }
+
+        return label;
     }
 
     // Mirror the main window's waveform theme so the review waveforms look the same as the one
