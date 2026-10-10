@@ -549,6 +549,7 @@ public class ReviewSpeechWindow : Window
             [!Visual.IsVisibleProperty] = new Binding(nameof(ReviewSpeechViewModel.IsElevenLabsCreditsVisible)),
             Children =
             {
+                new TextBlock { Text = "ElevenLabs credit usage", FontSize = 13, FontWeight = FontWeight.SemiBold, Opacity = 0.8 },
                 new TextBlock { FontSize = 15, FontWeight = FontWeight.Bold, [!TextBlock.TextProperty] = new Binding(nameof(ReviewSpeechViewModel.ElevenLabsCreditsFixedText)) },
                 new TextBlock { FontSize = 15, FontWeight = FontWeight.Bold, [!TextBlock.TextProperty] = new Binding(nameof(ReviewSpeechViewModel.ElevenLabsCreditsNowText)) },
                 new TextBlock { FontSize = 15, FontWeight = FontWeight.Bold, [!TextBlock.TextProperty] = new Binding(nameof(ReviewSpeechViewModel.ElevenLabsCreditsSpentText)) },

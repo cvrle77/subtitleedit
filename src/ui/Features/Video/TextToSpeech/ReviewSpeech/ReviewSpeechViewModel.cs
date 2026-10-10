@@ -713,16 +713,18 @@ public partial class ReviewSpeechViewModel : ObservableObject
             }
 
             var (used, limit) = credits.Value;
-            // "Fixed" is the usage captured in the TTS window right before Generate was clicked. On
-            // import there is no such snapshot (nothing was spent), so only the current state shows.
-            var hasFixed = ElevenLabsUsedBeforeSession.HasValue;
+            // The baseline is the balance the session started from: the pre-run reading the TTS
+            // window supplied (captured right before Generate), otherwise the first reading here.
+            // It is frozen on the first refresh, so "Fixed" stays put for the whole session.
             _elevenLabsCreditsBaseline ??= ElevenLabsUsedBeforeSession ?? used;
-            var spent = Math.Max(0, used - _elevenLabsCreditsBaseline.Value);
 
-            ElevenLabsCreditsFixedText = hasFixed
-                ? $"Fixed: {ElevenLabsUsedBeforeSession!.Value:N0}"
-                : "Fixed: —";
-            ElevenLabsCreditsNowText = $"Now: {used:N0} / {limit:N0}";
+            // All three are REMAINING credits, so the arithmetic reads Fixed - Now = Spent.
+            var fixedRemaining = Math.Max(0, limit - _elevenLabsCreditsBaseline.Value);
+            var nowRemaining = Math.Max(0, limit - used);
+            var spent = Math.Max(0, _elevenLabsCreditsBaseline.Value - used);
+
+            ElevenLabsCreditsFixedText = $"Fixed: {fixedRemaining:N0}";
+            ElevenLabsCreditsNowText = $"Now: {nowRemaining:N0}";
             ElevenLabsCreditsSpentText = $"Spent: {spent:N0}";
         });
     }
