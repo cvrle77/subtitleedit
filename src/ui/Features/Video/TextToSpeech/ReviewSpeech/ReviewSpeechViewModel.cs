@@ -317,18 +317,21 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         _isOriginalAudioActive = true;
         ApplyVideoAudio();
-        if (VideoPlayerControl != null)
+        if (SelectedLine != null)
         {
-            VideoPlayerControl.SeekTo(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
-            VideoPlayerControl.VideoPlayer.Play();
+            _ = PlayAudio(SelectedLine.StepResult.CurrentFileName);
         }
     }
 
     public void UseTtsAudio()
     {
         _isOriginalAudioActive = false;
-        ApplyVideoAudio();
         VideoPlayerControl?.VideoPlayer.Pause();
+        ApplyVideoAudio();
+        if (SelectedLine != null)
+        {
+            _ = PlayAudio(SelectedLine.StepResult.CurrentFileName);
+        }
     }
 
     private void ApplyVideoAudio()
@@ -559,6 +562,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         IsStopVisible = false;
         _playingRow = null;
         _cursorTimer?.Stop();
+        VideoPlayerControl?.VideoPlayer.Pause();
         foreach (var l in Lines)
         {
             l.IsPlaying = false;
@@ -568,6 +572,19 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private async Task PlayAudio(string fileName)
     {
+        // Original mode: play the video's own audio from the playhead instead of the generated clip.
+        if (_isOriginalAudioActive && VideoPlayerControl != null)
+        {
+            DisposePlayerOffThread();
+            _playingRow = SelectedLine ?? _playingRow;
+            VideoPlayerControl.SeekTo(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+            VideoPlayerControl.VideoPlayer.Play();
+            _cursorTimer?.Start();
+            IsPlayVisible = false;
+            IsStopVisible = true;
+            return;
+        }
+
         // A row can point at a deleted/moved file (e.g. an imported session whose folder was
         // cleaned). mpv's failed loadfile is only logged, so playback used to sit in "playing"
         // forever with every row disabled and no error. Reset and tell the user instead.
@@ -993,6 +1010,19 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         if (_isClosing)
         {
+            return;
+        }
+
+        // Original mode: the video plays the original audio, so the playhead follows the video's
+        // own clock (absolute seconds), not the clip's position inside the row.
+        if (_isOriginalAudioActive && VideoPlayerControl != null)
+        {
+            var video = VideoPlayerControl.VideoPlayer;
+            if (video.IsPlaying)
+            {
+                SetWaveformPlayhead(video.Position);
+            }
+
             return;
         }
 
