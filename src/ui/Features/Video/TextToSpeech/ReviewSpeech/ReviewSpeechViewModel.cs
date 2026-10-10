@@ -317,12 +317,18 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         _isOriginalAudioActive = true;
         ApplyVideoAudio();
+        if (VideoPlayerControl != null)
+        {
+            VideoPlayerControl.SeekTo(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+            VideoPlayerControl.VideoPlayer.Play();
+        }
     }
 
     public void UseTtsAudio()
     {
         _isOriginalAudioActive = false;
         ApplyVideoAudio();
+        VideoPlayerControl?.VideoPlayer.Pause();
     }
 
     private void ApplyVideoAudio()
@@ -339,6 +345,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         if (VideoPlayerControl == null || string.IsNullOrEmpty(_videoFileName) || !File.Exists(_videoFileName))
         {
+            Se.WriteToolsLog($"TTS review: video player not opened (control={VideoPlayerControl != null}, file=\"{_videoFileName}\")");
             return;
         }
 
@@ -349,10 +356,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
             _videoVolume = VideoPlayerControl.Volume > 0 ? VideoPlayerControl.Volume : 100;
             ApplyVideoAudio();
             VideoPlayerControl.SeekTo(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+            Se.WriteToolsLog($"TTS review: video player opened \"{_videoFileName}\" (duration {VideoPlayerControl.Duration:0.0}s, volume {_videoVolume:0})");
         }
         catch (Exception exception)
         {
             SeLogger.Error(exception, "ReviewSpeech: could not open the video player");
+            Se.WriteToolsLog("TTS review: video player open FAILED: " + exception.Message, true);
         }
     }
 

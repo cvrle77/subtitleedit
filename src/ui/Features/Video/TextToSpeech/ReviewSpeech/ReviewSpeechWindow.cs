@@ -731,10 +731,12 @@ public class ReviewSpeechWindow : Window
         {
             RowDefinitions =
             {
-                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
-                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) }, // video
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }, // palette
             },
         };
+        videoPlayer.Height = 180;
+        videoPlayer.MinHeight = 120;
         Grid.SetRow(videoPlayer, 0);
         Grid.SetRow(scroll, 1);
         leftColumn.Children.Add(videoPlayer);
