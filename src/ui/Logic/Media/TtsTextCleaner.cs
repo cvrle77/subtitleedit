@@ -22,10 +22,18 @@ public static class TtsTextCleaner
         @"\s*,{2,}\s*",
         RegexOptions.Compiled);
 
-    // A word written entirely in CAPS (>= 2 letters), used as emphasis on the TTS side.
+    // A word written entirely in CAPS (>= 2 letters), used as emphasis on the TTS side. The run may
+    // not be followed by an apostrophe, so the caps part of a contraction ("DON'T") is left alone.
     private static readonly Regex CapsWordRegex = new Regex(
-        @"\b[\p{Lu}]{2,}\b",
+        @"\b[\p{Lu}]{2,}\b(?!['’])",
         RegexOptions.Compiled);
+
+    // All-caps runs that are acronyms, not emphasis, so they are left as-is.
+    private static readonly HashSet<string> Acronyms = new(StringComparer.Ordinal)
+    {
+        "USA", "US", "UK", "EU", "UN", "FBI", "CIA", "NASA", "NATO", "TV", "DVD", "CD",
+        "USB", "GPS", "PDF", "HTML", "CPU", "RAM", "SMS", "DNA", "SUV", "BMW", "BBQ", "HD",
+    };
 
     public static string Clean(string input)
     {
@@ -58,6 +66,11 @@ public static class TtsTextCleaner
     private static string ToSentenceCase(string full, Match m)
     {
         var word = m.Value;
+        if (Acronyms.Contains(word))
+        {
+            return word;
+        }
+
         var lower = word.ToLowerInvariant();
         return IsSentenceStart(full, m.Index) ? Capitalize(lower) : lower;
     }

@@ -2852,9 +2852,13 @@ public partial class TextToSpeechViewModel : ObservableObject
         var videoFileNameForReview = !string.IsNullOrEmpty(importExport.VideoFileName) && File.Exists(importExport.VideoFileName)
             ? importExport.VideoFileName
             : _videoFileName;
-        if (string.IsNullOrEmpty(_videoFileName) && !string.IsNullOrEmpty(videoFileNameForReview))
+        if (!string.IsNullOrEmpty(videoFileNameForReview))
         {
+            // The imported session's own video wins: the OK/export tail trims the merged audio to
+            // _videoFileName's length, so leaving an unrelated (often shorter) video loaded there
+            // would silently truncate the exported dub.
             _videoFileName = videoFileNameForReview;
+            _videoDurationSeconds = -1;
         }
 
         // The review window needs at least one engine to offer regeneration; an empty global
@@ -4253,7 +4257,7 @@ public partial class TextToSpeechViewModel : ObservableObject
                 continue;
             }
 
-            var text = Utilities.UnbreakLine(paragraphs[i].Text ?? string.Empty);
+            var text = HtmlUtil.RemoveHtmlTags(Utilities.UnbreakLine(paragraphs[i].Text ?? string.Empty), alsoSsaTags: true);
             if (text.Trim().Length == 0)
             {
                 continue;
@@ -4291,7 +4295,7 @@ public partial class TextToSpeechViewModel : ObservableObject
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    return null;
+                    break; // stop scheduling; the in-flight tasks are awaited below
                 }
 
                 await throttler.WaitAsync(cancellationToken);
@@ -4383,6 +4387,9 @@ public partial class TextToSpeechViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
+            // Await the in-flight tasks before the `using` disposes the semaphore, so their finally
+            // can still Release it (otherwise Release throws ObjectDisposedException).
+            try { await Task.WhenAll(tasks); } catch { /* already cancelled */ }
             return null;
         }
 
@@ -4442,7 +4449,7 @@ public partial class TextToSpeechViewModel : ObservableObject
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    return null;
+                    break; // stop scheduling; the in-flight tasks are awaited below
                 }
 
                 var paragraph = paragraphs[index];
@@ -4522,6 +4529,9 @@ public partial class TextToSpeechViewModel : ObservableObject
         }
         catch (OperationCanceledException)
         {
+            // Await the in-flight tasks before the `using` disposes the semaphore, so their finally
+            // can still Release it (otherwise Release throws ObjectDisposedException).
+            try { await Task.WhenAll(tasks); } catch { /* already cancelled */ }
             return null;
         }
 
@@ -5599,6 +5609,8 @@ public partial class TextToSpeechViewModel : ObservableObject
                 peaksForReview);
             vm.ActorVoiceMappings.AddRange(_actorVoiceMappings);
             vm.SubtitleFileName = GetLoadedSubtitleFileName();
+            // Balance captured before the run, so the review shows what generation cost.
+            vm.ElevenLabsUsedBeforeSession = _elevenLabsUsedBeforeRun;
             vm.ReferenceTextOf = GetSpokenTextInVideo;
 
             if (peaksForReview == null || peaksForReview.Peaks.Count == 0)
@@ -5606,6 +5618,9 @@ public partial class TextToSpeechViewModel : ObservableObject
                 _ = GenerateWavePeaksIfNeededAsync(_videoFileName, vm);
             }
         });
+
+        // The baseline was handed to this review; clear it so a later Import cannot reuse it.
+        _elevenLabsUsedBeforeRun = null;
 
         if (result.OkPressed)
         {

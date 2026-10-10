@@ -126,6 +126,41 @@ public static class SmartBreak
 
     private static string Bare(string w) => new string(w.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
 
+    // Folds a word for the diacritic-free phrase tables (ClauseStartPhrases): like Bare but with the
+    // Serbian diacritics replaced (č/ć->c, š->s, ž->z, đ->dj), so "konačno" matches the stored
+    // "konacno". Bare keeps the diacritics (the other sets store both spellings).
+    private static string Fold(string w)
+    {
+        var sb = new System.Text.StringBuilder(w.Length);
+        foreach (var c in w.ToLowerInvariant())
+        {
+            switch (c)
+            {
+                case 'č' or 'ć':
+                    sb.Append('c');
+                    break;
+                case 'š':
+                    sb.Append('s');
+                    break;
+                case 'ž':
+                    sb.Append('z');
+                    break;
+                case 'đ':
+                    sb.Append("dj");
+                    break;
+                default:
+                    if (char.IsLetterOrDigit(c))
+                    {
+                        sb.Append(c);
+                    }
+
+                    break;
+            }
+        }
+
+        return sb.ToString();
+    }
+
     private static string Rstrip(string w) => w.TrimEnd('„', '"', '»', ')', ']');
 
     private static char LastChar(string w)
@@ -284,6 +319,13 @@ public static class SmartBreak
             while (j < n && LLen(words, i, j + 1) <= MaxLen)
             {
                 j++;
+            }
+
+            if (j <= i)
+            {
+                // A single word longer than MaxLen (a URL, a long compound): take it whole so i
+                // advances - otherwise no break candidate exists and this loop never ends.
+                j = i + 1;
             }
 
             var cands = new List<(int B, int Len)>();
@@ -535,7 +577,7 @@ public static class SmartBreak
             return false;
         }
 
-        var cur = Bare(w[j].Word);
+        var cur = Fold(w[j].Word);
         if (cur is not ("i" or "a" or "pa" or "ili" or "te"))
         {
             return false;
@@ -549,7 +591,7 @@ public static class SmartBreak
                 sb.Append(' ');
             }
 
-            sb.Append(Bare(w[k].Word));
+            sb.Append(Fold(w[k].Word));
             if (ClauseStartPhrases.Contains(sb.ToString()))
             {
                 return true;
@@ -622,14 +664,6 @@ public static class SmartBreak
             {
                 end = lastSoft;
                 risky = true;
-
-                // If the soft boundary (", i ...") leaves only a short tail after the last comma,
-                // break at the comma instead.
-                if (lastHard > i && lastSoft - lastHard <= 2)
-                {
-                    end = lastHard;
-                    risky = false;
-                }
             }
             else
             {
@@ -970,10 +1004,7 @@ public static class SmartBreak
             // screen through the silence the split just removed.
             if (IsFiller(cues[i].Lines) && i + 1 < cues.Count && cues[i + 1].Start - cues[i].End <= 0.4)
             {
-                var flat = cues[i].Lines.Concat(cues[i + 1].Lines)
-                    .SelectMany(l => l.Split(' ')).Where(s => s.Length > 0)
-                    .Select(w => new SmartBreakWord(w, 0, 0)).ToList();
-                // rebuild from the text is lossy for timing, so just concatenate the lines instead
+                // Rebuild from the text is lossy for timing, so just concatenate the lines instead.
                 var joined = new List<string>();
                 joined.AddRange(cues[i].Lines.Take(1));
                 var nxt = cues[i + 1].Lines.ToList();

@@ -33,6 +33,16 @@ public class SileroVadTests
         Assert.Equal(15, SileroVad.FindSpeechStartAfter(segments, 9));
     }
 
+    [Fact]
+    public void FindSpeechStartAfter_PositionInsideASegment_ReturnsNull()
+    {
+        var segments = new List<(double Start, double End)> { (1, 3), (9, 11) };
+
+        // A cut inside speech has no leading silence to trim: jumping to the next segment would
+        // delete the speech between, so the trim must leave the line alone.
+        Assert.Null(SileroVad.FindSpeechStartAfter(segments, 2));
+    }
+
     // Runs the real ONNX model when it is installed on this machine, so the input/output names,
     // tensor shapes and the 64-sample context handling are exercised instead of only found out on a
     // split. A tone is not speech, so only that it runs is asserted here.

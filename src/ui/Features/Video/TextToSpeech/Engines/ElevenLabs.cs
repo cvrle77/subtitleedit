@@ -592,6 +592,9 @@ public class ElevenLabs : ITtsEngine
         }
         catch (OperationCanceledException)
         {
+            // The chunk file was already written; delete it here because the finally that cleans up
+            // is not entered until after this point.
+            try { File.Delete(chunkFile); } catch { /* best-effort temp cleanup */ }
             throw;
         }
         catch (Exception ex)
