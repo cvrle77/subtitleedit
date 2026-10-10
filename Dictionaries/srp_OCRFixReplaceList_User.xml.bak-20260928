@@ -1,0 +1,1070 @@
+<ReplaceList>
+  <WholeWords>
+    <Word to="dete" from="djete" />
+    <Word to="hteo" from="htjeo" />
+    <Word to="Rešiti" from="Rješit" />
+    <Word to="smeo" from="smjeo" />
+    <Word to="umesto" from="umijesto" />
+    <Word to="Umesto" from="Umijesto" />
+    <Word to="uopšte" from="uopče" />
+    <Word to="Uopšte" from="Uopče" />
+    <Word to="uspešan" from="uspiješan" />
+    <Word to="uvek" from="uvjek" />
+    <Word to="Uvek" from="Uvjek" />
+    <Word to="mlevenog" from="lavenog" />
+    <Word to="prosejemo" from="prosajemo" />
+    <Word to="kakaoa" from="kaka" />
+    <Word to="pleh" from="plek" />
+    <Word to="Celu" from="Cilu" />
+    <Word to="obložen" from="oblužen" />
+    <Word to="prečnika" from="pračnika" />
+    <Word to="rernu" from="rednu" />
+    <Word to="rerna" from="redna" />
+    <Word to="Dok nam" from="Nopno" />
+    <Word to="vatru" from="vator" />
+    <Word to="kesice" from="kjesice" />
+    <Word to="kesica" from="kjesica" />
+    <Word to="kesa" from="kjesa" />
+    <Word to="kese" from="kjese" />
+    <Word to="kesom" from="kjesom" />
+    <Word to="grudvica" from="grudlica" />
+    <Word to="počne" from="počna" />
+    <Word to="zgusnuo" from="zgustnuo" />
+    <Word to="zgusne" from="zgusti" />
+    <Word to="vatre" from="latre" />
+    <Word to="posudu" from="posodu" />
+    <Word to="razmućenu" from="radnućenu" />
+    <Word to="kesom" from="kersom" />
+    <Word to="vatru" from="vatlu" />
+    <Word to="zagrejanu" from="zagrenu" />
+    <Word to="retka" from="redka" />
+    <Word to="Sklanjamo" from="Skladnjamo" />
+    <Word to="rerne" from="revne" />
+    <Word to="sjediniti" from="sidimiti" />
+    <Word to="mlevenog" from="mlamenog" />
+    <Word to="uplašite" from="uplošite" />
+    <Word to="redak" from="retak" />
+    <Word to="tortu" from="turtu" />
+    <Word to="Čim" from="Čin" />
+    <Word to="torta" from="turta" />
+    <Word to="lešnika" from="lašnika" />
+    <Word to="biskvit" from="bistvit" />
+    <Word to="belanca" from="bjelanca" />
+    <Word to="pecivo" from="pećevu" />
+    <Word to="Rernu" from="Adrenu" />
+    <Word to="°C" from="stepeni" />
+    <Word to="°C" from="St." />
+    <Word to="celu" from="cijelu" />
+    <Word to="koru" from="koro" />
+    <Word to="šerpu" from="širpu" />
+    <Word to="Pre" from="Prije" />
+    <Word to="smesu" from="smasu" />
+    <Word to="ne zgusne" from="nazgusti" />
+    <Word to="ohladio" from="oslatio" />
+    <Word to="umućeni" from="umučeni" />
+    <Word to="mlevenih" from="mlebenih" />
+    <Word to="jednaka" from="jadnaka" />
+    <Word to="kašika" from="žica" />
+    <Word to="crnu" from="černu" />
+    <Word to="Redosled" from="Redoslet" />
+    <Word to="mućenja" from="mučenja" />
+    <Word to="uz dodavanje" from="ustodavanje" />
+    <Word to="rerna nam" from="reranom" />
+    <Word to="°C" from="stipeni" />
+    <Word to="Ostatak" from="Ustatak" />
+    <Word to="zakuvavamo" from="zakuvovamo" />
+    <Word to="kesu" from="kjesu" />
+    <Word to="žumanaca" from="rumanaca" />
+    <Word to="kašičicu" from="kaščicu" />
+    <Word to="nanosimo" from="naosimo" />
+    <Word to="obložen" from="oblošen" />
+    <Word to="Ovde" from="Udi" />
+    <Word to="provri" from="provrije" />
+    <Word to="skidamo" from="skinamo" />
+    <Word to="otopi" from="otepvi" />
+    <Word to="promešate" from="promješate" />
+    <Word to="pekli smo" from="pekljemo" />
+    <Word to="margarina" from="markarina" />
+    <Word to="pudinga" from="pudinka" />
+    <Word to="maslaca" from="masloca" />
+    <Word to="maslaca" from="masloco" />
+    <Word to="pomorandže" from="moranče" />
+    <Word to="promešamo" from="promješamo" />
+    <Word to="pomorandže" from="pomoranđe" />
+    <Word to="pomorandža" from="pomoranđa" />
+    <Word to="ohlađeni" from="ohladjeni" />
+    <Word to="poslednji" from="poslenji" />
+    <Word to="šlag" from="šlak" />
+    <Word to="drugari" from="jugari" />
+    <Word to="apsolutno" from="absolutno" />
+    <Word to="milion" from="milijon" />
+    <Word to="sam" from="Sam" />
+    <Word to="videli" from="vidjeli" />
+    <Word to="kockicu" from="kočicu" />
+    <Word to="zamrzivač" from="zamrsivač" />
+    <Word to="pomalo" from="pomalu" />
+    <Word to="pritisnite" from="pricisnite" />
+    <Word to="dugme" from="dugume" />
+    <Word to="praćenje" from="bračenje" />
+    <Word to="praćenje" from="praćanje" />
+    <Word to="razvlačimo" from="razlačimo" />
+    <Word to="testo" from="testu" />
+    <Word to="deo" from="del" />
+    <Word to="krug" from="kruka" />
+    <Word to="izaberite" from="izberiti" />
+    <Word to="pouljen" from="poljen" />
+    <Word to="premazujemo" from="primazujemo" />
+    <Word to="obavezno" from="objezno" />
+    <Word to="°C" from="stipeeni" />
+    <Word to="uključujemo" from="uključemo" />
+    <Word to="Apsolutno" from="Absolutno" />
+    <Word to="još" from="njoš" />
+    <Word to="aktiviran" from="odstajao" />
+    <Word to="brašna" from="prašna" />
+    <Word to="mešamo" from="mesamo" />
+    <Word to="razvučemo" from="razvučamo" />
+    <Word to="burbon" from="burbun" />
+    <Word to="namažemo" from="namaržemo" />
+    <Word to="vatru" from="vaktru" />
+    <Word to="ogulićemo" from="ugulićemo" />
+    <Word to="otopio" from="utopio" />
+    <Word to="non stop" from="nastopi" />
+    <Word to="kristalizovao" from="kristalizoval" />
+    <Word to="braon" from="bravom" />
+    <Word to="razmućeno" from="razmoćeno" />
+    <Word to="ne zgusne" from="nezgustna" />
+    <Word to="vreme" from="vrijeme" />
+    <Word to="brz deo" from="brzdeo" />
+    <Word to="rernu" from="renu" />
+    <Word to="cela" from="cijela" />
+    <Word to="mešamo" from="mišamo" />
+    <Word to="ravnomerno" from="ravnomeno" />
+    <Word to="svuda" from="sveda" />
+    <Word to="jabuka" from="jabuga" />
+    <Word to="zvonce" from="zvunce" />
+    <Word to="redovno" from="redono" />
+    <Word to="novi" from="novim" />
+    <Word to="Uvek" from="Uvijek" />
+    <Word to="uvek" from="uvijek" />
+    <Word to="keksa" from="keksta" />
+    <Word to="promešamo" from="promesamo" />
+    <Word to="kesicu" from="kesecu" />
+    <Word to="kuvali" from="kuhali" />
+    <Word to="voćni" from="voćen" />
+    <Word to="masu" from="maso" />
+    <Word to="voćnog" from="voćenog" />
+    <Word to="provrila" from="provila" />
+    <Word to="podignete" from="potignete" />
+    <Word to="sporiji" from="sporeji" />
+    <Word to="umesto" from="umjesto" />
+    <Word to="mikrotalasnoj" from="mikrotavasne" />
+    <Word to="Otopljenu" from="Oslopljenu" />
+    <Word to="turskog" from="tursko" />
+    <Word to="kolač nam" from="kolačnom" />
+    <Word to="nanosimo" from="nanusimo" />
+    <Word to="posle" from="poste" />
+    <Word to="prstohvatom" from="prstohvatnom" />
+    <Word to="mućenja" from="mućanja" />
+    <Word to="kakaoa" from="kakao" />
+    <Word to="rerne" from="redne" />
+    <Word to="zagrejanu" from="zagrebnu" />
+    <Word to="zapene" from="zapajne" />
+    <Word to="Umućena" from="Umoćena" />
+    <Word to="mešanje" from="mesanje" />
+    <Word to="ne zgusne" from="nezgusne" />
+    <Word to="kratko" from="krapko" />
+    <Word to="zatim" from="zadim" />
+    <Word to="žumanaca" from="žumaraca" />
+    <Word to="otopljenu" from="otoklenu" />
+    <Word to="mešanjem" from="mesanjem" />
+    <Word to="polovinu" from="polovo" />
+    <Word to="premazali" from="premažili" />
+    <Word to="gore" from="Gore" />
+    <Word to="margarina" from="mangarina" />
+    <Word to="keksa" from="kjeksa" />
+    <Word to="sok i" from="soki" />
+    <Word to="iscrtate" from="istrtate" />
+    <Word to="iscrtali" from="izsrcali" />
+    <Word to="strašno" from="stražno" />
+    <Word to="zagrejanu" from="zagrejeno" />
+    <Word to="rernu" from="Reno" />
+    <Word to="Posebno" from="Primno" />
+    <Word to="kesicu" from="kjesicu" />
+    <Word to="Mešamo" from="Mišamo" />
+    <Word to="zgusne" from="zgustne" />
+    <Word to="Posebno" from="Posredno" />
+    <Word to="slatke" from="slagke" />
+    <Word to="ukus" from="ukust" />
+    <Word to="kiselo" from="kisel" />
+    <Word to="isečenu" from="isecenu" />
+    <Word to="od rerne" from="odredne" />
+    <Word to="rernu" from="djernu" />
+    <Word to="zagrevamo" from="zagrevojmo" />
+    <Word to="°C" from="stupenji" />
+    <Word to="nožem" from="nužem" />
+    <Word to="mleka" from="mlijeka" />
+    <Word to="odvajamo" from="odvojamo" />
+    <Word to="potopimo" from="potapimo" />
+    <Word to="pre nego" from="prenuk" />
+    <Word to="Celu" from="Cijelu" />
+    <Word to="izmešati" from="izmiješati" />
+    <Word to="odjednom" from="odjedno" />
+    <Word to="ljuspicama" from="ljukspicama" />
+    <Word to="videti" from="vidjeti" />
+    <Word to="pojavljuju" from="pojavaju" />
+    <Word to="Otprilike" from="Otprilika" />
+    <Word to="kesom" from="kestom" />
+    <Word to="premažemo" from="premazamo" />
+    <Word to="žumance" from="žumanje" />
+    <Word to="mekog" from="mekom" />
+    <Word to="prosejemo" from="prosijemo" />
+    <Word to="kiseo" from="kisao" />
+    <Word to="razvlačiti" from="razlačiti" />
+    <Word to="svežeg" from="sveže" />
+    <Word to="kvasca" from="kvasa" />
+    <Word to="promešamo" from="promišamo" />
+    <Word to="razmućeni" from="razmoćeni" />
+    <Word to="Razvučeno" from="Razvučano" />
+    <Word to="maslacem" from="maslucem" />
+    <Word to="maslaca" from="masluca" />
+    <Word to="pavlaku" from="paglaku" />
+    <Word to="Iseckala" from="Izeskala" />
+    <Word to="zamotanu" from="zamotonu" />
+    <Word to="rerna" from="rena" />
+    <Word to="promešati" from="promješati" />
+    <Word to="Proverite" from="Provjerite" />
+    <Word to="pravljenja" from="pravljanja" />
+    <Word to="umućena" from="mučena" />
+    <Word to="šerpi" from="širpi" />
+    <Word to="ovde" from="ovdje" />
+    <Word to="Rernu" from="Revnu" />
+    <Word to="čekate" from="čakate" />
+    <Word to="vatru" from="latru" />
+    <Word to="uzmemo" from="uznamo" />
+    <Word to="rerna" from="rener" />
+    <Word to="mleko" from="mlijeko" />
+    <Word to="viljuškom" from="viduškom" />
+    <Word to="toplog" from="toklog" />
+    <Word to="razvlačite" from="razlačite" />
+    <Word to="razvlačenja" from="razlačenja" />
+    <Word to="kroasan" from="krosan" />
+    <Word to="stepeni" from="stupeni" />
+    <Word to="mešamo" from="miješamo" />
+    <Word to="promešamo" from="promiješamo" />
+    <Word to="prosejemo" from="prosujemo" />
+    <Word to="nadev" from="nadjev" />
+    <Word to="zagrejala" from="zagrela" />
+    <Word to="obruč" from="obroč" />
+    <Word to="margarina" from="margarine" />
+    <Word to="ivice" from="jevice" />
+    <Word to="belance" from="bjelance" />
+    <Word to="zakuvavamo" from="zakovavamo" />
+    <Word to="ovakvu" from="ovaku" />
+    <Word to="dodavanje" from="udavanje" />
+    <Word to="nadev" from="nadir" />
+    <Word to="šećera" from="šeđera" />
+    <Word to="Razvlačimo" from="Razlačimo" />
+    <Word to="žumanca" from="žmanca" />
+    <Word to="mućenje" from="mučenje" />
+    <Word to="lagano" from="legano" />
+    <Word to="umućeno" from="umučeno" />
+    <Word to="prašak" from="prašaj" />
+    <Word to="kesicom" from="kesecom" />
+    <Word to="krofne" from="krovne" />
+    <Word to="mekog" from="mekov" />
+    <Word to="kašičicu" from="kašićicu" />
+    <Word to="omekšalog" from="omeksolog" />
+    <Word to="mešenja" from="mesenja" />
+    <Word to="mešenje" from="mesenje" />
+    <Word to="pouljiti" from="puljiti" />
+    <Word to="krofne" from="grovne" />
+    <Word to="ostavljamo" from="ostavljemo" />
+    <Word to="zagrejali" from="zagreli" />
+    <Word to="ubrus" from="ubruz" />
+    <Word to="Na kraju" from="Nakraju" />
+    <Word to="na kraju" from="nakraju" />
+    <Word to="rernu" from="redno" />
+    <Word to="mlevenog" from="mlevinog" />
+    <Word to="Ovde" from="Ovdje" />
+    <Word to="obruč" from="obrač" />
+    <Word to="Obruč" from="Obrač" />
+    <Word to="Varjačom" from="Varječom" />
+    <Word to="pre" from="prije" />
+    <Word to="šerpu" from="šerbu" />
+    <Word to="Rernu" from="Revo" />
+    <Word to="Rernu" from="Rednu" />
+    <Word to="razvučemo" from="razučamo" />
+    <Word to="kesicu" from="kesnicu" />
+    <Word to="zakuvavamo" from="zakuovamo" />
+    <Word to="kesom" from="kjestom" />
+    <Word to="grudvica" from="krudvica" />
+    <Word to="plazma" from="plasma" />
+    <Word to="Plazma" from="Plasma" />
+    <Word to="promešajte" from="promješajte" />
+    <Word to="skroz" from="skrus" />
+    <Word to="dna" from="DNA" />
+    <Word to="redosledom" from="redosvodom" />
+    <Word to="Mešamo" from="Mesamo" />
+    <Word to="Uzmemo" from="Uzbemo" />
+    <Word to="maslac" from="masloc" />
+    <Word to="maslacem" from="maslocem" />
+    <Word to="frižider" from="frišider" />
+    <Word to="šerpu" from="šetbu" />
+    <Word to="na vatru" from="novato" />
+    <Word to="Dekoraciju" from="Dekoracijo" />
+    <Word to="dekoraciju" from="dekoracijo" />
+    <Word to="kojeg" from="kojek" />
+    <Word to="belanca" from="balanca" />
+    <Word to="omekšalog" from="omekšalo" />
+    <Word to="luka" from="Luka" />
+    <Word to="posudu" from="poslužu" />
+    <Word to="zagreva" from="zakreva" />
+    <Word to="mešamo" from="meshamo" />
+    <Word to="Mešamo" from="Meshamo" />
+    <Word to="Non-stop" from="Nonstop" />
+    <Word to="non-stop" from="nonstop" />
+    <Word to="Prosejemo" from="Prosajemo" />
+    <Word to="pecivo" from="pecivu" />
+    <Word to="koru nam" from="korunom" />
+    <Word to="đuveč" from="djuvač" />
+    <Word to="prohladi" from="prohledi" />
+    <Word to="otopite" from="otapite" />
+    <Word to="poravnala" from="oravnala" />
+    <Word to="zagoreo" from="zaborao" />
+    <Word to="frižider" from="frišter" />
+    <Word to="frižideru" from="frišteru" />
+    <Word to="namerno" from="namjerno" />
+    <Word to="žele bombona" from="želebumbona" />
+    <Word to="Sledeće" from="Sljedeće" />
+    <Word to="sledeće" from="sljedeće" />
+    <Word to="promešati" from="promesati" />
+    <Word to="Sledeći" from="Sljedeći" />
+    <Word to="kolač" from="koloč" />
+    <Word to="kobasicu" from="kubasicu" />
+    <Word to="varjača" from="valjača" />
+    <Word to="varjaču" from="valjaču" />
+    <Word to="posne" from="postne" />
+    <Word to="posna" from="postna" />
+    <Word to="posnu" from="postnu" />
+    <Word to="posnom" from="postnom" />
+    <Word to="varjačom" from="valjačom" />
+    <Word to="ovsenog" from="osvenog" />
+    <Word to="ovseno" from="osveno" />
+    <Word to="5" from="pet" />
+    <Word to="10" from="deset" />
+    <Word to="provri" from="provrija" />
+    <Word to="površinu" from="pološenu" />
+    <Word to="umešeno" from="umeseno" />
+    <Word to="razvlačimo" from="razvačemo" />
+    <Word to="razvukli" from="rozmukli" />
+    <Word to="stepeni" from="stupnjeva" />
+    <Word to="preklopim" from="preklupim" />
+    <Word to="isečemo" from="isecemo" />
+    <Word to="kolutove" from="kolotove" />
+    <Word to="Umesto" from="Umjesto" />
+    <Word to="razvučemo" from="razlučemo" />
+    <Word to="zatvaramo" from="zatvoramo" />
+    <Word to="Ravnomerno" from="Ravnometno" />
+    <Word to="suvog" from="sulog" />
+    <Word to="odstoje" from="ostoje" />
+    <Word to="odstoji" from="ostoji" />
+    <Word to="iskusniji" from="iskustniji" />
+    <Word to="°C" from="st." />
+    <Word to="laganoj" from="leganoj" />
+    <Word to="pavlake" from="pavlice" />
+    <Word to="rerna" from="rjerna" />
+    <Word to="Dodajemo" from="Dotajemo" />
+    <Word to="spanaća" from="spanađa" />
+    <Word to="ekstrakt" from="ekstrat" />
+    <Word to="uključite" from="ključite" />
+    <Word to="promešati" from="promišati" />
+    <Word to="đuveč" from="džuveč" />
+    <Word to="ovseno" from="ovceno" />
+    <Word to="sojinog" from="svojnog" />
+    <Word to="dl" from="decih" />
+    <Word to="ukusu" from="upusu" />
+    <Word to="Oprali" from="Opravili" />
+    <Word to="fil" from="filo" />
+    <Word to="posudu" from="posadu" />
+    <Word to="ne žurite" from="nažurite" />
+    <Word to="gušće" from="bušće" />
+    <Word to="vrelo" from="vrevo" />
+    <Word to="posnog" from="postup" />
+    <Word to="lomimo" from="lovimo" />
+    <Word to="Prelivamo" from="Prelimamo" />
+    <Word to="prelivamo" from="prelimamo" />
+    <Word to="pripremljen" from="pripravljen" />
+    <Word to="mekog" from="mehkog" />
+    <Word to="nadev" from="nadel" />
+    <Word to="celo" from="cijelo" />
+    <Word to="zagreje" from="zagre" />
+    <Word to="rernu" from="rjeru" />
+    <Word to="grudvica" from="gruđica" />
+    <Word to="đuveč" from="djuveč" />
+    <Word to="ovseno" from="ovcenu" />
+    <Word to="sojino" from="svojeno" />
+    <Word to="poravnate" from="poravljate" />
+    <Word to="zagreje" from="zagraje" />
+    <Word to="rernu" from="režim" />
+    <Word to="prodrmaćemo" from="prodavljaćemo" />
+    <Word to="ne žurite" from="nažulite" />
+    <Word to="loptu" from="loftu" />
+    <Word to="nadev" from="nadiv" />
+    <Word to="dinstamo" from="tinstamo" />
+    <Word to="suvog grožđa" from="suvogrožja" />
+    <Word to="suvo grožđe" from="suvogrožje" />
+    <Word to="retko" from="redko" />
+    <Word to="grama" from="gr." />
+    <Word to="odstajao" from="odstajeo" />
+    <Word to="mililitara" from="ml." />
+    <Word to="prelićemo" from="prelićamo" />
+    <Word to="redovno" from="redano" />
+    <Word to="frižidera" from="frižedera" />
+    <Word to="od gore" from="odgore" />
+    <Word to="Mešamo" from="Mješamo" />
+    <Word to="suvog" from="suhog" />
+    <Word to="grožđa" from="groždja" />
+    <Word to="rerne" from="rijerne" />
+    <Word to="Cela" from="Cijela" />
+    <Word to="isečemo" from="isećemo" />
+    <Word to="presečemo" from="presećemo" />
+    <Word to="kilograma" from="kg" />
+    <Word to="limuntusa" from="limudusa" />
+    <Word to="limuntus" from="limudus" />
+    <Word to="izmrvljen" from="izmrljen" />
+    <Word to="kvasca" from="klasica" />
+    <Word to="kvasac" from="klasac" />
+    <Word to="razvučem" from="razvučam" />
+    <Word to="šerpu" from="šerku" />
+    <Word to="zakuvavamo" from="zakulavamo" />
+    <Word to="iseckamo" from="isjeckamo" />
+    <Word to="Maslaca" from="Masloca" />
+    <Word to="pecivo" from="pesivo" />
+    <Word to="podmažemo" from="podnožemo" />
+    <Word to="rernu" from="revnu" />
+    <Word to="centimetara" from="cm" />
+    <Word to="grama" from="g" />
+    <Word to="suvog" from="suho" />
+    <Word to="prethodno" from="prijethodno" />
+    <Word to="oklagija" from="okladija" />
+    <Word to="oklagiju" from="okladiju" />
+    <Word to="Plazma" from="plazma" />
+    <Word to="obruč" from="ovruč" />
+    <Word to="zagreje" from="zagrije" />
+    <Word to="mlekom" from="mlijekom" />
+    <Word to="mililitara" from="ml" />
+    <Word to="narandže" from="naranđe" />
+    <Word to="nadeva" from="nadjeva" />
+    <Word to="dinsta" from="dimsta" />
+    <Word to="prodinsta" from="prodimsta" />
+    <Word to="paradajz" from="paradajs" />
+    <Word to="zagreva" from="zagriva" />
+    <Word to="Rernu" from="Redno" />
+    <Word to="Ravnomerno" from="Ravnomeno" />
+    <Word to="braon" from="braun" />
+    <Word to="razvučete" from="razlučete" />
+    <Word to="rerni" from="revni" />
+    <Word to="pekmez" from="pepmez" />
+    <Word to="cele" from="cijele" />
+    <Word to="breskve" from="breske" />
+    <Word to="kesice" from="kestice" />
+    <Word to="celih" from="cijelih" />
+    <Word to="razvlačite" from="razločite" />
+    <Word to="umočenog" from="umučenog" />
+    <Word to="naseckamo" from="nasjeckamo" />
+    <Word to="seckate" from="sjeckate" />
+    <Word to="sirćeta" from="sirčeta" />
+    <Word to="premazali" from="premlazali" />
+    <Word to="premažemo" from="premlažemo" />
+    <Word to="započinjemo" from="započenjamo" />
+    <Word to="poveže" from="poveša" />
+    <Word to="pokvasimo" from="pokvacimo" />
+    <Word to="kora" from="kura" />
+    <Word to="kuvati" from="kuhati" />
+    <Word to="lešnika" from="ležnika" />
+    <Word to="posudu" from="posuju" />
+    <Word to="tanke" from="tamke" />
+    <Word to="taman" from="tamano" />
+    <Word to="pravljenje" from="pravljanje" />
+    <Word to="ispekla" from="ispetla" />
+    <Word to="uplašiti" from="uprošiti" />
+    <Word to="prahu" from="prahlu" />
+    <Word to="lešnik" from="ležnik" />
+    <Word to="vrele" from="vrale" />
+    <Word to="promešati" from="promiješati" />
+    <Word to="rerna" from="vrena" />
+    <Word to="rerna nam" from="relanom" />
+    <Word to="smesu" from="smjesu" />
+    <Word to="kesice" from="kjestice" />
+    <Word to="grama" from="gr" />
+    <Word to="Od gore" from="Odgore" />
+    <Word to="pomešamo" from="pomiješamo" />
+    <Word to="zagrejemo" from="zagrijemo" />
+    <Word to="umočimo" from="umućimo" />
+    <Word to="Celo" from="Cijelo" />
+    <Word to="lan" from="LAN" />
+    <Word to="umočim" from="umoćim" />
+    <Word to="razvučete" from="razvučate" />
+    <Word to="pospem" from="pospetem" />
+    <Word to="umočimo" from="umučimo" />
+    <Word to="lana" from="Lana" />
+    <Word to="promešam" from="promiješam" />
+    <Word to="započinjemo" from="započinjamo" />
+    <Word to="prelijemo" from="pralijemo" />
+    <Word to="prekrijemo" from="preklijemo" />
+    <Word to="prezrelih" from="presrelih" />
+    <Word to="Promešamo" from="Promiješamo" />
+    <Word to="odsecam" from="odsjecam" />
+    <Word to="kroasane" from="korosane" />
+    <Word to="kroasani" from="korosani" />
+    <Word to="Kroasani" from="Korosani" />
+    <Word to="preliv" from="prelijev" />
+    <Word to="šerpi" from="šerbi" />
+    <Word to="podelim" from="podijelim" />
+    <Word to="tanjir" from="tanjer" />
+    <Word to="margarina" from="makarina" />
+    <Word to="razvlačim" from="razlačem" />
+    <Word to="šunkarice" from="šumkarice" />
+    <Word to="rolat" from="rolad" />
+    <Word to="povučete" from="povučate" />
+    <Word to="kolutove" from="holutove" />
+    <Word to="nož" from="noš" />
+    <Word to="zagrejanu" from="zagrejenu" />
+    <Word to="razvlačim" from="razlačim" />
+    <Word to="rernu" from="relju" />
+    <Word to="slobodno" from="svobodno" />
+    <Word to="premažite" from="premazajte" />
+    <Word to="premažete" from="premazate" />
+    <Word to="razvlačim" from="razloćim" />
+    <Word to="vlažan" from="vlažen" />
+    <Word to="započinjem" from="započenjem" />
+    <Word to="delova" from="dijelova" />
+    <Word to="pravougaonik" from="pravugaonik" />
+    <Word to="povežu" from="povešu" />
+    <Word to="Uzmemo" from="Uzemo" />
+    <Word to="brašna" from="vrašna" />
+    <Word to="umešeno" from="umešano" />
+    <Word to="deo" from="dio" />
+    <Word to="zasečemo" from="zasećamo" />
+    <Word to="promešam" from="promješam" />
+    <Word to="premesiti" from="premijesiti" />
+    <Word to="premesim" from="premijesim" />
+    <Word to="pecivo" from="pećivo" />
+    <Word to="Pecivo" from="Pećivo" />
+    <Word to="rerni" from="rirni" />
+    <Word to="rerna" from="rirna" />
+    <Word to="ocedim" from="ocjedim" />
+    <Word to="posle" from="poslije" />
+    <Word to="videla" from="vidjela" />
+    <Word to="tople" from="tuple" />
+    <Word to="razvlačim" from="razločim" />
+    <Word to="oklagiju" from="oblagiju" />
+    <Word to="razvlačenje" from="razlačenje" />
+    <Word to="testo" from="tisto" />
+    <Word to="rerna" from="rjeno" />
+    <Word to="mešanje" from="miješanje" />
+    <Word to="Pospem" from="Postojem" />
+    <Word to="trougao" from="trougal" />
+    <Word to="razvlači" from="razlači" />
+    <Word to="rernu" from="rirnu" />
+    <Word to="semenkama" from="semenjkama" />
+    <Word to="punjenje" from="punjanje" />
+    <Word to="Mešam" from="Mješam" />
+    <Word to="oklagijom" from="okladijom" />
+    <Word to="testa" from="tijesta" />
+    <Word to="pospemo" from="pošpemo" />
+    <Word to="brašna" from="braša" />
+    <Word to="kašičice" from="kašićice" />
+    <Word to="brašno" from="vrašnu" />
+    <Word to="pravougaonik" from="prvogaonik" />
+    <Word to="dela" from="djela" />
+    <Word to="trougliće" from="trugliće" />
+    <Word to="gde" from="gdje" />
+    <Word to="Rerna" from="Redna" />
+    <Word to="testa" from="tjesta" />
+    <Word to="presečem" from="prisvećam" />
+    <Word to="zalepi" from="zalijepi" />
+    <Word to="delom" from="dijelom" />
+    <Word to="Usput ću" from="Uspuću" />
+    <Word to="premekane" from="premikane" />
+    <Word to="viršlom" from="višlo" />
+    <Word to="jufkice" from="juvkice" />
+    <Word to="jufkica" from="juvkica" />
+    <Word to="kifla" from="gifla" />
+    <Word to="mleka" from="mlajka" />
+    <Word to="sipate" from="slijepate" />
+    <Word to="lepo" from="lijepo" />
+    <Word to="sto" from="stu" />
+    <Word to="najlonom" from="nilonom" />
+    <Word to="loptice" from="loftice" />
+    <Word to="oblikovali" from="oblekovali" />
+    <Word to="obavezno" from="obojezno" />
+    <Word to="utrošila" from="otrošila" />
+    <Word to="umočimo" from="umoćimo" />
+    <Word to="Umočimo" from="Umoćimo" />
+    <Word to="voće" from="ovoće" />
+    <Word to="Naprimer" from="Naprimjer" />
+    <Word to="grudvica" from="drudlica" />
+    <Word to="dela" from="dijela" />
+    <Word to="rozen" from="ruzen" />
+    <Word to="Rozen" from="Ruzen" />
+    <Word to="Zaokružite" from="Zakružite" />
+    <Word to="pokvasite" from="pokvacite" />
+    <Word from="Evako" to="Ovako" />
+    <Word from="uklagijom" to="oklagijom" />
+    <Word from="sljedeći" to="sledeći" />
+    <Word from="kihle" to="kifle" />
+    <Word from="kihlice" to="kiflice" />
+    <Word from="primjer" to="primer" />
+    <Word from="zaborali" to="zaboravili" />
+    <Word from="zaborala" to="zaboravila" />
+    <Word from="Loftice" to="Loptice" />
+    <Word from="lofticama" to="lopticama" />
+    <Word from="lofticu" to="lopticu" />
+    <Word from="precisno" to="precizno" />
+    <Word from="rastupite" to="rastopite" />
+    <Word from="Naprimer" to="Na primer" />
+    <Word from="Razločim" to="Razvlačim" />
+    <Word from="malju" to="manju" />
+    <Word from="posulju" to="posudu" />
+    <Word from="otupim" to="otopim" />
+    <Word from="rašidite" to="raširite" />
+    <Word from="umućim" to="umočim" />
+    <Word from="razvućemo" to="razvučemo" />
+    <Word from="Razvućemo" to="Razvučemo" />
+    <Word from="razvućete" to="razvučete" />
+    <Word from="troglavi" to="trouglovi" />
+    <Word from="trogao" to="trougao" />
+    <Word from="očecite" to="odsecite" />
+    <Word from="tijesto" to="testo" />
+    <Word from="grbalo" to="grbavo" />
+    <Word from="preklijem" to="prekrijem" />
+    <Word from="tista" to="testa" />
+    <Word from="razlučate" to="razvučete" />
+    <Word from="Nadir" to="nadev" />
+    <Word from="priliv" to="preliv" />
+    <Word from="prilivom" to="prelivom" />
+    <Word from="započinjam" to="započinjem" />
+    <Word from="pauljimo" to="pouljimo" />
+    <Word from="prelev" to="preliv" />
+    <Word from="puljite" to="pouljite" />
+    <Word from="Nasjeckajte" to="Naseckajte" />
+    <Word from="nasjeckajte" to="naseckajte" />
+    <Word from="sjeckane" to="seckane" />
+    <Word from="rerno" to="rerna" />
+    <Word from="utršim" to="utrošim" />
+    <Word from="premašamo" to="premažemo" />
+    <Word from="mekono" to="mekano" />
+    <Word from="Prelijevam" to="Prelivam" />
+    <Word from="dijel" to="deo" />
+    <Word from="vopticu" to="lopticu" />
+    <Word from="dijelove" to="delove" />
+    <Word from="tacinu" to="tacnu" />
+    <Word from="ukrenuti" to="okrenuti" />
+    <Word from="laptice" to="loptice" />
+    <Word from="ukladijom" to="oklagijom" />
+    <Word from="razvačanja" to="razvlačenja" />
+    <Word from="Razvačimo" to="Razvlačimo" />
+    <Word from="tamko" to="tanko" />
+    <Word from="Oprilike" to="Otprilike" />
+    <Word from="Pospim" to="Pospem" />
+    <Word from="razvačem" to="razvlačim" />
+    <Word from="Razvačem" to="Razvlačim" />
+    <Word from="istiram" to="isteram" />
+    <Word from="čoškove" to="ćoškove" />
+    <Word from="razvačilo" to="razvlačilo" />
+    <Word from="razvačite" to="razvlačite" />
+    <Word from="postno" to="posno" />
+    <Word from="postnim" to="posnim" />
+    <Word from="izavrla" to="izabrala" />
+    <Word from="uzivam" to="uzimam" />
+    <Word from="lešnjaka" to="lešnika" />
+    <Word from="Lešnjaka" to="Lešnika" />
+    <Word from="izvodila" to="izvadila" />
+    <Word from="pirinac" to="pirinač" />
+    <Word from="namožete" to="namažete" />
+    <Word from="kašliku" to="kašiku" />
+    <Word from="taknu" to="tacnu" />
+    <Word from="postnog" to="posnog" />
+    <Word from="postni" to="posni" />
+    <Word from="poslim" to="posnim" />
+    <Word from="sugog" to="suvog" />
+    <Word from="prilike" to="otprilike" />
+    <Word from="smjesta" to="smesa" />
+    <Word from="lijepi" to="lepi" />
+    <Word from="spanača" to="spanaća" />
+    <Word from="spanač" to="spanać" />
+    <Word from="mjestu" to="mestu" />
+    <Word from="mjesto" to="mesto" />
+    <Word from="Postupemo" to="Pospemo" />
+    <Word from="postupemo" to="pospemo" />
+    <Word from="Ukrinemo" to="Okrenemo" />
+    <Word from="klagiju" to="oklagiju" />
+    <Word from="pošpete" to="pospete" />
+    <Word from="rjerne" to="rerne" />
+    <Word from="pešuna" to="peršuna" />
+    <Word from="prisječem" to="presečem" />
+    <Word from="promišam" to="promešam" />
+    <Word from="namožemo" to="namažemo" />
+    <Word from="svešeg" to="svežeg" />
+    <Word from="potavkamo" to="potapkamo" />
+    <Word from="ravnoverno" to="ravnomerno" />
+    <Word from="sipna" to="sitna" />
+    <Word from="započenjemo" to="započinjemo" />
+    <Word from="mamaže" to="namaže" />
+    <Word from="htjela" to="htela" />
+    <Word from="procijenite" to="procenite" />
+    <Word from="torsi" to="torti" />
+    <Word from="mišam" to="mešam" />
+    <Word from="ugućene" to="ukućane" />
+    <Word from="badnje" to="Badnje" />
+    <Word from="lijep" to="lep" />
+    <Word from="ocjedio" to="ocedio" />
+    <Word from="precijepim" to="precepim" />
+    <Word from="premašemo" to="premažemo" />
+    <Word from="promesam" to="promešam" />
+    <Word from="revnom" to="rernom" />
+    <Word from="prepaciti" to="prebaciti" />
+    <Word from="rjena" to="rerna" />
+    <Word from="kuhanje" to="kuvanje" />
+    <Word from="postotak" to="procenat" />
+    <Word from="mašlaca" to="maslaca" />
+    <Word from="nadjema" to="nadeva" />
+    <Word from="posluću" to="posuću" />
+    <Word from="ravnju" to="ravnu" />
+    <Word from="Tijesto" to="Testo" />
+    <Word from="fleh" to="pleh" />
+    <Word from="redma" to="rerna" />
+    <Word from="valjače" to="varjače" />
+    <Word from="cijelom" to="celom" />
+    <Word from="pospevamo" to="pospemo" />
+    <Word from="oblatne" to="oblande" />
+    <Word from="kvasec" to="kvasac" />
+    <Word from="plef" to="pleh" />
+    <Word from="Revna" to="Rerna" />
+    <Word from="revna" to="rerna" />
+    <Word from="Prstokvad" to="Prstohvat" />
+    <Word from="revni," to="rerni," />
+    <Word from="varjacu" to="varjaču" />
+    <Word from="redni" to="rerni" />
+    <Word from="strilišu" to="sterilišu" />
+    <Word from="Obrišajte" to="Obrišete" />
+    <Word from="tijegle" to="tegle" />
+    <Word from="umoćite" to="umočite" />
+    <Word from="Reuna" to="Rerna" />
+    <Word from="retne" to="rerne" />
+    <Word from="razcepimo" to="rascepimo" />
+    <Word from="provjerimo" to="proverimo" />
+    <Word from="ocijedite" to="ocedite" />
+    <Word from="zagrijala" to="zagrejala" />
+    <Word from="kuhanja" to="kuvanja" />
+    <Word from="otkrela" to="otkrila" />
+    <Word from="gumboce" to="gomboce" />
+    <Word from="knegle" to="knedle" />
+    <Word from="šokljivama" to="sa šljivama" />
+    <Word from="Uvde" to="Ovde" />
+    <Word from="švive" to="šljive" />
+    <Word from="šviju" to="šljivu" />
+    <Word from="propršiti" to="propržiti" />
+    <Word from="sluši" to="služi" />
+    <Word from="razlačilo" to="razvlačilo" />
+    <Word from="okladije" to="oklagije" />
+    <Word from="rierna" to="rerna" />
+    <Word from="rierne" to="rerne" />
+    <Word from="riernama" to="rernama" />
+    <Word from="pomoranče" to="pomorandže" />
+    <Word from="piškute" to="piškote" />
+    <Word from="preljev" to="preliv" />
+    <Word from="kesticu" to="kesicu" />
+    <Word from="razklanjamo" to="rasklanjamo" />
+    <Word from="preliju" to="preliv" />
+    <Word from="oklađa" to="oklagijom" />
+    <Word from="namazate" to="namažete" />
+    <Word from="oklagem" to="oklagijom" />
+    <Word from="popljučiću" to="uključiću" />
+    <Word from="Dijelimo" to="Delimo" />
+    <Word from="Dijelite" to="Delite" />
+    <Word from="dijelimo." to="delimo." />
+    <Word from="vrenu" to="rernu" />
+    <Word from="čuftice" to="ćuftice" />
+    <Word from="čufte" to="ćufte" />
+    <Word from="osjetim" to="osetim" />
+    <Word from="zagrejelo" to="zagrejalo" />
+    <Word from="patliđana" to="patlidžana" />
+    <Word from="patliđan" to="patlidžan" />
+    <Word from="uguliti" to="oguliti" />
+    <Word from="smedjarevac" to="Smederevac" />
+    <Word from="sporetu" to="šporetu" />
+    <Word from="ugasnite" to="ugasite" />
+    <Word from="brše" to="brže" />
+    <Word from="prevacim" to="prebacim" />
+    <Word from="čuftica" to="ćuftica" />
+    <Word from="čufta" to="ćufta" />
+    <Word from="klavicom" to="glavicom" />
+    <Word from="dimstanje" to="dinstanje" />
+    <Word from="čuhte" to="ćufte" />
+    <Word from="ovruk" to="obrok" />
+    <Word from="usritnite" to="usitnite" />
+    <Word from="vatu" to="vatru" />
+    <Word from="opraćujemo" to="opraćemo" />
+    <Word from="proprši" to="proprži" />
+    <Word from="prljaštine" to="prljavštine" />
+    <Word from="nasječete" to="nasečete" />
+    <Word from="melja" to="melje" />
+    <Word from="protržimo" to="propržimo" />
+    <Word from="šervu" to="šerpu" />
+    <Word from="čuvte" to="ćufte" />
+    <Word from="cijelog" to="celog" />
+    <Word from="tiflicu" to="kiflicu" />
+    <Word from="tiflica" to="kiflica" />
+    <Word from="tiflice" to="kiflice" />
+    <Word from="nadjevene" to="nadevene" />
+    <Word from="samrzivač" to="zamrzivač" />
+    <Word from="razmučeni" to="razmućeni" />
+    <Word from="rasklojam" to="rasklonim" />
+    <Word from="isećete" to="isečete" />
+    <Word from="bogačice" to="pogačice" />
+    <Word from="Bogačice" to="Pogačice" />
+    <Word from="isećem" to="isečem" />
+    <Word from="kihlica" to="kiflica" />
+    <Word from="Kihlice" to="Kiflice" />
+    <Word from="Kihle" to="Kifle" />
+    <Word from="Đevraci" to="Đevreci" />
+    <Word from="zagrijanim" to="zagrejanim" />
+    <Word from="razvlacilo" to="razvlačilo" />
+    <Word from="kombinavam" to="kombinovano" />
+    <Word from="današnjom" to="današnjem" />
+    <Word from="pogaćice" to="pogačice" />
+    <Word from="pravugaonika" to="pravougaonika" />
+    <Word from="randaju" to="rendanju" />
+    <Word from="prebačite" to="prebacite" />
+    <Word from="Cel" to="Ceo" />
+    <Word from="nuž" to="nož" />
+    <Word from="uklupim" to="uklopim" />
+    <Word from="onovo" to="ponovo" />
+    <Word from="rasećem" to="rasečem" />
+    <Word from="Preklupimo" to="Preklopimo" />
+    <Word from="krajke" to="okrajke" />
+    <Word from="mrširati" to="raširiti" />
+    <Word from="dob'" to="dok" />
+    <Word from="uzivamo" to="uzimamo" />
+    <Word from="poluvinu" to="polovinu" />
+    <Word from="Ples" to="Pleh" />
+    <Word from="astanu" to="ostanu" />
+    <Word from="prepečenja" to="pre pečenja" />
+    <Word from="pogačici" to="pogačice" />
+    <Word from="kogačice" to="pogačice" />
+    <Word from="omarvenula" to="omanula" />
+  </WholeWords>
+  <PartialLines>
+    <LinePart to="Sve vreme" from="Cijelo vrijeme" />
+    <LinePart to="Sve vreme" from="Svo vreme" />
+    <LinePart to="Sve vreme" from="Svo vrijeme" />
+    <LinePart to="spatulom" from="s patulom" />
+    <LinePart to="pripremićemo" from="pripremit ćemo" />
+    <LinePart to="uz povremeno" from="uz povremenu" />
+    <LinePart to="Sada ćemo" from="Sa ćemo" />
+    <LinePart to="pripremaćemo" from="pripremat ćemo" />
+    <LinePart to="spatulom" from="s patron" />
+    <LinePart to="puding od" from="pudingo od" />
+    <LinePart to="koristićemo" from="koristit ćemo" />
+    <LinePart to="nišesta" from="ni 6" />
+    <LinePart to="Umućenim" from="U mučenim" />
+    <LinePart to="sipaćemo" from="sipat ćemo" />
+    <LinePart to="Kora nam" from="Koran nam" />
+    <LinePart to="neuporediv" from="na uporediv" />
+    <LinePart to="stavićemo" from="stavit ćemo" />
+    <LinePart to="posudu za mešenje" from="posudu za mešanje" />
+    <LinePart to="aktiviran" from="na doša" />
+    <LinePart to="otprilike" from="od prilike" />
+    <LinePart to="pravougaonik" from="prvu ga onik" />
+    <LinePart to="nabijte" from="na bite" />
+    <LinePart to="trouglove" from="3 uglove" />
+    <LinePart to="čime god" from="čime go" />
+    <LinePart to="morsku so" from="morsku su" />
+    <LinePart to="ostaviću" from="ostavit ću" />
+    <LinePart to="ću da vam" from="ću vam" />
+    <LinePart to="neuporediv" from="na uporedljiv" />
+    <LinePart to="sa nama" from="s nama" />
+    <LinePart to="sad sve to" from="sad se to" />
+    <LinePart to="200°C" from="200 St." />
+    <LinePart to="fil nam je" from="finom je" />
+    <LinePart to="isećićemo" from="isecit ćemo" />
+    <LinePart to="ili nišeste" from="ileni šeste" />
+    <LinePart to="srednjoj vatri" from="srednje vatri" />
+    <LinePart to="kako god" from="kako go" />
+    <LinePart to="minut-dva" from="minu dva" />
+    <LinePart to="sipali smo" from="stipali smo" />
+    <LinePart to="Umućenim" from="U mućenim" />
+    <LinePart to="sa vatre" from="sa vatra" />
+    <LinePart to="umutićemo" from="umuti ćemo" />
+    <LinePart to="Ravnomerno" from="Ravnom erno" />
+    <LinePart to="170°C" from="170 St." />
+    <LinePart to="180°C" from="180 St." />
+    <LinePart to="minut-dva" from="minu 2" />
+    <LinePart to="šlag krem" from="šla krem" />
+    <LinePart to="Kora nam se" from="Korano se" />
+    <LinePart to="nišesta" from="ni šesta" />
+    <LinePart to="u granulama" from="u granula" />
+    <LinePart to="poslastičarske" from="po slastičarske" />
+    <LinePart to="vrelog krema" from="vrelo krema" />
+    <LinePart to="da istresete" from="da istresite" />
+    <LinePart to="Sačekaćemo" from="Sačeka ćemo" />
+    <LinePart to="izmutićemo" from="izmutit ćemo" />
+    <LinePart to="dodaćemo" from="doda ćemo" />
+    <LinePart to="umutićemo" from="umutit ćemo" />
+    <LinePart to="dekorisaćemo" from="dekorisat ćemo" />
+    <LinePart to="premazaćemo" from="premazat ćemo" />
+    <LinePart to="razdvojićemo" from="razdvojit ćemo" />
+    <LinePart to="180°C" from="180 stupenja" />
+    <LinePart to="oblikovaćemo" from="oblikovat ćemo" />
+    <LinePart to="220°C" from="220 St." />
+    <LinePart to="suvog kvasca" from="suvo kvasca" />
+    <LinePart to="Dobićete" from="Dobit ćete" />
+    <LinePart to="dobićete" from="dobit ćete" />
+    <LinePart to="da odstoje" from="do stoje" />
+    <LinePart to="da se zagreje" from="da se zagre" />
+    <LinePart to="180°C" from="180 °C" />
+    <LinePart to="170°C" from="170 °C" />
+    <LinePart to="200°C" from="200 °C" />
+    <LinePart to="oklagijom" from="u klagiju" />
+    <LinePart to="ostavićemo" from="ostavit ćemo" />
+    <LinePart to="dodavaćemo" from="dodavat ćemo" />
+    <LinePart to="180°C" from="180 stepenje" />
+    <LinePart to="dodaćemo" from="dodat ćemo" />
+    <LinePart to="Dodaćemo" from="Dodat ćemo" />
+    <LinePart to="170°C" from="170 stepeni" />
+    <LinePart to="izvadite" from="izvadi te" />
+    <LinePart to="Dodavaćemo" from="Dodavati ćemo" />
+    <LinePart to="umesićemo" from="umesit ćemo" />
+    <LinePart to="mešaćemo" from="mesat ćemo" />
+    <LinePart to="kuvaćemo" from="kuva ćemo" />
+    <LinePart to="mešaćemo" from="mešat ćemo" />
+    <LinePart to="ostavićemo" from="ostavit&lt;br /&gt;ćemo" />
+    <LinePart to="1-2 minuta" from="minut 2" />
+    <LinePart to="Sipaćemo" from="Sipat ćemo" />
+    <LinePart to="Ostavićemo" from="Ostavit ćemo" />
+    <LinePart to="izlomićemo" from="izlomit ćemo" />
+    <LinePart to="180°C" from="180 stupnjeva" />
+    <LinePart to="Pravićemo" from="Pravit ćemo" />
+    <LinePart to="Uzeću" from="Uzet ću" />
+    <LinePart to="Odvojićemo" from="Odvojit ćemo" />
+    <LinePart to="biće" from="bit će" />
+    <LinePart to="krem od žumanaca" from="kremo žumanaca" />
+    <LinePart to="osetićete" from="osetit ćete" />
+    <LinePart to="iskoristićemo" from="iskoristit ćemo" />
+    <LinePart to="Smanjićemo" from="Smanjit ćemo" />
+    <LinePart to="sode bikarbone" from="sude bikarbone" />
+    <LinePart to="35 x 25" from="35 puta 25" />
+    <LinePart to="200 ml" from="2 dl" />
+    <LinePart to="Umućeni" from="U mučeni" />
+    <LinePart to="ovoj šerpi" from="ovoj šerpe" />
+    <LinePart to="pravićemo" from="pravit ćemo" />
+    <LinePart to="ogulićemo" from="ogulit ćemo" />
+    <LinePart to="Raširićemo" from="Raširit ćemo" />
+    <LinePart to="uzećemo" from="uzet ćemo" />
+    <LinePart to="narendaćemo" from="narendat ćemo" />
+    <LinePart to="Dodaću" from="Dodat ću" />
+    <LinePart to="200°C" from="200 st." />
+    <LinePart to="Spojićemo" from="Spojit ćemo" />
+    <LinePart to="Stavićemo" from="Stavit ćemo" />
+    <LinePart to="Mutićemo" from="Mutit ćemo" />
+    <LinePart to="šećera" from="kristal šećera" />
+    <LinePart to="šećer" from="kristal šećer" />
+    <LinePart to="izrendaćemo" from="izrendat ćemo" />
+    <LinePart to="staviću" from="stavit ću" />
+    <LinePart to="razmutićemo" from="razmutit ćemo" />
+    <LinePart to="zakuvaćemo" from="zakuvat ćemo" />
+    <LinePart to="otopićemo" from="otopit ćemo" />
+    <LinePart to="iseckaćemo" from="iseckat ćemo" />
+    <LinePart to="nastavićemo" from="nastavit ćemo" />
+    <LinePart to="punićemo" from="punit ćemo" />
+    <LinePart to="Umućenom" from="U mučeno" />
+    <LinePart to="Ogulićemo" from="Ogulit ćemo" />
+    <LinePart to="Iskoristiću" from="Iskoristit ću" />
+    <LinePart to="pravougaonik" from="pravu gaonik" />
+    <LinePart to="Napraviću" from="Napravit ću" />
+    <LinePart to="promeniću" from="promijenit ću" />
+    <LinePart to="s tim" from="s Tim" />
+    <LinePart to="pokazaću" from="pokazat ću" />
+    <LinePart to="dodaću" from="dodat ću" />
+    <LinePart to="Praviću" from="Pravit ću" />
+    <LinePart to="oblikovaću" from="oblikovat ću" />
+    <LinePart to="krempitu" from="krempi tu" />
+    <LinePart to="krempita" from="krempi ta" />
+    <LinePart to="oštrim nožem" from="oštri množem" />
+    <LinePart to="spojiću" from="spojit ću" />
+    <LinePart to="Utrošiću" from="Utrošit ću" />
+    <LinePart to="Sipaću" from="Sipat ću" />
+    <LinePart to="Staviću" from="Stavit ću" />
+    <LinePart to="Naseckaću" from="Naseckat ću" />
+    <LinePart to="suvo grožđe" from="suvog roždje" />
+    <LinePart to="Otprilike" from="U prilike" />
+    <LinePart to="Razvlačiću" from="Razvlačit ću" />
+    <LinePart to="pravougaonik" from="prvu gaonik" />
+    <LinePart to="Uradiću" from="Uradit ću" />
+    <LinePart to="aktiviraću" from="aktivirat ću" />
+    <LinePart to="premazaću" from="premazat ću" />
+    <LinePart to="uključiću" from="uključit ću" />
+    <LinePart to="Podeliću" from="Podelit ću" />
+    <LinePart to="Otprilike" from="Od prilike" />
+    <LinePart to="puniću" from="punit ću" />
+    <LinePart to="na toplom" from="na toplu" />
+    <LinePart to="da odstoji" from="da ustoji" />
+    <LinePart to="Pravougaonik" from="Pravu gaonik" />
+    <LinePart to="Otprilike" from="Od otprilike" />
+    <LinePart to="pravougaonike" from="prvu gaonike" />
+    <LinePart to="Videćete" from="Vidjet ćete" />
+    <LinePart to="Premazaćemo" from="Premazat ćemo" />
+    <LinePart to="uzeću" from="uzet ću" />
+    <LinePart to="moraćete" from="morat ćete" />
+    <LinePart to="koristiću" from="koristit ću" />
+    <LinePart to="odgovaraće" from="odgovarat će" />
+    <LinePart to="Taman ću" from="Tamo ću" />
+    <LinePart to="otvaraće" from="otvara će" />
+    <LinePart to="razmeriću" from="razmerit ću" />
+    <LinePart to="Trebaće" from="Treba će" />
+    <LinePart to="stvoriće" from="stvorit će" />
+    <LinePart to="dobićemo" from="dobit ćemo" />
+    <LinePart to="uz pomoć" from="s pomoć" />
+    <LinePart from="pravu gaonika" to="pravougaonika" />
+    <LinePart from="treba će" to="trebaće" />
+    <LinePart from="došta mekano" to="dosta mekano" />
+    <LinePart from="se zaleti" to="se zalepi" />
+    <LinePart from="Ja sam." to="Jesam." />
+    <LinePart from="ove krajke" to="ovi okrajci" />
+    <LinePart from="Sad će" to="Sad ćemo da" />
+    <LinePart from="ja misliti" to="ja mislim" />
+    <LinePart from="Nastaja će" to="Stajaće" />
+    <LinePart from="Mazat ću" to="Mazaću" />
+    <LinePart from="a tamo toliko" to="taman toliko" />
+    <LinePart from="sad se mi je" to="sasvim je" />
+    <LinePart from="bine to" to="birajte" />
+  </PartialLines>
+  <BeginLines />
+  <EndLines />
+  <WholeLines />
+  <RegularExpressions />
+  <RemovedWholeWords>
+    <Word to="" from="djete" />
+    <Word to="" from="htjeo" />
+    <Word to="" from="Rješit" />
+    <Word to="" from="smjeo" />
+    <Word to="" from="umijesto" />
+    <Word to="" from="Umijesto" />
+    <Word to="" from="uopče" />
+    <Word to="" from="Uopče" />
+    <Word to="" from="uspiješan" />
+    <Word to="" from="uvjek" />
+    <Word to="" from="Uvjek" />
+  </RemovedWholeWords>
+  <RemovedPartialLines>
+    <LinePart to="" from="Cijelo vrijeme" />
+    <LinePart to="" from="Svo vreme" />
+    <LinePart to="" from="Svo vrijeme" />
+  </RemovedPartialLines>
+  <RemovedBeginLines />
+  <RemovedEndLines />
+  <RemovedWholeLines />
+  <RemovedRegularExpressions />
+</ReplaceList>
