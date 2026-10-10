@@ -210,12 +210,24 @@ public class ReviewSpeechWindow : Window
 
     private static Border MakeLineGrid(ReviewSpeechViewModel vm)
     {
-        var lineGrid = TableViewExtras.MakeTableView(multiSelect: false);
+        var lineGrid = TableViewExtras.MakeTableView(multiSelect: true);
         lineGrid.Margin = new Thickness(0, 10, 0, 0);
         lineGrid.Width = double.NaN;
         lineGrid.Height = double.NaN;
         lineGrid[!TableView.ItemsSourceProperty] = new Binding(nameof(vm.Lines));
         lineGrid[!TableView.SelectedItemProperty] = new Binding(nameof(vm.SelectedLine)) { Mode = BindingMode.TwoWay };
+
+        // Multi-select feeds "Merge lines": two adjacent rows (shift+click) enable it.
+        lineGrid.SelectionChanged += (_, _) =>
+            vm.SetSelectedRows(lineGrid.SelectedItems?.OfType<ReviewRow>() ?? Enumerable.Empty<ReviewRow>());
+
+        var gridFlyout = new MenuFlyout { Placement = PlacementMode.Pointer };
+        gridFlyout.Items.Add(new MenuItem
+        {
+            Header = Se.Language.General.MergeLines,
+            Command = vm.MergeLinesCommand,
+        });
+        lineGrid.ContextFlyout = gridFlyout;
 
         // Re-enabled: OK publishes only rows with Include ticked and Export/Import
         // round-trip the flag, so without this column an imported session's excluded
@@ -527,10 +539,27 @@ public class ReviewSpeechWindow : Window
         var elevenLabsControls = MakeElevenLabsControls(vm);
         var panelInstruction = MakeInstructionPanel(vm, labelMinWidth, includeTags);
 
+        // ElevenLabs credit state at the top of the controls column: the balance captured before
+        // Generate ("Fixed"), the live balance ("Now") and what this session spent ("Spent").
+        var panelCredits = new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Spacing = 1,
+            Margin = new Thickness(0, 0, 0, 10),
+            [!Visual.IsVisibleProperty] = new Binding(nameof(ReviewSpeechViewModel.IsElevenLabsCreditsVisible)),
+            Children =
+            {
+                new TextBlock { FontSize = 15, FontWeight = FontWeight.Bold, [!TextBlock.TextProperty] = new Binding(nameof(ReviewSpeechViewModel.ElevenLabsCreditsFixedText)) },
+                new TextBlock { FontSize = 15, FontWeight = FontWeight.Bold, [!TextBlock.TextProperty] = new Binding(nameof(ReviewSpeechViewModel.ElevenLabsCreditsNowText)) },
+                new TextBlock { FontSize = 15, FontWeight = FontWeight.Bold, [!TextBlock.TextProperty] = new Binding(nameof(ReviewSpeechViewModel.ElevenLabsCreditsSpentText)) },
+            },
+        };
+
         var grid = new Grid
         {
             RowDefinitions =
             {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) }, // credits
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
@@ -550,14 +579,15 @@ public class ReviewSpeechWindow : Window
             Margin = new Thickness(0, 0, 0, 15),
         };
 
-        grid.Add(panelEngine, 0, 0);
+        grid.Add(panelCredits, 0, 0);
+        grid.Add(panelEngine, 1, 0);
         // Model comes before Voice — same ordering as the main TTS window and Cast dialog so the
         // user picks a model first (which sometimes filters the voice list) and the dropdowns
         // line up across windows.
-        grid.Add(panelModel, 1, 0);
-        grid.Add(panelVoice, 2, 0);
-        grid.Add(panelRegion, 3, 0);
-        grid.Add(panelLanguage, 4, 0);
+        grid.Add(panelModel, 2, 0);
+        grid.Add(panelVoice, 3, 0);
+        grid.Add(panelRegion, 4, 0);
+        grid.Add(panelLanguage, 5, 0);
         if (includeTags)
         {
             // Original layout: the ElevenLabs sliders with the tag palette docked right below them.
@@ -565,16 +595,16 @@ public class ReviewSpeechWindow : Window
             {
                 Orientation = Orientation.Vertical,
                 Children = { elevenLabsControls, MakeTagPanel(vm) },
-            }, 5, 0);
+            }, 6, 0);
         }
         else
         {
             // Three-column layout: the tag palette lives in its own left column instead.
-            grid.Add(elevenLabsControls, 5, 0);
+            grid.Add(elevenLabsControls, 6, 0);
         }
 
-        grid.Add(panelInstruction, 6, 0);
-        // 7 is filler.
+        grid.Add(panelInstruction, 7, 0);
+        // 8 is filler.
 
         return UiUtil.MakeBorderForControl(grid);
     }
@@ -664,20 +694,7 @@ public class ReviewSpeechWindow : Window
         column.VerticalAlignment = VerticalAlignment.Bottom;
         host.Children.Add(column);
 
-        // Live ElevenLabs credit balance, top-left above the palette. Pulled from the account
-        // itself, so it refreshed after every credit-spending action.
-        var creditText = new TextBlock
-        {
-            FontSize = 12,
-            FontWeight = FontWeight.SemiBold,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Top,
-            Margin = new Thickness(2, 2, 0, 0),
-            TextWrapping = TextWrapping.Wrap,
-            [!TextBlock.TextProperty] = new Binding(nameof(ReviewSpeechViewModel.ElevenLabsCreditsText)),
-            [!Visual.IsVisibleProperty] = new Binding(nameof(ReviewSpeechViewModel.IsElevenLabsCreditsVisible)),
-        };
-        host.Children.Add(creditText);
+        // Live ElevenLabs credit balance now lives at the top of the controls column (MakeControls).
 
         var scroll = new ScrollViewer
         {

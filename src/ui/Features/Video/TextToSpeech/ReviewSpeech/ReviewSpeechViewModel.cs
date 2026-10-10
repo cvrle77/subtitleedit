@@ -299,7 +299,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     // Text of the live credit line above the tag palette. Updated from the account itself
     // (GET /v1/user/subscription), not by tallying requests.
-    [ObservableProperty] private string _elevenLabsCreditsText = string.Empty;
+    [ObservableProperty] private string _elevenLabsCreditsFixedText = string.Empty;
+    [ObservableProperty] private string _elevenLabsCreditsNowText = string.Empty;
+    [ObservableProperty] private string _elevenLabsCreditsSpentText = string.Empty;
     [ObservableProperty] private bool _isElevenLabsCreditsVisible;
 
     private int? _elevenLabsCreditsBaseline;
@@ -677,7 +679,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
             Dispatcher.UIThread.Post(() =>
             {
                 IsElevenLabsCreditsVisible = false;
-                ElevenLabsCreditsText = string.Empty;
+                ElevenLabsCreditsFixedText = string.Empty;
+                ElevenLabsCreditsNowText = string.Empty;
+                ElevenLabsCreditsSpentText = string.Empty;
             });
             return;
         }
@@ -702,19 +706,24 @@ public partial class ReviewSpeechViewModel : ObservableObject
             IsElevenLabsCreditsVisible = true;
             if (credits == null)
             {
-                ElevenLabsCreditsText = "ElevenLabs credits: n/a";
+                ElevenLabsCreditsFixedText = "ElevenLabs credits: n/a";
+                ElevenLabsCreditsNowText = string.Empty;
+                ElevenLabsCreditsSpentText = string.Empty;
                 return;
             }
 
             var (used, limit) = credits.Value;
-            // The baseline is the usage before the run when the TTS window supplied it, otherwise the
-            // first reading - so "session" counts every credit spent since then.
+            // "Fixed" is the usage captured in the TTS window right before Generate was clicked. On
+            // import there is no such snapshot (nothing was spent), so only the current state shows.
+            var hasFixed = ElevenLabsUsedBeforeSession.HasValue;
             _elevenLabsCreditsBaseline ??= ElevenLabsUsedBeforeSession ?? used;
-            var remaining = Math.Max(0, limit - used);
             var spent = Math.Max(0, used - _elevenLabsCreditsBaseline.Value);
-            ElevenLabsCreditsText = spent > 0
-                ? $"ElevenLabs: {remaining:N0} / {limit:N0} left  ·  −{spent:N0} this session"
-                : $"ElevenLabs: {remaining:N0} / {limit:N0} left";
+
+            ElevenLabsCreditsFixedText = hasFixed
+                ? $"Fixed: {ElevenLabsUsedBeforeSession!.Value:N0}"
+                : "Fixed: —";
+            ElevenLabsCreditsNowText = $"Now: {used:N0} / {limit:N0}";
+            ElevenLabsCreditsSpentText = $"Spent: {spent:N0}";
         });
     }
 
@@ -3127,6 +3136,141 @@ public partial class ReviewSpeechViewModel : ObservableObject
         };
         row.StartHistory();
         return row;
+    }
+
+    // --- Merge two adjacent lines (the inverse of Split) -------------------------------------
+
+    // Rows selected in the grid (shift+click). "Merge lines" needs exactly two adjacent ones.
+    public ObservableCollection<ReviewRow> SelectedRows { get; } = new();
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(MergeLinesCommand))]
+    private bool _canMergeLines;
+
+    // Called from the grid's SelectionChanged with the control's SelectedItems.
+    public void SetSelectedRows(IEnumerable<ReviewRow> rows)
+    {
+        SelectedRows.Clear();
+        foreach (var row in rows)
+        {
+            SelectedRows.Add(row);
+        }
+
+        CanMergeLines = IsMergeableSelection();
+    }
+
+    private bool IsMergeableSelection()
+    {
+        if (SelectedRows.Count != 2)
+        {
+            return false;
+        }
+
+        var a = Lines.IndexOf(SelectedRows[0]);
+        var b = Lines.IndexOf(SelectedRows[1]);
+        return a >= 0 && b >= 0 && Math.Abs(a - b) == 1;
+    }
+
+    // Merges the two selected adjacent rows into one (joined text, first start -> second end) and
+    // regenerates it - the inverse of SplitLine.
+    [RelayCommand(CanExecute = nameof(CanMergeLines))]
+    private async Task MergeLines()
+    {
+        var engine = SelectedEngine;
+        if (engine == null || !IsMergeableSelection())
+        {
+            return;
+        }
+
+        var ordered = SelectedRows.OrderBy(row => Lines.IndexOf(row)).ToList();
+        var first = ordered[0];
+        var second = ordered[1];
+        if (first.StepResult.Paragraph == null || second.StepResult.Paragraph == null)
+        {
+            return;
+        }
+
+        var mergedText = (first.Text + " " + second.Text).Trim();
+        if (string.IsNullOrWhiteSpace(mergedText))
+        {
+            return;
+        }
+
+        var index = Lines.IndexOf(first);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var startMs = first.StepResult.Paragraph.StartTime.TotalMilliseconds;
+        var endMs = second.StepResult.Paragraph.EndTime.TotalMilliseconds;
+
+        IsRegenerateEnabled = false;
+        foreach (var l in Lines)
+        {
+            l.IsPlayingEnabled = false;
+        }
+
+        try
+        {
+            var prepared = await PrepareEngineAndVoiceAsync(engine, first);
+            if (prepared == null)
+            {
+                return;
+            }
+
+            // Undo point: the whole row list before the two rows are replaced by one.
+            PushUndoSnapshot($"merge \"{first.Text}\" + \"{second.Text}\"");
+
+            var merged = CreateSplitRow(first, mergedText, startMs, endMs);
+
+            foreach (var row in new[] { first, second })
+            {
+                if (row.WaveformParagraph != null)
+                {
+                    row.WaveformParagraph.PropertyChanged -= OnWaveformParagraphChanged;
+                    _waveformParagraphToRow.Remove(row.WaveformParagraph);
+                }
+            }
+
+            Lines.Remove(second);
+            Lines.Remove(first);
+            Lines.Insert(index, merged);
+
+            RenumberRows();
+            RebuildWaveformParagraphs();
+
+            await RegenerateRowCoreAsync(engine, merged, prepared.Voice, prepared.Model,
+                prepared.Instruction, prepared.Language, prepared.Region, prepared.OldStyle);
+
+            SelectedLine = merged;
+            LineGrid.SelectedItem = merged;
+            LineGrid.ScrollIntoView(merged);
+
+            foreach (var av in WaveformControls())
+            {
+                av.SetPosition(
+                    av.StartPositionSeconds,
+                    WaveformParagraphs,
+                    av.CurrentVideoPositionSeconds,
+                    WaveformParagraphs.IndexOf(merged.WaveformParagraph!),
+                    new List<SubtitleLineViewModel> { merged.WaveformParagraph! });
+                av.InvalidateVisual();
+            }
+
+            ScheduleTtsWaveformRebuild();
+        }
+        finally
+        {
+            IsRegenerateEnabled = true;
+            foreach (var l in Lines)
+            {
+                l.IsPlayingEnabled = true;
+            }
+        }
+
+        SetSelectedRows(Array.Empty<ReviewRow>());
+        _ = RefreshElevenLabsCreditsAsync();
     }
 
     // Rebuilds the visualizer's mirror list from the rows, in Lines order. Called after a split:
