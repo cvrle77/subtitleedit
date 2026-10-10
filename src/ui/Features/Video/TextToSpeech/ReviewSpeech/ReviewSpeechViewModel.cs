@@ -4413,24 +4413,6 @@ public partial class ReviewSpeechViewModel : ObservableObject
             _mpvContext = null;
         }
 
-        // The review's video surface is a second mpv instance - tear it down the same way.
-        var video = VideoPlayerControl;
-        VideoPlayerControl = null;
-        if (video != null)
-        {
-            Task.Run(() =>
-            {
-                try
-                {
-                    video.CloseAndDisposePlayer();
-                }
-                catch (Exception exception)
-                {
-                    SeLogger.Error(exception, "ReviewSpeech: disposing the video player failed");
-                }
-            });
-        }
-
         if (player == null)
         {
             return;
@@ -4455,6 +4437,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     internal void OnClosing(WindowClosingEventArgs e)
     {
+        // The video surface must be torn down on the UI thread: CloseAndDisposePlayer touches
+        // dispatcher-owned controls (ProgressText), so running it off-thread throws.
+        var video = VideoPlayerControl;
+        VideoPlayerControl = null;
+        video?.CloseAndDisposePlayer();
         // Title-bar X / Alt+F4 bypass the Escape guard, so a regenerate can still be in flight
         // here. Cancel it, but leave its popup-owned CTS undisposed (the popup's Cancel button
         // still holds it) and skip the temp-file sweep below - the unwinding pipeline may still

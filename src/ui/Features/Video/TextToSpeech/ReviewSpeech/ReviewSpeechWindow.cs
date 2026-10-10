@@ -715,15 +715,12 @@ public class ReviewSpeechWindow : Window
 
         // Video surface above the palette: shows the loaded video and follows the playhead. Its
         // sound follows the "Original"/"Generated" waveform labels (muted unless Original).
-        var videoPlayer = new VideoPlayerControl(new EmptyVideoPlayer())
-        {
-            Margin = new Thickness(2),
-            HorizontalAlignment = HorizontalAlignment.Stretch,
-            VerticalAlignment = VerticalAlignment.Stretch,
-        };
+        var videoPlayer = InitVideoPlayer.MakeVideoPlayerPreferNonNative();
+        videoPlayer.Margin = new Thickness(2);
         videoPlayer.FullScreenIsVisible = false;
         videoPlayer.ClickToTogglePlay = true;
         videoPlayer.SurfacePointerPressed += (_, _) => videoPlayer.TogglePlayPause();
+        videoPlayer.HideVideoControls(); // transport/seek are not needed here - the labels drive playback
         vm.VideoPlayerControl = videoPlayer;
         Opened += (_, _) => _ = vm.OpenReviewVideoAsync();
 
