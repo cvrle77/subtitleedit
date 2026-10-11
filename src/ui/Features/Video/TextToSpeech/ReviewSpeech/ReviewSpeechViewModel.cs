@@ -1153,15 +1153,21 @@ public partial class ReviewSpeechViewModel : ObservableObject
     private double _anchorFraction = 0.5;
 
     // The play-head may drift this far (as a fraction of the visible window) around the anchor
-    // before the view scrolls. 0.12 is a ~24% band: during playback the waveform sits still and
-    // only moves when the play-head leaves the band.
-    private const double DeadBandFraction = 0.12;
+    // before the view scrolls. Kept tiny: a wide band is what pushed the play-head away from the
+    // marker (it stopped up to that far off). The glide makes the following smooth, so the band
+    // only has to absorb jitter.
+    private const double DeadBandFraction = 0.005;
+
+    // Set when the marker is dragged: the next write puts the play-head under it at once instead of
+    // gliding - a single glide step only covers a fraction of the distance.
+    private bool _snapPlayhead;
 
     public double AnchorFraction => _anchorFraction;
 
     internal void SetAnchorFraction(double fraction)
     {
         _anchorFraction = Math.Clamp(fraction, 0.02, 0.98);
+        _snapPlayhead = true;
         SetWaveformPlayhead(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
     }
 
@@ -1222,15 +1228,28 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 _centerAnimActive = true;
                 _centerAnimStartTicks = now;
 
+                var snap = _snapPlayhead;
+                _snapPlayhead = false;
+
                 var playheadFraction = (seconds - av.StartPositionSeconds) / Math.Max(0.001, windowSeconds);
-                if (Math.Abs(playheadFraction - _anchorFraction) > DeadBandFraction)
+                if (snap || Math.Abs(playheadFraction - _anchorFraction) > DeadBandFraction)
                 {
-                    var tau = Math.Max(0.05, Se.Settings.Waveform.CenterSmoothSeconds / 3.0);
-                    var k = 1 - Math.Exp(-Math.Max(dt, 1.0 / 240.0) / tau);
-                    av.StartPositionSeconds += (centerTarget - av.StartPositionSeconds) * k;
-                    if (Math.Abs(centerTarget - av.StartPositionSeconds) < 0.02)
+                    if (snap)
                     {
+                        // The marker moved: put the play-head under it now. A glide step here would
+                        // only cover a fraction of the way and read as the play-head being pushed
+                        // back towards the middle.
                         av.StartPositionSeconds = centerTarget;
+                    }
+                    else
+                    {
+                        var tau = Math.Max(0.05, Se.Settings.Waveform.CenterSmoothSeconds / 3.0);
+                        var k = 1 - Math.Exp(-Math.Max(dt, 1.0 / 240.0) / tau);
+                        av.StartPositionSeconds += (centerTarget - av.StartPositionSeconds) * k;
+                        if (Math.Abs(centerTarget - av.StartPositionSeconds) < 0.02)
+                        {
+                            av.StartPositionSeconds = centerTarget;
+                        }
                     }
                 }
 
