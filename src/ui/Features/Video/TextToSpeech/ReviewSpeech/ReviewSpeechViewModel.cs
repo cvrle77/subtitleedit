@@ -1217,7 +1217,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 row.IsPlaying = true;
                 _playingRow = row;
                 SelectedLine = row;
-                TableViewExtras.CenterRow(LineGrid, row);
+                TableViewExtras.CenterRowAnimated(LineGrid, row);
             }
 
             if (!_isOriginalAudioActive && row != null && !ReferenceEquals(row, _activeClipRow))
@@ -4431,7 +4431,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
                     try { VideoPlayerControl.SeekTo(start.Value); } catch { /* not ready */ }
                 }
 
-                TableViewExtras.CenterRow(LineGrid, value);
+                TableViewExtras.CenterRowAnimated(LineGrid, value);
                 _activeClipRow = null;
                 return;
             }

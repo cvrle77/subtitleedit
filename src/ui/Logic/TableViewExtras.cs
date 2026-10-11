@@ -959,6 +959,65 @@ public static class TableViewExtras
     }
 
     /// <summary>
+    /// Like <see cref="CenterRow"/> but eases the scroll into place (~180 ms, ease-out) instead of
+    /// snapping, matching the waveform's smooth centering.
+    /// </summary>
+    public static void CenterRowAnimated(TableView tableView, object item)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            var scrollViewer = tableView.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+            if (scrollViewer == null || scrollViewer.Viewport.Height <= 0)
+            {
+                return;
+            }
+
+            RepairTopAnchor(tableView, scrollViewer);
+
+            if (tableView.ContainerFromItem(item) is not { } row || row.Bounds.Height <= 0)
+            {
+                return;
+            }
+
+            var rowTop = row.TranslatePoint(new Point(0, 0), ViewportOrigin(scrollViewer))?.Y;
+            if (rowTop == null)
+            {
+                return;
+            }
+
+            var delta = rowTop.Value - (scrollViewer.Viewport.Height - row.Bounds.Height) / 2.0;
+            var offset = scrollViewer.Offset;
+            var targetY = Math.Max(0, Math.Min(offset.Y + delta, scrollViewer.Extent.Height - scrollViewer.Viewport.Height));
+            var startY = offset.Y;
+            if (Math.Abs(targetY - startY) < 0.5)
+            {
+                return;
+            }
+
+            AnimateScrollY(scrollViewer, startY, targetY);
+        }, DispatcherPriority.Loaded);
+    }
+
+    // Eases the vertical scroll offset from -> to over ~180 ms (ease-out cubic) on the UI thread.
+    private static void AnimateScrollY(ScrollViewer scrollViewer, double from, double to)
+    {
+        const double durationMs = 180;
+        var startedAt = Environment.TickCount64;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        timer.Tick += (_, _) =>
+        {
+            var t = Math.Clamp((Environment.TickCount64 - startedAt) / durationMs, 0, 1);
+            var eased = 1 - Math.Pow(1 - t, 3);
+            scrollViewer.Offset = new Vector(scrollViewer.Offset.X, from + (to - from) * eased);
+            if (t >= 1)
+            {
+                timer.Stop();
+            }
+        };
+        timer.Start();
+    }
+
+    /// <summary>
     /// Nudges the scroll offset so <paramref name="item"/>'s row is fully on screen -
     /// the non-centering counterpart of <see cref="CenterRow"/> for variable-height rows
     /// that ScrollIntoView leaves clipped at an edge.
