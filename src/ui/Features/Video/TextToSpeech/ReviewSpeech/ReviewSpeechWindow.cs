@@ -223,11 +223,18 @@ public class ReviewSpeechWindow : Window
             vm.SetSelectedRows(lineGrid.SelectedItems?.OfType<ReviewRow>() ?? Enumerable.Empty<ReviewRow>());
 
         var gridFlyout = new MenuFlyout { Placement = PlacementMode.Pointer };
+        var menuSplitLine = new MenuItem
+        {
+            Header = Se.Language.General.SplitLineAtVideoAndTextBoxPosition,
+            Command = vm.SplitLineCommand,
+        };
+        gridFlyout.Items.Add(menuSplitLine);
         gridFlyout.Items.Add(new MenuItem
         {
             Header = Se.Language.General.MergeLines,
             Command = vm.MergeLinesCommand,
         });
+        gridFlyout.Opening += (_, _) => menuSplitLine.CommandParameter = vm.SelectedLine;
         lineGrid.ContextFlyout = gridFlyout;
 
         // Re-enabled: OK publishes only rows with Include ticked and Export/Import
@@ -1297,15 +1304,9 @@ public class ReviewSpeechWindow : Window
         av.OnPrimarySingleClicked += (_, e) =>
         {
             vm.SelectFromWaveform(e.Paragraph);
-            // A click on a block parks the playhead on that block's start (one click selects AND
-            // sets the position); a click on empty waveform parks it where the user clicked.
-            // An empty click yields a default paragraph (0..0), so the range test fails and the
-            // raw click position is used.
-            var clickSeconds = e.Paragraph.StartTime.TotalSeconds <= e.Seconds &&
-                               e.Seconds <= e.Paragraph.EndTime.TotalSeconds
-                ? e.Paragraph.StartTime.TotalSeconds
-                : e.Seconds;
-            vm.OnWaveformPositionClicked(clickSeconds);
+            // The playhead goes exactly where the user clicked, even inside a block, so a split can
+            // be placed mid-block. The click still selects the block for editing.
+            vm.OnWaveformPositionClicked(e.Seconds);
         };
         av.OnDragStarted += (_, e) => vm.SelectFromWaveform(e.Paragraph);
         av.OnSelectRequested += (_, e) => vm.SelectFromWaveform(e.Paragraph);
