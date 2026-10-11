@@ -343,7 +343,14 @@ public class ReviewSpeechWindow : Window
             CellTheme = UiUtil.TableViewCellTheme,
             HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
         });
-        lineGrid.DoubleTapped += (s, e) => vm.LineGridDoubleClicked();
+        lineGrid.DoubleTapped += (_, e) =>
+        {
+            // Resolve the row from the pointer, not from SelectedLine: on the first double-click
+            // after an import the selection has not reached the view model yet, so SelectedLine was
+            // still the first row - and that row played instead of the clicked one.
+            var index = TableViewExtras.GetRowIndexFromPoint(lineGrid, e.GetPosition(lineGrid));
+            vm.LineGridDoubleClicked(index >= 0 && index < vm.Lines.Count ? vm.Lines[index] : vm.SelectedLine);
+        };
         vm.LineGrid = lineGrid;
 
         var textBox = new SyntaxHighlightingTextBox

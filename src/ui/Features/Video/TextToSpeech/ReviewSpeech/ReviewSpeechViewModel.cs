@@ -4837,9 +4837,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
         UiUtil.SaveWindowPosition(Window);
     }
 
-    internal void LineGridDoubleClicked()
+    internal void LineGridDoubleClicked(ReviewRow? line)
     {
-        var line = SelectedLine;
         if (line == null || line.IsPlaying || !line.IsPlayingEnabled)
         {
             return;
