@@ -369,23 +369,24 @@ public partial class ReviewSpeechViewModel : ObservableObject
         return null;
     }
 
-    public void UseOriginalAudio()
-    {
-        _isOriginalAudioActive = true;
-        ApplyVideoAudio();
-        LogVideoState("label=original");
-        _ = PlayAudio(SelectedLine?.StepResult.CurrentFileName ?? string.Empty);
-    }
+    public void UseOriginalAudio() => SetAudioSource(original: true);
 
-    public void UseTtsAudio()
+    public void UseTtsAudio() => SetAudioSource(original: false);
+
+    // Switching the source NEVER starts playback on its own - if nothing is playing, stay silent.
+    // If a line is already playing, restart it from the top in the new source.
+    private void SetAudioSource(bool original)
     {
-        _isOriginalAudioActive = false;
-        try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* core not initialised yet */ }
-        ApplyVideoAudio();
-        LogVideoState("label=generated");
-        if (SelectedLine != null)
+        if (_isOriginalAudioActive == original)
         {
-            _ = PlayAudio(SelectedLine.StepResult.CurrentFileName);
+            return;
+        }
+
+        _isOriginalAudioActive = original;
+        LogVideoState($"source={(original ? "original" : "generated")}");
+        if (_playingRow != null)
+        {
+            _ = PlayAudio(_playingRow.StepResult.CurrentFileName);
         }
     }
 
@@ -424,10 +425,22 @@ public partial class ReviewSpeechViewModel : ObservableObject
         {
             await VideoPlayerControl.Open(_videoFileName);
             await VideoPlayerControl.WaitForPlayersReadyAsync();
-            _videoVolume = VideoPlayerControl.Volume > 0 ? VideoPlayerControl.Volume : 100;
             ApplyVideoAudio();
+            // A paused mpv only paints a frame after it has actually played once, so nudge it: seek,
+            // play, pause. Without this the surface stays blank.
             VideoPlayerControl.SeekTo(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
-            Se.WriteToolsLog($"TTS review: video player opened \"{_videoFileName}\" (duration {VideoPlayerControl.Duration:0.0}s, volume {_videoVolume:0})");
+            try
+            {
+                VideoPlayerControl.VideoPlayer.Play();
+                VideoPlayerControl.VideoPlayer.Pause();
+            }
+            catch (Exception playException)
+            {
+                Se.WriteToolsLog("TTS review video: prime failed: " + playException.Message, true);
+            }
+
+            var v = VideoPlayerControl.VideoPlayer;
+            Se.WriteToolsLog($"TTS review: video opened \"{_videoFileName}\" (player={v.GetType().Name}, duration={VideoPlayerControl.Duration:0.0}s, pos={v.Position:0.0}s, surface={VideoPlayerControl.ContentWidth}x{VideoPlayerControl.ContentHeight})");
         }
         catch (Exception exception)
         {
@@ -1003,7 +1016,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         // The video follows the playhead only while nothing is playing, and at most every 0.25 s:
         // seeking on every 60 fps cursor tick hammered mpv into ~2 fps and "error running command".
-        if (_playingRow == null && VideoPlayerControl != null && Math.Abs(seconds - _lastVideoSeekSeconds) >= 0.25)
+        if (VideoPlayerControl != null && Math.Abs(seconds - _lastVideoSeekSeconds) >= 0.25)
         {
             _lastVideoSeekSeconds = seconds;
             try { VideoPlayerControl.SeekTo(seconds); } catch { /* not ready */ }
