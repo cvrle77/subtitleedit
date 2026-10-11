@@ -109,6 +109,20 @@ public class ReviewSpeechWindow : Window
             HorizontalAlignment = HorizontalAlignment.Stretch,
         };
 
+        var checkBoxAutoContinue = new CheckBox
+        {
+            Content = Se.Language.Video.TextToSpeech.AutoContinuePlaying,
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.AutoContinue)) { Mode = BindingMode.TwoWay },
+        };
+
+        var checkBoxSkipGeneralAccent = new CheckBox
+        {
+            Content = "Skip general accent",
+            Margin = new Thickness(180, 0, 0, 0),
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.SkipGeneralAccent)) { Mode = BindingMode.TwoWay },
+        };
+        ToolTip.SetTip(checkBoxSkipGeneralAccent, "Regenerate without the configured general accent for this line");
+
         if (threeColumn)
         {
             // Three equal, resizable columns: tags | line grid | engine/voice controls. The two
@@ -152,7 +166,7 @@ public class ReviewSpeechWindow : Window
                 Orientation = Orientation.Horizontal,
                 Spacing = 16,
                 VerticalAlignment = VerticalAlignment.Center,
-                Children = { MakePositionLabel(vm) },
+                Children = { checkBoxAutoContinue, checkBoxSkipGeneralAccent, MakePositionLabel(vm) },
             };
             grid.Add(optionsPanel, 2, 0, 1, 4);
         }
@@ -162,6 +176,8 @@ public class ReviewSpeechWindow : Window
             grid.Add(lineGridView, 0, 1);
             grid.Add(waveform, 1, 0, 1, 3);
             grid.Add(panelButtons, 2, 0, 1, 3);
+            grid.Add(checkBoxAutoContinue, 2, 0);
+            grid.Add(checkBoxSkipGeneralAccent, 2, 0);
             grid.Add(MakePositionLabel(vm), 2, 0, 1, 2);
         }
 
@@ -568,7 +584,6 @@ public class ReviewSpeechWindow : Window
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
-                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Star) }, // filler
             },
             ColumnDefinitions =
@@ -605,37 +620,8 @@ public class ReviewSpeechWindow : Window
             grid.Add(elevenLabsControls, 6, 0);
         }
 
-        // Playback options, under the ElevenLabs sliders behind a divider: the two that used to sit
-        // in the bottom bar, plus the waveform glide switch.
-        var checkBoxAutoContinue = new CheckBox
-        {
-            Content = Se.Language.Video.TextToSpeech.AutoContinuePlaying,
-            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.AutoContinue)) { Mode = BindingMode.TwoWay },
-        };
-        var checkBoxSkipGeneralAccent = new CheckBox
-        {
-            Content = "Skip general accent",
-            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.SkipGeneralAccent)) { Mode = BindingMode.TwoWay },
-        };
-        ToolTip.SetTip(checkBoxSkipGeneralAccent, "Regenerate without the configured general accent for this line");
-        var checkBoxGlide = new CheckBox
-        {
-            Content = "Glide waveform to the play-head",
-            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.GlideCentering)) { Mode = BindingMode.TwoWay },
-        };
-        ToolTip.SetTip(checkBoxGlide, "Scroll at a speed that follows the distance, and only when the play-head leaves the marker. Off = the old fixed-duration glide.");
-
-        var panelPlaybackOptions = new StackPanel
-        {
-            Orientation = Orientation.Vertical,
-            Spacing = 2,
-            Margin = new Thickness(0, 10, 0, 10),
-            Children = { new Separator(), checkBoxAutoContinue, checkBoxSkipGeneralAccent, checkBoxGlide },
-        };
-
-        grid.Add(panelPlaybackOptions, 7, 0);
-        grid.Add(panelInstruction, 8, 0);
-        // 9 is filler.
+        grid.Add(panelInstruction, 7, 0);
+        // 8 is filler.
 
         return UiUtil.MakeBorderForControl(grid);
     }
