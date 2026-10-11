@@ -723,12 +723,14 @@ public partial class ReviewSpeechViewModel : ObservableObject
             {
                 try
                 {
-                    VideoPlayerControl.SeekTo(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+                    // A stopped mpv core can refuse to resume (Play() silently ignored). Re-open the
+                    // file at the play-head and start it - a guaranteed reset.
+                    await VideoPlayerControl.Open(_videoFileName, AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
                     video.Play();
                 }
                 catch (Exception playException)
                 {
-                    Se.WriteToolsLog("TTS review video: Play failed: " + playException.Message, true);
+                    Se.WriteToolsLog("TTS review video: open+play failed: " + playException.Message, true);
                 }
             }
 
@@ -3799,7 +3801,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         _playingRow = null;
         _activeClipRow = null;
         _cursorTimer?.Stop();
-        try { VideoPlayerControl?.VideoPlayer.Stop(); } catch { /* not ready */ }
+        try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* not ready */ }
         IsPlayVisible = true;
         IsStopVisible = false;
     }
