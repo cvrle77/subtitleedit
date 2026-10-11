@@ -245,6 +245,48 @@ public class ReviewSpeechWindow : Window
         });
         lineGrid.Columns.Add(new SeTableViewColumn
         {
+            Header = Se.Language.General.NumberSymbol,
+            Binding = new Binding(nameof(ReviewRow.Number)),
+            Width = new GridLength(50),
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+        });
+        lineGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.CharsPerSec,
+            Binding = new Binding(nameof(ReviewRow.Cps)),
+            Width = new GridLength(80),
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+        });
+        lineGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.Speed,
+            Binding = new Binding(nameof(ReviewRow.Speed)),
+            Width = new GridLength(70),
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+        });
+        lineGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.Text,
+            Binding = new Binding(nameof(ReviewRow.Text)),
+            Width = new GridLength(1, GridUnitType.Star),
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+        });
+        // Voice and the row actions sit after the growing Text column so they stay pinned to the
+        // right edge instead of being pushed off it.
+        lineGrid.Columns.Add(new SeTableViewColumn
+        {
+            Header = Se.Language.General.Voice,
+            Binding = new Binding(nameof(ReviewRow.Voice)),
+            Width = new GridLength(150),
+            CellTheme = UiUtil.TableViewCellTheme,
+            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+        });
+        lineGrid.Columns.Add(new SeTableViewColumn
+        {
             CellTheme = UiUtil.TableViewNoPaddingCellTheme,
             HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
             CellTemplate = new FuncDataTemplate<ReviewRow>((item, _) =>
@@ -287,46 +329,6 @@ public class ReviewSpeechWindow : Window
                 };
             }),
             Width = new GridLength(190),
-        });
-        lineGrid.Columns.Add(new SeTableViewColumn
-        {
-            Header = Se.Language.General.NumberSymbol,
-            Binding = new Binding(nameof(ReviewRow.Number)),
-            Width = new GridLength(50),
-            CellTheme = UiUtil.TableViewCellTheme,
-            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
-        });
-        lineGrid.Columns.Add(new SeTableViewColumn
-        {
-            Header = Se.Language.General.Voice,
-            Binding = new Binding(nameof(ReviewRow.Voice)),
-            Width = new GridLength(150),
-            CellTheme = UiUtil.TableViewCellTheme,
-            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
-        });
-        lineGrid.Columns.Add(new SeTableViewColumn
-        {
-            Header = Se.Language.General.CharsPerSec,
-            Binding = new Binding(nameof(ReviewRow.Cps)),
-            Width = new GridLength(80),
-            CellTheme = UiUtil.TableViewCellTheme,
-            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
-        });
-        lineGrid.Columns.Add(new SeTableViewColumn
-        {
-            Header = Se.Language.General.Speed,
-            Binding = new Binding(nameof(ReviewRow.Speed)),
-            Width = new GridLength(70),
-            CellTheme = UiUtil.TableViewCellTheme,
-            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
-        });
-        lineGrid.Columns.Add(new SeTableViewColumn
-        {
-            Header = Se.Language.General.Text,
-            Binding = new Binding(nameof(ReviewRow.Text)),
-            Width = new GridLength(1, GridUnitType.Star),
-            CellTheme = UiUtil.TableViewCellTheme,
-            HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
         });
         lineGrid.DoubleTapped += (_, e) =>
         {
