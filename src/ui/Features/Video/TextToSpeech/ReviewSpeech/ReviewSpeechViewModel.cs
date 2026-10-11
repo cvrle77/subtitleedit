@@ -719,13 +719,21 @@ public partial class ReviewSpeechViewModel : ObservableObject
         {
             var video = VideoPlayerControl.VideoPlayer;
             ApplyVideoAudio();
+
+            // Play always starts from the block's beginning: the play-head is a split tool while
+            // stopped, not a resume point, so the audio and the waveform must start together.
+            var startRow = RowAtPosition(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0) ?? _playingRow ?? SelectedLine;
+            var startSeconds = startRow?.StepResult.Paragraph?.StartTime.TotalSeconds
+                ?? AudioVisualizer?.CurrentVideoPositionSeconds
+                ?? 0;
+            _playingRow = startRow;
+
             if (!video.IsPlaying)
             {
                 try
                 {
-                    // A stopped mpv core can refuse to resume (Play() silently ignored). Re-open the
-                    // file at the play-head and start it - a guaranteed reset.
-                    await VideoPlayerControl.Open(_videoFileName, AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+                    SetWaveformPlayhead(startSeconds);
+                    await VideoPlayerControl.Open(_videoFileName, startSeconds);
                     video.Play();
                 }
                 catch (Exception playException)
@@ -746,7 +754,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
             }
         }
 
-        await StartClipAsync(fileName, ClipOffsetForRow(_playingRow ?? SelectedLine));
+        await StartClipAsync(fileName);
         _activeClipRow = _playingRow ?? SelectedLine;
     }
 
