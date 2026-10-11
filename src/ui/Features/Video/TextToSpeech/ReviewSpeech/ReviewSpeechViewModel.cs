@@ -1205,6 +1205,21 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
             SetWaveformPlayhead(videoPosition);
 
+            // Mark the row the video is inside: grid highlight, waveform block and selection. The
+            // playing row is set BEFORE selecting so OnSelectedLineChanged does not restart playback.
+            if (row != null && !ReferenceEquals(row, _playingRow))
+            {
+                if (_playingRow != null)
+                {
+                    _playingRow.IsPlaying = false;
+                }
+
+                row.IsPlaying = true;
+                _playingRow = row;
+                SelectedLine = row;
+                LineGrid.ScrollIntoView(row);
+            }
+
             if (!_isOriginalAudioActive && row != null && !ReferenceEquals(row, _activeClipRow))
             {
                 _activeClipRow = row;
