@@ -317,18 +317,31 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         _isOriginalAudioActive = true;
         ApplyVideoAudio();
+        LogVideoState("label=original");
         _ = PlayAudio(SelectedLine?.StepResult.CurrentFileName ?? string.Empty);
     }
 
     public void UseTtsAudio()
     {
         _isOriginalAudioActive = false;
-        VideoPlayerControl?.VideoPlayer.Pause();
+        try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* core not initialised yet */ }
         ApplyVideoAudio();
+        LogVideoState("label=generated");
         if (SelectedLine != null)
         {
             _ = PlayAudio(SelectedLine.StepResult.CurrentFileName);
         }
+    }
+
+    // Diagnostic: what the video surface thinks it is doing, so the tools log answers "why does
+    // Original not play" without guessing.
+    private void LogVideoState(string where)
+    {
+        var v = VideoPlayerControl?.VideoPlayer;
+        var player = v == null ? "null" : v.GetType().Name;
+        var playing = v == null ? "?" : v.IsPlaying.ToString();
+        var pos = v == null ? "?" : v.Position.ToString("0.00", CultureInfo.InvariantCulture);
+        Se.WriteToolsLog($"TTS review video [{where}]: mode={(_isOriginalAudioActive ? "original" : "generated")}, player={player}, playing={playing}, pos={pos}");
     }
 
     private void ApplyVideoAudio()
@@ -559,7 +572,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         IsStopVisible = false;
         _playingRow = null;
         _cursorTimer?.Stop();
-        VideoPlayerControl?.VideoPlayer.Pause();
+        try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* core not initialised yet */ }
         foreach (var l in Lines)
         {
             l.IsPlaying = false;
@@ -574,8 +587,19 @@ public partial class ReviewSpeechViewModel : ObservableObject
         {
             DisposePlayerOffThread();
             _playingRow = SelectedLine ?? _playingRow;
+            LogVideoState("play-original-before");
             VideoPlayerControl.SeekTo(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
-            VideoPlayerControl.VideoPlayer.Play();
+            try
+            {
+                VideoPlayerControl.VideoPlayer.Play();
+            }
+            catch (Exception exception)
+            {
+                SeLogger.Error(exception, "ReviewSpeech: video Play failed");
+                Se.WriteToolsLog("TTS review video: Play() FAILED: " + exception.Message, true);
+            }
+
+            LogVideoState("play-original-after");
             _cursorTimer?.Start();
             IsPlayVisible = false;
             IsStopVisible = true;
