@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -416,6 +417,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         _isOriginalAudioActive = original;
         ApplyVideoAudio();
+        ApplyPlayheadHighlight();
         LogVideoState($"source={(original ? "original" : "generated")}");
 
         // Never starts playback on its own: if the video is already running, switch the sound under
@@ -451,6 +453,26 @@ public partial class ReviewSpeechViewModel : ObservableObject
         if (VideoPlayerControl != null)
         {
             VideoPlayerControl.Volume = 0;
+        }
+    }
+
+    partial void OnIsStopVisibleChanged(bool value) => ApplyPlayheadHighlight();
+
+    // The play-head spans both stacked waveforms, so tint the half that is actually carrying the
+    // sound: the running track's play-head goes green, the idle one keeps the configured colour.
+    private void ApplyPlayheadHighlight()
+    {
+        var normal = Se.Settings.Waveform.WaveformCursorColor.FromHexToColor();
+        var highlight = Color.FromRgb(0x2E, 0xCC, 0x71);
+        var playing = IsStopVisible;
+        if (AudioVisualizer != null)
+        {
+            AudioVisualizer.WaveformCursorColor = playing && _isOriginalAudioActive ? highlight : normal;
+        }
+
+        if (AudioVisualizerTts != null)
+        {
+            AudioVisualizerTts.WaveformCursorColor = playing && !_isOriginalAudioActive ? highlight : normal;
         }
     }
 
