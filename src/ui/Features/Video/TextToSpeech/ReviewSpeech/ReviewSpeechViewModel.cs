@@ -311,6 +311,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // "Original"/"Generated" waveform labels: muted while the generated clips play.
     public VideoPlayerControl? VideoPlayerControl { get; set; }
     private double _videoVolume = 100;
+    private double _lastVideoSeekSeconds = -1;
     private bool _isOriginalAudioActive;
 
     public void UseOriginalAudio()
@@ -952,8 +953,13 @@ public partial class ReviewSpeechViewModel : ObservableObject
             avTts.CurrentVideoPositionSeconds = seconds;
         }
 
-        // The video follows the playhead.
-        VideoPlayerControl?.SeekTo(seconds);
+        // The video follows the playhead only while nothing is playing, and at most every 0.25 s:
+        // seeking on every 60 fps cursor tick hammered mpv into ~2 fps and "error running command".
+        if (_playingRow == null && VideoPlayerControl != null && Math.Abs(seconds - _lastVideoSeekSeconds) >= 0.25)
+        {
+            _lastVideoSeekSeconds = seconds;
+            try { VideoPlayerControl.SeekTo(seconds); } catch { /* not ready */ }
+        }
 
         // Center mode is opt-in. Either the snap toggle (CenterVideoPosition) or the smooth one
         // (CenterVideoPositionSmooth) enables it - the main window treats them as one "center any"
