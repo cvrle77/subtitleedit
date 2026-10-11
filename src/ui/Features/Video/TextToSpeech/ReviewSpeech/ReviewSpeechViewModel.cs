@@ -313,6 +313,61 @@ public partial class ReviewSpeechViewModel : ObservableObject
     private double _videoVolume = 100;
     private double _lastVideoSeekSeconds = -1;
     private bool _isOriginalAudioActive;
+    // Row's own audio, cut out of the video, so "Original" plays through the same per-line flow as
+    // a generated clip. Keyed by the row's time range.
+    private readonly Dictionary<string, string> _originalClipCache = new();
+
+    // Cuts the row's time range out of the video as a wav (audio only), cached. Returns null when
+    // there is no video or ffmpeg fails.
+    private async Task<string?> GetOriginalClipAsync(ReviewRow row)
+    {
+        var paragraph = row.StepResult.Paragraph;
+        if (paragraph == null || string.IsNullOrEmpty(_videoFileName) || !File.Exists(_videoFileName))
+        {
+            return null;
+        }
+
+        var key = $"{paragraph.StartTime.TotalMilliseconds:0}_{paragraph.EndTime.TotalMilliseconds:0}";
+        if (_originalClipCache.TryGetValue(key, out var cached) && File.Exists(cached))
+        {
+            return cached;
+        }
+
+        var ffmpeg = Se.Settings.General.FfmpegPath;
+        if (!File.Exists(ffmpeg))
+        {
+            return null;
+        }
+
+        var output = Path.Combine(_waveFolder, $"orig_{key}.wav");
+        var args = $"-nostdin -y -ss {paragraph.StartTime.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)} " +
+                   $"-t {paragraph.Duration.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)} " +
+                   $"-i \"{_videoFileName}\" -vn -ac 2 \"{output}\"";
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo(ffmpeg, args)
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                },
+            };
+            process.Start();
+            await process.WaitForExitAsync();
+            if (process.ExitCode == 0 && File.Exists(output))
+            {
+                _originalClipCache[key] = output;
+                return output;
+            }
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, "ReviewSpeech: could not cut the original audio clip");
+        }
+
+        return null;
+    }
 
     public void UseOriginalAudio()
     {
@@ -347,9 +402,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private void ApplyVideoAudio()
     {
+        // The video surface is a silent preview in both modes - the sound comes from the clip
+        // player (generated clip or the row's original audio).
         if (VideoPlayerControl != null)
         {
-            VideoPlayerControl.Volume = _isOriginalAudioActive ? _videoVolume : 0;
+            VideoPlayerControl.Volume = 0;
         }
     }
 
@@ -583,28 +640,19 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private async Task PlayAudio(string fileName)
     {
-        // Original mode: play the video's own audio from the playhead instead of the generated clip.
-        if (_isOriginalAudioActive && VideoPlayerControl != null)
+        // Original mode: play the row's own audio (cut from the video) through the same per-line
+        // flow as a generated clip. The video surface stays a passive preview either way.
+        if (_isOriginalAudioActive)
         {
-            DisposePlayerOffThread();
-            _playingRow = SelectedLine ?? _playingRow;
-            LogVideoState("play-original-before");
-            VideoPlayerControl.SeekTo(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
-            try
+            var originalRow = _playingRow ?? SelectedLine;
+            if (originalRow != null)
             {
-                VideoPlayerControl.VideoPlayer.Play();
+                var originalClip = await GetOriginalClipAsync(originalRow);
+                if (!string.IsNullOrEmpty(originalClip))
+                {
+                    fileName = originalClip;
+                }
             }
-            catch (Exception exception)
-            {
-                SeLogger.Error(exception, "ReviewSpeech: video Play failed");
-                Se.WriteToolsLog("TTS review video: Play() FAILED: " + exception.Message, true);
-            }
-
-            LogVideoState("play-original-after");
-            _cursorTimer?.Start();
-            IsPlayVisible = false;
-            IsStopVisible = true;
-            return;
         }
 
         // A row can point at a deleted/moved file (e.g. an imported session whose folder was
@@ -1037,19 +1085,6 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         if (_isClosing)
         {
-            return;
-        }
-
-        // Original mode: the video plays the original audio, so the playhead follows the video's
-        // own clock (absolute seconds), not the clip's position inside the row.
-        if (_isOriginalAudioActive && VideoPlayerControl != null)
-        {
-            var video = VideoPlayerControl.VideoPlayer;
-            if (video.IsPlaying)
-            {
-                SetWaveformPlayhead(video.Position);
-            }
-
             return;
         }
 
