@@ -310,7 +310,6 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // The review's video surface (left column, above the tags). Its sound follows the
     // "Original"/"Generated" waveform labels: muted while the generated clips play.
     public VideoPlayerControl? VideoPlayerControl { get; set; }
-    private double _videoVolume = 100;
     private double _lastVideoSeekSeconds = -1;
     private bool _isOriginalAudioActive;
     // Row's own audio, cut out of the video, so "Original" plays through the same per-line flow as
@@ -423,19 +422,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
         // it; otherwise stay silent.
         if (VideoPlayerControl?.VideoPlayer.IsPlaying == true)
         {
-            if (original)
+            var row = RowAtPosition(VideoPlayerControl.VideoPlayer.Position);
+            if (row != null)
             {
-                DisposePlayerOffThread();
-                _activeClipRow = null;
-            }
-            else
-            {
-                var row = RowAtPosition(VideoPlayerControl.VideoPlayer.Position);
-                if (row != null)
-                {
-                    _activeClipRow = row;
-                    _ = StartClipAsync(row.StepResult.CurrentFileName);
-                }
+                _activeClipRow = row;
+                _ = StartRowClipAsync(row);
             }
         }
     }
@@ -453,11 +444,13 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private void ApplyVideoAudio()
     {
-        // Original mode: the video plays its own audio. Generated: the video is muted and the clip
-        // player carries the sound.
+        // The video is muted in both modes: the sound always comes from the clip player. The video's
+        // own audio output does not survive a Stop/Play cycle - it stalled mpv (no picture, no
+        // sound), while the clip path works. Original therefore plays the row's audio cut out of the
+        // video (GetOriginalClipAsync) instead of unmuting the video.
         if (VideoPlayerControl != null)
         {
-            VideoPlayerControl.Volume = _isOriginalAudioActive ? _videoVolume : 0;
+            VideoPlayerControl.Volume = 0;
         }
     }
 
@@ -475,7 +468,6 @@ public partial class ReviewSpeechViewModel : ObservableObject
         {
             await VideoPlayerControl.Open(_videoFileName);
             await VideoPlayerControl.WaitForPlayersReadyAsync();
-            _videoVolume = VideoPlayerControl.Volume > 0 ? VideoPlayerControl.Volume : 100;
             ApplyVideoAudio();
             // A paused mpv only paints a frame after it has actually played once, so nudge it: seek,
             // play, pause. Without this the surface stays blank.
@@ -752,17 +744,38 @@ public partial class ReviewSpeechViewModel : ObservableObject
             _cursorTimer?.Start();
             IsPlayVisible = false;
             IsStopVisible = true;
-
-            if (_isOriginalAudioActive)
-            {
-                DisposePlayerOffThread();
-                _activeClipRow = null;
-                return;
-            }
         }
 
-        await StartClipAsync(fileName);
-        _activeClipRow = _playingRow ?? SelectedLine;
+        var clipRow = _playingRow ?? SelectedLine;
+        var clip = _isOriginalAudioActive && clipRow != null
+            ? await GetOriginalClipAsync(clipRow) ?? string.Empty
+            : fileName;
+        if (string.IsNullOrEmpty(clip))
+        {
+            // e.g. ffmpeg is not configured, so the original audio cannot be cut - stay silent.
+            return;
+        }
+
+        await StartClipAsync(clip);
+        _activeClipRow = clipRow;
+    }
+
+    // Starts a row's sound in the current mode: its TTS clip, or the original audio cut out of the
+    // video. Both go through the clip player - see ApplyVideoAudio.
+    private async Task StartRowClipAsync(ReviewRow row)
+    {
+        var file = row.StepResult.CurrentFileName;
+        if (_isOriginalAudioActive)
+        {
+            file = await GetOriginalClipAsync(row) ?? string.Empty;
+        }
+
+        if (string.IsNullOrEmpty(file))
+        {
+            return;
+        }
+
+        await StartClipAsync(file, ClipOffsetForRow(row));
     }
 
     // How far into the row's clip the play-head already is, so a mid-block Play starts the clip in
@@ -1259,10 +1272,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 TableViewExtras.CenterRowAnimated(LineGrid, row);
             }
 
-            if (!_isOriginalAudioActive && row != null && !ReferenceEquals(row, _activeClipRow))
+            if (row != null && !ReferenceEquals(row, _activeClipRow))
             {
                 _activeClipRow = row;
-                _ = StartClipAsync(row.StepResult.CurrentFileName, ClipOffsetForRow(row));
+                _ = StartRowClipAsync(row);
             }
 
             return;
