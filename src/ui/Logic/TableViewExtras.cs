@@ -1001,7 +1001,7 @@ public static class TableViewExtras
     // Eases the vertical scroll offset from -> to over ~180 ms (ease-out cubic) on the UI thread.
     private static void AnimateScrollY(ScrollViewer scrollViewer, double from, double to)
     {
-        const double durationMs = 180;
+        const double durationMs = 700;
         var startedAt = Environment.TickCount64;
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         timer.Tick += (_, _) =>
