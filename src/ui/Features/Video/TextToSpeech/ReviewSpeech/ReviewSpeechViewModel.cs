@@ -732,22 +732,16 @@ public partial class ReviewSpeechViewModel : ObservableObject
             {
                 try
                 {
-                    // Seek + Play, not a re-open: re-opening reloads the file, and a freshly
-                    // reloaded mpv needs a play/pause nudge before it paints again - which looked
-                    // like a frozen picture. Only fall back to a reload if Play did not take.
+                    // Re-open and prime exactly like OpenReviewVideoAsync: after a reload a paused
+                    // mpv paints no frame until it has played once, and a bare Play() on a core left
+                    // mid-seek is accepted without ever resuming (no picture, no sound).
                     _lastVideoSeekSeconds = startSeconds;
+                    await VideoPlayerControl.Open(_videoFileName, startSeconds);
                     VideoPlayerControl.SeekTo(startSeconds);
                     video.Play();
-                    if (!video.IsPlaying)
-                    {
-                        await VideoPlayerControl.Open(_videoFileName, startSeconds);
-                        video.Play();
-                        LogVideoState("after reopen");
-                    }
-                    else
-                    {
-                        LogVideoState("after play");
-                    }
+                    video.Pause();
+                    video.Play();
+                    LogVideoState("after play");
                 }
                 catch (Exception playException)
                 {
