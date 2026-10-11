@@ -860,14 +860,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
             }
 
             // Through the local: a close running now can null the field out from under us.
-            await player.LoadAudio(fileName);
-
-            // Start the clip where the play-head is (a mid-block Play must not restart the clip from
-            // 0 while the video runs from the play-head - that desynced the two).
-            if (startSeconds > 0.02)
-            {
-                try { player.Position = startSeconds; } catch { /* not ready */ }
-            }
+            // The start position goes to LoadAudio (the file opens there): a seek after the load
+            // could land before mpv had the file and was dropped.
+            await player.LoadAudio(fileName, startSeconds);
         }
         catch (Exception exception)
         {

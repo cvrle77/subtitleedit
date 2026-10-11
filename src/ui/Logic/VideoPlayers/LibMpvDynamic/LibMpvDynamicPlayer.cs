@@ -2073,11 +2073,19 @@ public sealed class LibMpvDynamicPlayer : IDisposable, IVideoPlayer
         }
     }
 
-    public async Task LoadAudio(string path)
+    public async Task LoadAudio(string path, double startPositionSeconds = 0)
     {
         EnsureNotDisposed();
 
         await WaitForCoreInitializedAsync();
+
+        // Open at the wanted position instead of seeking after the load: a seek issued right after
+        // "loadfile" can run before mpv has the file and is then dropped, so the clip played from
+        // 0:00 while the video ran from the play-head (the two resynced only on the next row).
+        // "start" is sticky, so clear it for the opens that want the beginning.
+        SetOptionString("start", startPositionSeconds > 0
+            ? startPositionSeconds.ToString(CultureInfo.InvariantCulture)
+            : "none");
 
         // Unlike LoadFile this one is meant to start playing: it backs the "play this clip"
         // buttons in the text-to-speech windows, which load a file and expect to hear it.
