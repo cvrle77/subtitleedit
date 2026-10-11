@@ -736,8 +736,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
             ApplyVideoAudio();
 
             // Play always starts from the block's beginning: the play-head is a split tool while
-            // stopped, not a resume point, so the audio and the waveform must start together.
-            var startRow = RowAtPosition(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0) ?? _playingRow ?? SelectedLine;
+            // stopped, not a resume point, so the audio and the waveform must start together. The
+            // row is the one the caller already resolved (_playingRow): Play() applies the
+            // play-head rule there, PlayRow takes it from the double-clicked row. Reading the
+            // play-head first here made the first double-click after an import play the FIRST
+            // block - the play-head was still at 0, so RowAtPosition(0) returned row one.
+            var startRow = _playingRow ?? RowAtPosition(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0) ?? SelectedLine;
             var startSeconds = startRow?.StepResult.Paragraph?.StartTime.TotalSeconds
                 ?? AudioVisualizer?.CurrentVideoPositionSeconds
                 ?? 0;
