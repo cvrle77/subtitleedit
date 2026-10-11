@@ -998,10 +998,20 @@ public static class TableViewExtras
         }, DispatcherPriority.Loaded);
     }
 
-    // Eases the vertical scroll offset from -> to over ~180 ms (ease-out cubic) on the UI thread.
+    // One running glide per grid, so a new centering cancels the previous one instead of the two
+    // fighting over the same scroll offset (which stuttered on rapid row changes).
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<ScrollViewer, DispatcherTimer> ScrollAnimations = new();
+
+    // Eases the vertical scroll offset from -> to (ease-out cubic) on the UI thread.
     private static void AnimateScrollY(ScrollViewer scrollViewer, double from, double to)
     {
         const double durationMs = 1500;
+
+        if (ScrollAnimations.TryGetValue(scrollViewer, out var previous))
+        {
+            previous.Stop();
+        }
+
         var startedAt = Environment.TickCount64;
         var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
         timer.Tick += (_, _) =>
@@ -1014,6 +1024,7 @@ public static class TableViewExtras
                 timer.Stop();
             }
         };
+        ScrollAnimations.AddOrUpdate(scrollViewer, timer);
         timer.Start();
     }
 
