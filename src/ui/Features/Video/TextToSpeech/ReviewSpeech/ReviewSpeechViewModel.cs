@@ -2119,7 +2119,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         try
         {
             SelectedLine = row;
-            LineGrid.ScrollIntoView(row);
+            TableViewExtras.CenterRowAnimated(LineGrid, row);
         }
         finally
         {
@@ -2899,7 +2899,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
             }
 
             _skipAutoContinue = true;
-            await PlayAudio(line.StepResult.CurrentFileName);
+            // Preview the regenerated clip only - do NOT start the video/playhead. Starting playback
+            // desynced: the video ran from the playhead (mid-block) while the clip ran from the
+            // block start, and the row then advanced mid-word.
+            try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* not ready */ }
+            await StartClipAsync(line.StepResult.CurrentFileName);
         }
         finally
         {
