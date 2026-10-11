@@ -3799,7 +3799,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         _playingRow = null;
         _activeClipRow = null;
         _cursorTimer?.Stop();
-        try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* core not initialised yet */ }
+        try { VideoPlayerControl?.VideoPlayer.Stop(); } catch { /* not ready */ }
         IsPlayVisible = true;
         IsStopVisible = false;
     }
