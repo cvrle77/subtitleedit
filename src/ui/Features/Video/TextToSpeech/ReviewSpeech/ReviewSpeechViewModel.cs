@@ -454,8 +454,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
     }
 
-    // Opens the loaded video in the review's video surface and parks it on the playhead. Silent
-    // unless the user picked the original audio.
+    // Opens the loaded video in the review's video surface and parks it on the playhead. The video
+    // stays muted - the sound always comes from the clip player (see ApplyVideoAudio).
     public async Task OpenReviewVideoAsync()
     {
         if (VideoPlayerControl == null || string.IsNullOrEmpty(_videoFileName) || !File.Exists(_videoFileName))
@@ -705,8 +705,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         Se.WriteToolsLog($"TTS review: PlayAudio \"{Path.GetFileName(fileName)}\" (original={_isOriginalAudioActive}, video={(VideoPlayerControl?.VideoPlayer.IsPlaying.ToString() ?? "null")}, row={(_playingRow == null ? "null" : "yes")})");
 
-        // The video is the master clock in both modes: it plays from the playhead and the playhead
-        // follows it. Sound is the video's own audio (Original) or the row's clip (Generated).
+        // The video is the master clock in both modes: it plays from the block start and the
+        // play-head follows it. The sound - Original or generated - comes from the clip player
+        // (see ApplyVideoAudio).
         if (VideoPlayerControl != null)
         {
             var video = VideoPlayerControl.VideoPlayer;
