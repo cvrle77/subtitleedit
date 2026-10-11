@@ -64,6 +64,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // On by default: after a clip finishes the review plays the next line automatically, so a
     // full pass can be listened to without clicking each row.
     [ObservableProperty] private bool _autoContinue = true;
+    [ObservableProperty] private bool _glideCentering = true;
 
     // When checked, a regenerate ignores the configured general accent (the hidden accent tag
     // added to every line on the way to the API) for the line being regenerated.
@@ -1151,6 +1152,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // the anchor, so the view scrolls to put the play-head there instead of always in the middle.
     private double _anchorFraction = 0.5;
 
+    // The play-head may drift this far (as a fraction of the visible window) around the anchor
+    // before the view scrolls. 0.12 is a ~24% band: during playback the waveform sits still and
+    // only moves when the play-head leaves the band.
+    private const double DeadBandFraction = 0.12;
+
     public double AnchorFraction => _anchorFraction;
 
     internal void SetAnchorFraction(double fraction)
@@ -1204,12 +1210,38 @@ public partial class ReviewSpeechViewModel : ObservableObject
             {
                 _centerAnimActive = false;
             }
+            else if (GlideCentering)
+            {
+                // Glide: cover part of what is left each tick, so a near clip is there almost at
+                // once and a far jump (a gap, skipped clips) glides in. No fixed duration and no
+                // restart - that restart is what made the view fall behind while playback ran.
+                // The dead band around the anchor leaves the view alone until the play-head drifts
+                // out of it, so the waveform sits still instead of crawling every frame.
+                var now = Stopwatch.GetTimestamp();
+                var dt = _centerAnimActive ? (now - _centerAnimStartTicks) / (double)Stopwatch.Frequency : 0;
+                _centerAnimActive = true;
+                _centerAnimStartTicks = now;
+
+                var playheadFraction = (seconds - av.StartPositionSeconds) / Math.Max(0.001, windowSeconds);
+                if (Math.Abs(playheadFraction - _anchorFraction) > DeadBandFraction)
+                {
+                    var tau = Math.Max(0.05, Se.Settings.Waveform.CenterSmoothSeconds / 3.0);
+                    var k = 1 - Math.Exp(-Math.Max(dt, 1.0 / 240.0) / tau);
+                    av.StartPositionSeconds += (centerTarget - av.StartPositionSeconds) * k;
+                    if (Math.Abs(centerTarget - av.StartPositionSeconds) < 0.02)
+                    {
+                        av.StartPositionSeconds = centerTarget;
+                    }
+                }
+
+                SyncWaveformView(av, AudioVisualizerTts);
+            }
             else
             {
-                // The target jumped (a seek, the next clip) while the ease was still running:
-                // restart it from where the view is now. Carrying the old progress onto the new
-                // target snapped the view the rest of the way at once - the skip the user sees
-                // when one clip ends and the next begins.
+                // Fixed-duration ease (the old behaviour): the target jumped (a seek, the next clip)
+                // while the ease was still running, so restart it from where the view is now.
+                // Carrying the old progress onto the new target snapped the view the rest of the way
+                // at once - the skip the user sees when one clip ends and the next begins.
                 if (_centerAnimActive && Math.Abs(centerTarget - _centerAnimTargetSeconds) > 0.15)
                 {
                     _centerAnimActive = false;
