@@ -1217,7 +1217,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 row.IsPlaying = true;
                 _playingRow = row;
                 SelectedLine = row;
-                LineGrid.ScrollIntoView(row);
+                TableViewExtras.CenterRow(LineGrid, row);
             }
 
             if (!_isOriginalAudioActive && row != null && !ReferenceEquals(row, _activeClipRow))
