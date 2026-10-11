@@ -319,6 +319,23 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private ReviewRow? _activeClipRow;
 
+    // The start of the first line that begins after the given position (for skipping the silence
+    // between lines), or null when there is none.
+    private double? NextRowStartAfter(double seconds)
+    {
+        var best = (double?)null;
+        foreach (var row in Lines)
+        {
+            var start = row.StepResult.Paragraph?.StartTime.TotalSeconds;
+            if (start.HasValue && start.Value > seconds && (best == null || start.Value < best.Value))
+            {
+                best = start;
+            }
+        }
+
+        return best;
+    }
+
     // The row whose time range contains the given position (for scheduling clips under the video).
     private ReviewRow? RowAtPosition(double seconds)
     {
@@ -1170,16 +1187,28 @@ public partial class ReviewSpeechViewModel : ObservableObject
         if (video != null && video.IsPlaying)
         {
             var videoPosition = video.Position;
+            var row = RowAtPosition(videoPosition);
+
+            // Skip the silence between lines, like the review's playback always did: while in a gap,
+            // jump the video to the next line's start.
+            if (row == null && Math.Abs(videoPosition - _lastVideoSeekSeconds) >= 0.25)
+            {
+                var nextStart = NextRowStartAfter(videoPosition);
+                if (nextStart.HasValue)
+                {
+                    _lastVideoSeekSeconds = nextStart.Value;
+                    try { VideoPlayerControl!.SeekTo(nextStart.Value); } catch { /* not ready */ }
+                    videoPosition = nextStart.Value;
+                    row = RowAtPosition(videoPosition);
+                }
+            }
+
             SetWaveformPlayhead(videoPosition);
 
-            if (!_isOriginalAudioActive)
+            if (!_isOriginalAudioActive && row != null && !ReferenceEquals(row, _activeClipRow))
             {
-                var row = RowAtPosition(videoPosition);
-                if (row != null && !ReferenceEquals(row, _activeClipRow))
-                {
-                    _activeClipRow = row;
-                    _ = StartClipAsync(row.StepResult.CurrentFileName);
-                }
+                _activeClipRow = row;
+                _ = StartClipAsync(row.StepResult.CurrentFileName);
             }
 
             return;
@@ -3727,6 +3756,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
         DisposePlayerOffThread();
 
         _playingRow = null;
+        _activeClipRow = null;
+        _cursorTimer?.Stop();
+        try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* core not initialised yet */ }
         IsPlayVisible = true;
         IsStopVisible = false;
     }
