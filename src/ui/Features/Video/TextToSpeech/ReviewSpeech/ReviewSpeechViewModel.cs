@@ -4456,6 +4456,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 if (start.HasValue)
                 {
                     _lastVideoSeekSeconds = start.Value;
+                    // Move the play-head immediately, then seek the video: the mpv seek is async, so
+                    // without this the play-head briefly showed the old row (the "from the play-head
+                    // or from the start" race).
+                    SetWaveformPlayhead(start.Value);
                     try { VideoPlayerControl.SeekTo(start.Value); } catch { /* not ready */ }
                 }
 
