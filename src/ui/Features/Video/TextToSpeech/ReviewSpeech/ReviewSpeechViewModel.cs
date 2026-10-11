@@ -4420,6 +4420,22 @@ public partial class ReviewSpeechViewModel : ObservableObject
         // starts playing that row immediately instead of leaving the old clip running.
         if (_playingRow != null && !ReferenceEquals(value, _playingRow))
         {
+            // The video is the master clock: jump it to the clicked row and keep playing (the next
+            // cursor tick marks and centers the row). Otherwise fall back to the clip playback.
+            if (VideoPlayerControl?.VideoPlayer.IsPlaying == true)
+            {
+                var start = value.StepResult.Paragraph?.StartTime.TotalSeconds;
+                if (start.HasValue)
+                {
+                    _lastVideoSeekSeconds = start.Value;
+                    try { VideoPlayerControl.SeekTo(start.Value); } catch { /* not ready */ }
+                }
+
+                TableViewExtras.CenterRow(LineGrid, value);
+                _activeClipRow = null;
+                return;
+            }
+
             _ = PlayRow(value);
             return;
         }
