@@ -330,6 +330,37 @@ public class ReviewSpeechWindow : Window
             }),
             Width = new GridLength(190),
         });
+        // Alternating row tint and vertically centred cells, so the review grid reads like the main
+        // grid. The tint follows the same Appearance setting the main grid uses; the centring is
+        // scoped to this grid, because its rows are tall (the action buttons) and that left the
+        // plain text and number cells hugging the top of the row.
+        if (Se.Settings.Appearance.GridAlternatingRows)
+        {
+            var isDark = Application.Current?.ActualThemeVariant == ThemeVariant.Dark;
+            var hex = isDark
+                ? Se.Settings.Appearance.GridAlternatingRowColorDark
+                : Se.Settings.Appearance.GridAlternatingRowColor;
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(hex))
+                {
+                    TableViewExtras.ApplyAlternatingRows(lineGrid, new SolidColorBrush(hex.FromHexToColor()));
+                }
+            }
+            catch
+            {
+                // A malformed colour in the settings must not take the grid down - just no tint.
+            }
+        }
+
+        lineGrid.Styles.Add(new Style(x => x.OfType<TableViewCell>())
+        {
+            Setters =
+            {
+                new Setter(TableViewCell.VerticalContentAlignmentProperty, VerticalAlignment.Center),
+            },
+        });
+
         lineGrid.DoubleTapped += (_, e) =>
         {
             // Resolve the row from the pointer, not from SelectedLine: on the first double-click
