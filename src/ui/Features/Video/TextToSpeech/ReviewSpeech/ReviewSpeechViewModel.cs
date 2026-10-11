@@ -732,13 +732,22 @@ public partial class ReviewSpeechViewModel : ObservableObject
             {
                 try
                 {
-                    // No seek before the re-open: the play-head follows the video, so it lands on
-                    // the block start by itself once playback begins. A SeekTo here issued a seek
-                    // right before LoadFile and wedged mpv (Play then never started).
+                    // Seek + Play, not a re-open: re-opening reloads the file, and a freshly
+                    // reloaded mpv needs a play/pause nudge before it paints again - which looked
+                    // like a frozen picture. Only fall back to a reload if Play did not take.
                     _lastVideoSeekSeconds = startSeconds;
-                    await VideoPlayerControl.Open(_videoFileName, startSeconds);
+                    VideoPlayerControl.SeekTo(startSeconds);
                     video.Play();
-                    LogVideoState("after play");
+                    if (!video.IsPlaying)
+                    {
+                        await VideoPlayerControl.Open(_videoFileName, startSeconds);
+                        video.Play();
+                        LogVideoState("after reopen");
+                    }
+                    else
+                    {
+                        LogVideoState("after play");
+                    }
                 }
                 catch (Exception playException)
                 {
