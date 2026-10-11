@@ -1162,6 +1162,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // gliding - a single glide step only covers a fraction of the distance.
     private bool _snapPlayhead;
 
+    // The play-head position the last tick saw, so the view can be moved by the same amount.
+    private double _lastPlayheadSeconds;
+
     public double AnchorFraction => _anchorFraction;
 
     internal void SetAnchorFraction(double fraction)
@@ -1230,6 +1233,17 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
                 var snap = _snapPlayhead;
                 _snapPlayhead = false;
+
+                // Follow the play-head's own movement every tick. A plain chase always lags a moving
+                // target, and that lag (v x tau) is what left the play-head hundreds of pixels right
+                // of the marker once the view was zoomed in; the correction below then only has to
+                // clean up what is left. Guarded so a seek or a jump is not read as movement.
+                var step = seconds - _lastPlayheadSeconds;
+                _lastPlayheadSeconds = seconds;
+                if (Math.Abs(step) < 0.5)
+                {
+                    av.StartPositionSeconds += step;
+                }
 
                 var playheadFraction = (seconds - av.StartPositionSeconds) / Math.Max(0.001, windowSeconds);
                 if (snap || Math.Abs(playheadFraction - _anchorFraction) > DeadBandFraction)
