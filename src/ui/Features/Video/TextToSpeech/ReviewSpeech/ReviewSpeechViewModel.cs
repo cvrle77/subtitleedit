@@ -711,6 +711,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private async Task PlayAudio(string fileName)
     {
+        Se.WriteToolsLog($"TTS review: PlayAudio \"{Path.GetFileName(fileName)}\" (original={_isOriginalAudioActive}, video={(VideoPlayerControl?.VideoPlayer.IsPlaying.ToString() ?? "null")}, row={(_playingRow == null ? "null" : "yes")})");
+
         // The video is the master clock in both modes: it plays from the playhead and the playhead
         // follows it. Sound is the video's own audio (Original) or the row's clip (Generated).
         if (VideoPlayerControl != null)
@@ -742,11 +744,24 @@ public partial class ReviewSpeechViewModel : ObservableObject
             }
         }
 
-        await StartClipAsync(fileName);
+        await StartClipAsync(fileName, ClipOffsetForRow(_playingRow ?? SelectedLine));
         _activeClipRow = _playingRow ?? SelectedLine;
     }
 
-    private async Task StartClipAsync(string fileName)
+    // How far into the row's clip the play-head already is, so a mid-block Play starts the clip in
+    // sync with the video.
+    private double ClipOffsetForRow(ReviewRow? row)
+    {
+        if (row?.StepResult.Paragraph is not { } paragraph)
+        {
+            return 0;
+        }
+
+        var playhead = AudioVisualizer?.CurrentVideoPositionSeconds ?? paragraph.StartTime.TotalSeconds;
+        return Math.Max(0, playhead - paragraph.StartTime.TotalSeconds);
+    }
+
+    private async Task StartClipAsync(string fileName, double startSeconds = 0)
     {
         // A row can point at a deleted/moved file (e.g. an imported session whose folder was
         // cleaned). mpv's failed loadfile is only logged, so playback used to sit in "playing"
@@ -793,6 +808,13 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
             // Through the local: a close running now can null the field out from under us.
             await player.LoadAudio(fileName);
+
+            // Start the clip where the play-head is (a mid-block Play must not restart the clip from
+            // 0 while the video runs from the play-head - that desynced the two).
+            if (startSeconds > 0.02)
+            {
+                try { player.Position = startSeconds; } catch { /* not ready */ }
+            }
         }
         catch (Exception exception)
         {
@@ -1223,7 +1245,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
             if (!_isOriginalAudioActive && row != null && !ReferenceEquals(row, _activeClipRow))
             {
                 _activeClipRow = row;
-                _ = StartClipAsync(row.StepResult.CurrentFileName);
+                _ = StartClipAsync(row.StepResult.CurrentFileName, ClipOffsetForRow(row));
             }
 
             return;
