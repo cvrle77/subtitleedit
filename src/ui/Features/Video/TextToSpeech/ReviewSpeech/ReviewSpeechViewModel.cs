@@ -317,8 +317,24 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // a generated clip. Keyed by the row's time range.
     private readonly Dictionary<string, string> _originalClipCache = new();
 
-    // Cuts the row's time range out of the video as a wav (audio only), cached. Returns null when
-    // there is no video or ffmpeg fails.
+    private ReviewRow? _activeClipRow;
+
+    // The row whose time range contains the given position (for scheduling clips under the video).
+    private ReviewRow? RowAtPosition(double seconds)
+    {
+        foreach (var row in Lines)
+        {
+            var paragraph = row.StepResult.Paragraph;
+            if (paragraph != null
+                && seconds >= paragraph.StartTime.TotalSeconds
+                && seconds < paragraph.EndTime.TotalSeconds)
+            {
+                return row;
+            }
+        }
+
+        return null;
+    }
     private async Task<string?> GetOriginalClipAsync(ReviewRow row)
     {
         var paragraph = row.StepResult.Paragraph;
@@ -383,10 +399,27 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
 
         _isOriginalAudioActive = original;
+        ApplyVideoAudio();
         LogVideoState($"source={(original ? "original" : "generated")}");
-        if (_playingRow != null)
+
+        // Never starts playback on its own: if the video is already running, switch the sound under
+        // it; otherwise stay silent.
+        if (VideoPlayerControl?.VideoPlayer.IsPlaying == true)
         {
-            _ = PlayAudio(_playingRow.StepResult.CurrentFileName);
+            if (original)
+            {
+                DisposePlayerOffThread();
+                _activeClipRow = null;
+            }
+            else
+            {
+                var row = RowAtPosition(VideoPlayerControl.VideoPlayer.Position);
+                if (row != null)
+                {
+                    _activeClipRow = row;
+                    _ = StartClipAsync(row.StepResult.CurrentFileName);
+                }
+            }
         }
     }
 
@@ -403,11 +436,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private void ApplyVideoAudio()
     {
-        // The video surface is a silent preview in both modes - the sound comes from the clip
-        // player (generated clip or the row's original audio).
+        // Original mode: the video plays its own audio. Generated: the video is muted and the clip
+        // player carries the sound.
         if (VideoPlayerControl != null)
         {
-            VideoPlayerControl.Volume = 0;
+            VideoPlayerControl.Volume = _isOriginalAudioActive ? _videoVolume : 0;
         }
     }
 
@@ -425,6 +458,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         {
             await VideoPlayerControl.Open(_videoFileName);
             await VideoPlayerControl.WaitForPlayersReadyAsync();
+            _videoVolume = VideoPlayerControl.Volume > 0 ? VideoPlayerControl.Volume : 100;
             ApplyVideoAudio();
             // A paused mpv only paints a frame after it has actually played once, so nudge it: seek,
             // play, pause. Without this the surface stays blank.
@@ -524,6 +558,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private async void OnTimerOnElapsed(object? sender, ElapsedEventArgs args)
     {
+        // While the video is the master, clips are scheduled by CursorTick - the clip-end timer
+        // must not reset the UI (it would stop the video).
+        if (VideoPlayerControl?.VideoPlayer.IsPlaying == true)
+        {
+            return;
+        }
         if (_isClosing)
         {
             return;
@@ -642,6 +682,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         IsPlayVisible = true;
         IsStopVisible = false;
         _playingRow = null;
+        _activeClipRow = null;
         _cursorTimer?.Stop();
         try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* core not initialised yet */ }
         foreach (var l in Lines)
@@ -653,21 +694,43 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private async Task PlayAudio(string fileName)
     {
-        // Original mode: play the row's own audio (cut from the video) through the same per-line
-        // flow as a generated clip. The video surface stays a passive preview either way.
-        if (_isOriginalAudioActive)
+        // The video is the master clock in both modes: it plays from the playhead and the playhead
+        // follows it. Sound is the video's own audio (Original) or the row's clip (Generated).
+        if (VideoPlayerControl != null)
         {
-            var originalRow = _playingRow ?? SelectedLine;
-            if (originalRow != null)
+            var video = VideoPlayerControl.VideoPlayer;
+            ApplyVideoAudio();
+            if (!video.IsPlaying)
             {
-                var originalClip = await GetOriginalClipAsync(originalRow);
-                if (!string.IsNullOrEmpty(originalClip))
+                try
                 {
-                    fileName = originalClip;
+                    VideoPlayerControl.SeekTo(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+                    video.Play();
                 }
+                catch (Exception playException)
+                {
+                    Se.WriteToolsLog("TTS review video: Play failed: " + playException.Message, true);
+                }
+            }
+
+            _cursorTimer?.Start();
+            IsPlayVisible = false;
+            IsStopVisible = true;
+
+            if (_isOriginalAudioActive)
+            {
+                DisposePlayerOffThread();
+                _activeClipRow = null;
+                return;
             }
         }
 
+        await StartClipAsync(fileName);
+        _activeClipRow = _playingRow ?? SelectedLine;
+    }
+
+    private async Task StartClipAsync(string fileName)
+    {
         // A row can point at a deleted/moved file (e.g. an imported session whose folder was
         // cleaned). mpv's failed loadfile is only logged, so playback used to sit in "playing"
         // forever with every row disabled and no error. Reset and tell the user instead.
@@ -1016,7 +1079,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         // The video follows the playhead only while nothing is playing, and at most every 0.25 s:
         // seeking on every 60 fps cursor tick hammered mpv into ~2 fps and "error running command".
-        if (VideoPlayerControl != null && Math.Abs(seconds - _lastVideoSeekSeconds) >= 0.25)
+        if (VideoPlayerControl != null && !VideoPlayerControl.VideoPlayer.IsPlaying && Math.Abs(seconds - _lastVideoSeekSeconds) >= 0.25)
         {
             _lastVideoSeekSeconds = seconds;
             try { VideoPlayerControl.SeekTo(seconds); } catch { /* not ready */ }
@@ -1098,6 +1161,27 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         if (_isClosing)
         {
+            return;
+        }
+
+        // The video is the master clock: the playhead follows it, and in Generated mode the row's
+        // clip is (re)started as the video enters each row.
+        var video = VideoPlayerControl?.VideoPlayer;
+        if (video != null && video.IsPlaying)
+        {
+            var videoPosition = video.Position;
+            SetWaveformPlayhead(videoPosition);
+
+            if (!_isOriginalAudioActive)
+            {
+                var row = RowAtPosition(videoPosition);
+                if (row != null && !ReferenceEquals(row, _activeClipRow))
+                {
+                    _activeClipRow = row;
+                    _ = StartClipAsync(row.StepResult.CurrentFileName);
+                }
+            }
+
             return;
         }
 
