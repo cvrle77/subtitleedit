@@ -732,9 +732,13 @@ public partial class ReviewSpeechViewModel : ObservableObject
             {
                 try
                 {
-                    SetWaveformPlayhead(startSeconds);
+                    // No seek before the re-open: the play-head follows the video, so it lands on
+                    // the block start by itself once playback begins. A SeekTo here issued a seek
+                    // right before LoadFile and wedged mpv (Play then never started).
+                    _lastVideoSeekSeconds = startSeconds;
                     await VideoPlayerControl.Open(_videoFileName, startSeconds);
                     video.Play();
+                    LogVideoState("after play");
                 }
                 catch (Exception playException)
                 {
