@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Shapes;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Input;
@@ -1191,6 +1192,60 @@ public class ReviewSpeechWindow : Window
         grid.Add(audioVisualizer, 0, 1);
         grid.Add(labelTts, 1, 0);
         grid.Add(audioVisualizerTts, 1, 1);
+
+        // The red marker the play-head is anchored to. It has no layout row of its own: it sits in
+        // the original track's cell with a negative top margin, so its body overlaps the gap above
+        // the waveform and its tip touches the waveform's top edge. Dragged left/right it moves the
+        // anchor - the spot the view scrolls the play-head to (see SetWaveformPlayhead).
+        const double markerWidth = 12;
+        const double markerHeight = 9;
+        var anchorMarker = new Path
+        {
+            Data = Geometry.Parse($"M 0,0 L {markerWidth},0 L {markerWidth / 2},{markerHeight} Z"),
+            Fill = Brushes.Red,
+            VerticalAlignment = VerticalAlignment.Top,
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Cursor = new Cursor(StandardCursorType.SizeWestEast),
+        };
+        grid.Add(anchorMarker, 0, 1);
+
+        void PlaceMarker() => anchorMarker.Margin = new Thickness(
+            audioVisualizer.Bounds.Width * vm.AnchorFraction - markerWidth / 2, -markerHeight, 0, 0);
+
+        audioVisualizer.PropertyChanged += (_, e) =>
+        {
+            if (e.Property == Visual.BoundsProperty)
+            {
+                PlaceMarker();
+            }
+        };
+
+        var draggingMarker = false;
+        anchorMarker.PointerPressed += (_, e) =>
+        {
+            draggingMarker = true;
+            e.Pointer.Capture(anchorMarker);
+            e.Handled = true;
+        };
+        anchorMarker.PointerMoved += (_, e) =>
+        {
+            if (!draggingMarker || audioVisualizer.Bounds.Width <= 0)
+            {
+                return;
+            }
+
+            vm.SetAnchorFraction(e.GetPosition(audioVisualizer).X / audioVisualizer.Bounds.Width);
+            PlaceMarker();
+            e.Handled = true;
+        };
+        anchorMarker.PointerReleased += (_, e) =>
+        {
+            draggingMarker = false;
+            e.Pointer.Capture(null);
+            e.Handled = true;
+        };
+
+        PlaceMarker();
 
         return new Border
         {

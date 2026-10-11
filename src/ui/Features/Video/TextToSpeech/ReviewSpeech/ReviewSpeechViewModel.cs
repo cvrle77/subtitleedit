@@ -1146,6 +1146,19 @@ public partial class ReviewSpeechViewModel : ObservableObject
     private double _centerAnimFromSeconds;
     private double _centerAnimTargetSeconds;
 
+    // Where on screen the play-head is anchored: the fraction of the visible window the red marker
+    // above the waveform sits at. 0.5 is the centre (the old behaviour); dragging the marker moves
+    // the anchor, so the view scrolls to put the play-head there instead of always in the middle.
+    private double _anchorFraction = 0.5;
+
+    public double AnchorFraction => _anchorFraction;
+
+    internal void SetAnchorFraction(double fraction)
+    {
+        _anchorFraction = Math.Clamp(fraction, 0.02, 0.98);
+        SetWaveformPlayhead(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+    }
+
     // Called from the playback timer (and on any paused position change) to move the playhead and
     // keep the view centered on it. The original waveform is the one that owns StartPositionSeconds
     // here; the generated-speech one follows it through SyncWaveformView.
@@ -1183,8 +1196,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
         var centerEnabled = Se.Settings.Waveform.CenterVideoPosition || Se.Settings.Waveform.CenterVideoPositionSmooth;
         if (centerEnabled && av.WavePeaks != null)
         {
-            var halfSeconds = (av.EndPositionSeconds - av.StartPositionSeconds) / 2.0;
-            var centerTarget = Math.Max(0, seconds - halfSeconds);
+            var windowSeconds = av.EndPositionSeconds - av.StartPositionSeconds;
+            var centerTarget = Math.Max(0, seconds - windowSeconds * _anchorFraction);
             var centerSuspended = av.IsEditingWithPointer || av.IsMouseWheelInteracting;
 
             if (centerSuspended)
