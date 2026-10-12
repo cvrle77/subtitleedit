@@ -817,9 +817,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
             // play-head first here made the first double-click after an import play the FIRST
             // block - the play-head was still at 0, so RowAtPosition(0) returned row one.
             var startRow = _playingRow ?? RowAtPosition(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0) ?? SelectedLine;
-            var startSeconds = startRow?.StepResult.Paragraph?.StartTime.TotalSeconds
-                ?? AudioVisualizer?.CurrentVideoPositionSeconds
-                ?? 0;
+            var startSeconds = Fork.ReviewPlayFromBlockStart
+                ? startRow?.StepResult.Paragraph?.StartTime.TotalSeconds
+                    ?? AudioVisualizer?.CurrentVideoPositionSeconds
+                    ?? 0
+                : AudioVisualizer?.CurrentVideoPositionSeconds ?? 0;
             _playingRow = startRow;
 
             if (!video.IsPlaying)
@@ -858,7 +860,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return;
         }
 
-        await StartClipAsync(clip);
+        await StartClipAsync(clip, Fork.ReviewPlayFromBlockStart ? 0 : ClipOffsetForRow(clipRow));
         _activeClipRow = clipRow;
     }
 

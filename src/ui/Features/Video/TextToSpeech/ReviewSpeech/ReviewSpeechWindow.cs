@@ -288,15 +288,16 @@ public class ReviewSpeechWindow : Window
         });
         // Voice and the row actions sit after the growing Text column so they stay pinned to the
         // right edge instead of being pushed off it.
-        lineGrid.Columns.Add(new SeTableViewColumn
+        var voiceColumn = new SeTableViewColumn
         {
             Header = Se.Language.General.Voice,
             Binding = new Binding(nameof(ReviewRow.Voice)),
             Width = new GridLength(150),
             CellTheme = UiUtil.TableViewCellTheme,
             HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
-        });
-        lineGrid.Columns.Add(new SeTableViewColumn
+        };
+        lineGrid.Columns.Add(voiceColumn);
+        var iconsColumn = new SeTableViewColumn
         {
             CellTheme = UiUtil.TableViewNoPaddingCellTheme,
             HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
@@ -340,12 +341,24 @@ public class ReviewSpeechWindow : Window
                 };
             }),
             Width = new GridLength(190),
-        });
+        };
+        lineGrid.Columns.Add(iconsColumn);
+        // The fork's grid look: alternating rows, vertically centred cells and the fork column order
+        // (Voice and the row actions pinned right). Off = upstream: no tint, no centring, and the
+        // row actions right after Enabled with Voice next to Number.
+        if (!Fork.ReviewGridLook)
+        {
+            lineGrid.Columns.Remove(iconsColumn);
+            lineGrid.Columns.Insert(1, iconsColumn);
+            lineGrid.Columns.Remove(voiceColumn);
+            lineGrid.Columns.Insert(3, voiceColumn);
+        }
+
         // Alternating row tint and vertically centred cells, so the review grid reads like the main
         // grid. The tint follows the same Appearance setting the main grid uses; the centring is
         // scoped to this grid, because its rows are tall (the action buttons) and that left the
         // plain text and number cells hugging the top of the row.
-        if (Se.Settings.Appearance.GridAlternatingRows)
+        if (Fork.ReviewGridLook && Se.Settings.Appearance.GridAlternatingRows)
         {
             var isDark = Application.Current?.ActualThemeVariant == ThemeVariant.Dark;
             var hex = isDark
@@ -364,13 +377,16 @@ public class ReviewSpeechWindow : Window
             }
         }
 
-        lineGrid.Styles.Add(new Style(x => x.OfType<TableViewCell>())
+        if (Fork.ReviewGridLook)
         {
-            Setters =
+            lineGrid.Styles.Add(new Style(x => x.OfType<TableViewCell>())
             {
-                new Setter(TableViewCell.VerticalContentAlignmentProperty, VerticalAlignment.Center),
-            },
-        });
+                Setters =
+                {
+                    new Setter(TableViewCell.VerticalContentAlignmentProperty, VerticalAlignment.Center),
+                },
+            });
+        }
 
         lineGrid.DoubleTapped += (_, e) =>
         {
@@ -387,7 +403,7 @@ public class ReviewSpeechWindow : Window
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             Height = 80,
-            SourceHighlighter = new TtsTagSyntaxHighlighter(),
+            SourceHighlighter = Fork.ReviewTagPalette ? new TtsTagSyntaxHighlighter() : null,
             [!TextBox.TextProperty] = new Binding(nameof(vm.SelectedLine) + "." + nameof(ReviewRow.Text))
             {
                 Mode = BindingMode.TwoWay
@@ -1237,7 +1253,11 @@ public class ReviewSpeechWindow : Window
                 return;
             }
 
-            foreach (var (segment, color) in TtsTagPalette.Segments(text))
+            // With the tag feature off the cell is plain text, exactly like upstream.
+            var segments = Fork.ReviewTagPalette
+                ? TtsTagPalette.Segments(text)
+                : new List<(string Text, Color? Color)> { (text, null) };
+            foreach (var (segment, color) in segments)
             {
                 var run = new Run(segment);
                 if (color.HasValue)
