@@ -1599,7 +1599,12 @@ public class InitWaveform
                     toolbarButtonForSort.Add(new SortedControl { Sort = item.SortOrder, Control = toggleButtonCenter });
                     break;
                 case SeWaveformToolbarItemType.CenterSmooth:
-                    toolbarButtonForSort.Add(new SortedControl { Sort = item.SortOrder, Control = toggleButtonCenterSmooth });
+                    // Fork: "Center (smooth)" is ours - upstream's waveform toolbar has no such toggle.
+                    if (Fork.Enabled)
+                    {
+                        toolbarButtonForSort.Add(new SortedControl { Sort = item.SortOrder, Control = toggleButtonCenterSmooth });
+                    }
+
                     break;
                 case SeWaveformToolbarItemType.VideoSeek:
                     toolbarButtonForSort.Add(new SortedControl { Sort = item.SortOrder, Control = panelVideoSeek });
