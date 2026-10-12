@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Documents;
 using Avalonia.Controls.Shapes;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
@@ -19,6 +20,7 @@ using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.ValueConverters;
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 
 namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech.ReviewSpeech;
@@ -270,10 +272,14 @@ public class ReviewSpeechWindow : Window
         lineGrid.Columns.Add(new SeTableViewColumn
         {
             Header = Se.Language.General.Text,
-            Binding = new Binding(nameof(ReviewRow.Text)),
+            // The cell renders the text itself so each "[tag]" carries its category's colour (the
+            // edit box does the same through its source highlighter). NameBinding keeps the row's
+            // text readable for screen readers, which cannot read a CellTemplate back.
+            NameBinding = new Binding(nameof(ReviewRow.Text)),
             Width = new GridLength(1, GridUnitType.Star),
             CellTheme = UiUtil.TableViewCellTheme,
             HeaderTheme = UiUtil.TableViewColumnHeaderTheme,
+            CellTemplate = new FuncDataTemplate<ReviewRow>((_, _) => MakeTaggedTextCell()),
         });
         // Voice and the row actions sit after the growing Text column so they stay pinned to the
         // right edge instead of being pushed off it.
@@ -1155,6 +1161,64 @@ public class ReviewSpeechWindow : Window
         grid.Add(buttonStyleExaggeration, 4, 3);
 
         return grid;
+    }
+
+    // The line's text with every "[tag]" in its category's colour (see TtsTagPalette), matching the
+    // edit box's highlighter. Rebuilt when the row's text changes and when a recycled cell is handed
+    // another row, so the grid always shows the current text.
+    private static Control MakeTaggedTextCell()
+    {
+        var block = new TextBlock { TextWrapping = TextWrapping.Wrap };
+        ReviewRow? bound = null;
+
+        void Rebuild()
+        {
+            block.Inlines!.Clear();
+            if (bound?.Text is not { } text)
+            {
+                return;
+            }
+
+            foreach (var (segment, color) in TtsTagPalette.Segments(text))
+            {
+                block.Inlines.Add(new Run(segment)
+                {
+                    Foreground = color.HasValue ? new SolidColorBrush(color.Value) : null,
+                    FontWeight = color.HasValue ? FontWeight.SemiBold : FontWeight.Normal,
+                });
+            }
+        }
+
+        void RowChanged(object? _, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(ReviewRow.Text))
+            {
+                Rebuild();
+            }
+        }
+
+        block.PropertyChanged += (_, e) =>
+        {
+            if (e.Property != StyledElement.DataContextProperty)
+            {
+                return;
+            }
+
+            if (bound != null)
+            {
+                bound.PropertyChanged -= RowChanged;
+            }
+
+            bound = block.DataContext as ReviewRow;
+            if (bound != null)
+            {
+                bound.PropertyChanged += RowChanged;
+            }
+
+            Rebuild();
+        };
+
+        return block;
     }
 
     private static TextBlock MakePositionLabel(ReviewSpeechViewModel vm)

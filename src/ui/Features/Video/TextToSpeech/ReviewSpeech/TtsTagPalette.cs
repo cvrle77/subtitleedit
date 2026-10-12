@@ -146,6 +146,73 @@ public static class TtsTagPalette
         return result;
     }
 
+    /// <summary>
+    /// Splits a line into (text, color) segments - a null color for plain text - so a caller that
+    /// cannot use <see cref="ISourceSyntaxHighlighter"/> (the review grid's cell, which is a
+    /// TextBlock, not a text box) can still color every tag with its category's color. Same rules as
+    /// the edit box highlighter: the brackets take the neighbouring tag's color, a multi-tag group is
+    /// colored tag by tag, and an unknown tag falls back to the Pauses gray.
+    /// </summary>
+    public static List<(string Text, Color? Color)> Segments(string lineText)
+    {
+        var result = new List<(string Text, Color? Color)>();
+        var i = 0;
+        while (i < lineText.Length)
+        {
+            var open = lineText.IndexOf('[', i);
+            if (open < 0)
+            {
+                result.Add((lineText.Substring(i), null));
+                break;
+            }
+
+            var close = lineText.IndexOf(']', open + 1);
+            if (close < 0)
+            {
+                result.Add((lineText.Substring(i), null));
+                break;
+            }
+
+            if (open > i)
+            {
+                result.Add((lineText.Substring(i, open - i), null));
+            }
+
+            var inner = lineText.Substring(open + 1, close - open - 1);
+            var tokens = TokenizeGroup(inner);
+            if (tokens.Count == 0)
+            {
+                result.Add((lineText.Substring(open, close - open + 1), ColorForTag(string.Empty)));
+            }
+            else
+            {
+                result.Add(("[", ColorForTag(tokens[0].Tag)));
+                var cursor = 0;
+                foreach (var token in tokens)
+                {
+                    if (token.Start > cursor)
+                    {
+                        result.Add((inner.Substring(cursor, token.Start - cursor), null));
+                    }
+
+                    result.Add((inner.Substring(token.Start, token.Length), ColorForTag(token.Tag)));
+                    cursor = token.Start + token.Length;
+                }
+
+                if (cursor < inner.Length)
+                {
+                    result.Add((inner.Substring(cursor), null));
+                }
+
+                result.Add(("]", ColorForTag(tokens[^1].Tag)));
+            }
+
+            i = close + 1;
+        }
+
+        return result;
+    }
+
     // Light tint of a category color, used as the active chip's background so the label stays
     // readable on both themes.
     public static Color Pastel(Color color)
