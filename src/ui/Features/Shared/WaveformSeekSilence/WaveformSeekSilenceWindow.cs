@@ -62,8 +62,17 @@ public class WaveformSeekSilenceWindow : Window
         grid.Add(checkBoxSeekForward, 1);
         grid.Add(checkBoxSeekBackward, 2);
         grid.Add(panelMinSilenceDuration, 3);
-        grid.Add(panelMaxSilenceVolume, 4);
-        grid.Add(panelButtons, 5);
+        if (Fork.Enabled)
+        {
+            // Fork: the "max silence volume" field. Off = upstream's dialog without it, so the
+            // buttons move up instead of leaving a gap.
+            grid.Add(panelMaxSilenceVolume, 4);
+            grid.Add(panelButtons, 5);
+        }
+        else
+        {
+            grid.Add(panelButtons, 4);
+        }
 
         Content = grid;
 

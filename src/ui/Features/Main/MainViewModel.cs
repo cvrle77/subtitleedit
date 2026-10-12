@@ -37012,7 +37012,9 @@ public partial class MainViewModel :
 
         var s = SelectedSubtitle;
         var vp = GetVideoPlayerControl();
-        if (vp != null && !string.IsNullOrEmpty(_videoFileName) && s != null)
+        // Fork: the "split line at the video position and text-box cursor" item. Off = upstream has
+        // no such item, so it is never shown.
+        if (Fork.Enabled && vp != null && !string.IsNullOrEmpty(_videoFileName) && s != null)
         {
             if (s.StartTime.TotalSeconds < vp.Position &&
                 vp.Position < s.EndTime.TotalSeconds)
