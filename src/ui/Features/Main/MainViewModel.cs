@@ -23865,8 +23865,9 @@ public partial class MainViewModel :
 
             // "Split line at video and text box position" also re-wraps both halves the way
             // "split/rebalance long lines" does, automatically and without asking - the two events
-            // are not split any further, only their line breaks are made optimal.
-            if (atVideoPosition && atTextBoxPosition && Subtitles.Count > countBefore)
+            // are not split any further, only their line breaks are made optimal. Fork only: off =
+            // upstream, which leaves both halves exactly as the split produced them.
+            if (Fork.Enabled && atVideoPosition && atTextBoxPosition && Subtitles.Count > countBefore)
             {
                 RebalanceAfterSplit(s, language);
 
