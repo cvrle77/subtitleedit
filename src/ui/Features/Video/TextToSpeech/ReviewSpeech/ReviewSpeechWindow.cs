@@ -729,6 +729,13 @@ public class ReviewSpeechWindow : Window
             },
         };
 
+        if (!Fork.Enabled)
+        {
+            // Fork: "Skip general accent" belongs to our ElevenLabs v4 accent support - upstream has
+            // no such option, so it is not shown at all.
+            panelPlaybackOptions.Children.Remove(checkBoxSkipGeneralAccent);
+        }
+
         grid.Add(panelPlaybackOptions, 7, 0);
         grid.Add(panelInstruction, 8, 0);
         // 9 is filler.
