@@ -29,4 +29,6 @@ public static class Fork
     public static bool ReviewPlayFromBlockStart => Enabled && Tts.ReviewPlayFromBlockStart;
 
     public static bool ReviewRegeneratePreviewOnly => Enabled && Tts.ReviewRegeneratePreviewOnly;
+
+    public static bool ReviewTwoWaveforms => Enabled && Tts.ReviewTwoWaveforms;
 }

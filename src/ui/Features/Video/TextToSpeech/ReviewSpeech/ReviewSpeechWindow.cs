@@ -706,6 +706,7 @@ public class ReviewSpeechWindow : Window
                             MakeReviewSwitch("Tint the playing track's play-head", nameof(vm.ShowReviewPlayheadTint)),
                             MakeReviewSwitch("Play from the block's beginning", nameof(vm.ShowReviewPlayFromBlockStart)),
                             MakeReviewSwitch("Regenerate previews only the clip", nameof(vm.ShowReviewRegeneratePreviewOnly)),
+                            MakeReviewSwitch("Two waveforms (original + generated)", nameof(vm.ShowReviewTwoWaveforms)),
                         },
                     },
                 },
@@ -821,19 +822,6 @@ public class ReviewSpeechWindow : Window
             Converter = new Avalonia.Data.Converters.FuncValueConverter<Avalonia.Size, double>(s => s.Height),
         });
 
-        // Video surface above the palette: shows the loaded video and follows the playhead. Its
-        // sound follows the "Original"/"Generated" waveform labels (muted unless Original).
-        var videoPlayer = InitVideoPlayer.MakeVideoPlayer();
-        videoPlayer.Margin = new Thickness(2);
-        videoPlayer.FullScreenIsVisible = false;
-        videoPlayer.ClickToTogglePlay = true;
-        videoPlayer.HorizontalAlignment = HorizontalAlignment.Stretch;
-        videoPlayer.VerticalAlignment = VerticalAlignment.Stretch;
-        videoPlayer.SurfacePointerPressed += (_, _) => videoPlayer.TogglePlayPause();
-        videoPlayer.HideVideoControls(); // transport/seek are not needed here - the labels drive playback
-        vm.VideoPlayerControl = videoPlayer;
-        Opened += (_, _) => _ = vm.OpenReviewVideoAsync();
-
         var leftColumn = new Grid
         {
             RowDefinitions =
@@ -842,9 +830,33 @@ public class ReviewSpeechWindow : Window
                 new RowDefinition { Height = new GridLength(2, GridUnitType.Star) }, // tags (bottom two thirds)
             },
         };
-        Grid.SetRow(videoPlayer, 0);
+
+        // Video surface above the palette: shows the loaded video and follows the playhead. Its
+        // sound follows the "Original"/"Generated" waveform labels (muted unless Original). With the
+        // fork switch off there is no video at all and the review plays clips the upstream way.
+        if (Fork.ReviewVideoPlayer)
+        {
+            var videoPlayer = InitVideoPlayer.MakeVideoPlayer();
+            videoPlayer.Margin = new Thickness(2);
+            videoPlayer.FullScreenIsVisible = false;
+            videoPlayer.ClickToTogglePlay = true;
+            videoPlayer.HorizontalAlignment = HorizontalAlignment.Stretch;
+            videoPlayer.VerticalAlignment = VerticalAlignment.Stretch;
+            videoPlayer.SurfacePointerPressed += (_, _) => videoPlayer.TogglePlayPause();
+            videoPlayer.HideVideoControls(); // transport/seek are not needed here - the labels drive playback
+            vm.VideoPlayerControl = videoPlayer;
+            Opened += (_, _) => _ = vm.OpenReviewVideoAsync();
+            Grid.SetRow(videoPlayer, 0);
+            leftColumn.Children.Add(videoPlayer);
+        }
+        else
+        {
+            // No video: the tags get the whole column.
+            leftColumn.RowDefinitions[0].Height = new GridLength(0);
+            leftColumn.RowDefinitions[1].Height = new GridLength(1, GridUnitType.Star);
+        }
+
         Grid.SetRow(scroll, 1);
-        leftColumn.Children.Add(videoPlayer);
         leftColumn.Children.Add(scroll);
         return leftColumn;
     }
@@ -1304,27 +1316,40 @@ public class ReviewSpeechWindow : Window
     private static Border MakeWaveform(ReviewSpeechViewModel vm)
     {
         var audioVisualizer = CreateWaveformVisualizer();
-        var audioVisualizerTts = CreateWaveformVisualizer();
-
         vm.AudioVisualizer = audioVisualizer;
+
+        // The fork's second track: the generated speech of every row laid out at its cue start.
+        // Off = upstream's single waveform (the original video audio only).
+        var audioVisualizerTts = Fork.ReviewTwoWaveforms ? CreateWaveformVisualizer() : null;
         vm.AudioVisualizerTts = audioVisualizerTts;
 
-        // Top waveform: the original video audio. Bottom: the generated speech of every row laid
-        // out at its cue start. Both share one time axis (see WireWaveform).
         audioVisualizer.Bind(AudioVisualizer.WavePeaksProperty, new Binding(nameof(vm.WavePeakData)));
-        audioVisualizerTts.Bind(AudioVisualizer.WavePeaksProperty, new Binding(nameof(vm.WavePeakDataTts)));
 
-        // End-of-video line on both tracks, red when a clip runs past it (it will be trimmed).
+        // End-of-video line, red when a clip runs past it (it will be trimmed).
         audioVisualizer.Bind(AudioVisualizer.VideoEndSecondsProperty, new Binding(nameof(vm.VideoEndSeconds)));
-        audioVisualizerTts.Bind(AudioVisualizer.VideoEndSecondsProperty, new Binding(nameof(vm.VideoEndSeconds)));
         audioVisualizer.Bind(AudioVisualizer.VideoEndOverrunProperty, new Binding(nameof(vm.VideoEndOverrun)));
-        audioVisualizerTts.Bind(AudioVisualizer.VideoEndOverrunProperty, new Binding(nameof(vm.VideoEndOverrun)));
 
-        WireWaveform(vm, audioVisualizer, audioVisualizerTts, isTts: false);
-        WireWaveform(vm, audioVisualizerTts, audioVisualizer, isTts: true);
+        if (audioVisualizerTts != null)
+        {
+            // Both tracks share one time axis (see WireWaveform).
+            audioVisualizerTts.Bind(AudioVisualizer.WavePeaksProperty, new Binding(nameof(vm.WavePeakDataTts)));
+            audioVisualizerTts.Bind(AudioVisualizer.VideoEndSecondsProperty, new Binding(nameof(vm.VideoEndSeconds)));
+            audioVisualizerTts.Bind(AudioVisualizer.VideoEndOverrunProperty, new Binding(nameof(vm.VideoEndOverrun)));
+            WireWaveform(vm, audioVisualizerTts, audioVisualizer, isTts: true);
+        }
+
+        // With a single track the sync target is the track itself, so the shared helpers stay
+        // null-free.
+        WireWaveform(vm, audioVisualizer, audioVisualizerTts ?? audioVisualizer, isTts: false);
 
         var labelOriginal = MakeWaveformLabel(Se.Language.Video.TextToSpeech.WaveformOriginalAudio, vm.UseOriginalAudio);
         var labelTts = MakeWaveformLabel(Se.Language.Video.TextToSpeech.WaveformGeneratedAudio, vm.UseTtsAudio);
+        if (!Fork.ReviewVideoPlayer)
+        {
+            // Without the video there is no original audio to switch to, so the labels would do nothing.
+            labelOriginal.IsVisible = false;
+            labelTts.IsVisible = false;
+        }
 
         var grid = new Grid
         {
@@ -1346,8 +1371,18 @@ public class ReviewSpeechWindow : Window
 
         grid.Add(labelOriginal, 0, 0);
         grid.Add(audioVisualizer, 0, 1);
-        grid.Add(labelTts, 1, 0);
-        grid.Add(audioVisualizerTts, 1, 1);
+        if (audioVisualizerTts != null)
+        {
+            grid.Add(labelTts, 1, 0);
+            grid.Add(audioVisualizerTts, 1, 1);
+        }
+        else
+        {
+            // Single (upstream) waveform: one row, the generated label gone.
+            grid.RowDefinitions[0].Height = new GridLength(1, GridUnitType.Star);
+            grid.RowDefinitions[1].Height = new GridLength(0);
+            labelTts.IsVisible = false;
+        }
 
         // The red marker the play-head is anchored to. It has no layout row of its own: it sits in
         // the original track's cell with a negative top margin, so its body overlaps the gap above

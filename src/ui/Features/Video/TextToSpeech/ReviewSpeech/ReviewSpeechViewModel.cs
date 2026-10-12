@@ -130,6 +130,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
         set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewRegeneratePreviewOnly = v, nameof(ShowReviewRegeneratePreviewOnly));
     }
 
+    public bool ShowReviewTwoWaveforms
+    {
+        get => Fork.ReviewTwoWaveforms;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewTwoWaveforms = v, nameof(ShowReviewTwoWaveforms));
+    }
+
     // When checked, a regenerate ignores the configured general accent (the hidden accent tag
     // added to every line on the way to the API) for the line being regenerated.
     [ObservableProperty] private bool _skipGeneralAccent;
@@ -843,7 +849,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
 
         var clipRow = _playingRow ?? SelectedLine;
-        var clip = _isOriginalAudioActive && clipRow != null
+        var clip = Fork.ReviewVideoPlayer && _isOriginalAudioActive && clipRow != null
             ? await GetOriginalClipAsync(clipRow) ?? string.Empty
             : fileName;
         if (string.IsNullOrEmpty(clip))

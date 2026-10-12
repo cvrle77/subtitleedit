@@ -74,6 +74,10 @@ public class SeVideoTextToSpeech
     // Play always starts from the block's beginning instead of from the play-head.
     public bool ReviewPlayFromBlockStart { get; set; }
 
+    // Two waveforms in the review: the original video audio and the generated speech laid out at
+    // each cue. Off = upstream's single waveform (the original video audio only).
+    public bool ReviewTwoWaveforms { get; set; }
+
     // Regenerate previews only the clip, without starting the video/play-head.
     public bool ReviewRegeneratePreviewOnly { get; set; }
 
@@ -424,6 +428,7 @@ public class SeVideoTextToSpeech
         ReviewPlayheadTint = true;
         ReviewPlayFromBlockStart = true;
         ReviewRegeneratePreviewOnly = true;
+        ReviewTwoWaveforms = true;
         LastActorVoiceMappings = new List<ActorVoiceMapping>();
     }
 }
