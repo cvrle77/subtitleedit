@@ -33,4 +33,8 @@ public static class Fork
     public static bool ReviewTwoWaveforms => Enabled && Tts.ReviewTwoWaveforms;
 
     public static bool TtsCleanText => Enabled && Tts.TtsCleanText;
+
+    public static bool ElevenLabsV4 => Enabled && Tts.ElevenLabsV4;
+
+    public static bool ElevenLabsGeneralAccent => Enabled && Tts.ElevenLabsGeneralAccentEnabled;
 }

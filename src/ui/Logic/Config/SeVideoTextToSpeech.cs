@@ -78,6 +78,14 @@ public class SeVideoTextToSpeech
     // each cue. Off = upstream's single waveform (the original video audio only).
     public bool ReviewTwoWaveforms { get; set; }
 
+    // ElevenLabs v4 (chunked generation, request stitching, v4 models). Off = upstream, whose
+    // ElevenLabs model list has no v4 entries and never chunks.
+    public bool ElevenLabsV4 { get; set; }
+
+    // The hidden general accent prepended to every line for the tag-reading models. Off = upstream,
+    // which has no such option.
+    public bool ElevenLabsGeneralAccentEnabled { get; set; }
+
     // Clean each line's text (tags, contractions, acronyms) before it is sent to the engine and
     // written to the session. Off = upstream: the text goes through untouched.
     public bool TtsCleanText { get; set; }
@@ -434,6 +442,8 @@ public class SeVideoTextToSpeech
         ReviewRegeneratePreviewOnly = true;
         ReviewTwoWaveforms = true;
         TtsCleanText = true;
+        ElevenLabsV4 = true;
+        ElevenLabsGeneralAccentEnabled = true;
         LastActorVoiceMappings = new List<ActorVoiceMapping>();
     }
 }

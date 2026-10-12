@@ -458,6 +458,13 @@ public class ElevenLabs : ITtsEngine
             model = "eleven_v4_turbo";
         }
 
+        if (!Fork.ElevenLabsV4 && model is "eleven_v4" or "eleven_v4_turbo")
+        {
+            // Fork: the v4 models are ours. Off = upstream, whose model list has neither - a saved
+            // v4 choice falls back here so no v4 request (and no chunked run) can happen.
+            model = "eleven_multilingual_v2";
+        }
+
         // Request stitching is a v4-only feature (v3 explicitly does not support it). Keep the
         // context out of every other model so their request body is byte-for-byte what it was.
         var isV4 = model is "eleven_v4" or "eleven_v4_turbo";
@@ -754,7 +761,7 @@ public class ElevenLabs : ITtsEngine
     private static string BuildAccentTag(string model)
     {
         var accent = Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent?.Trim();
-        if (string.IsNullOrEmpty(accent) || model is not ("eleven_v3" or "eleven_v4" or "eleven_v4_turbo"))
+        if (!Fork.ElevenLabsGeneralAccent || string.IsNullOrEmpty(accent) || model is not ("eleven_v3" or "eleven_v4" or "eleven_v4_turbo"))
         {
             return string.Empty;
         }
@@ -769,7 +776,7 @@ public class ElevenLabs : ITtsEngine
     private static string ApplyGeneralAccent(string text, string model)
     {
         var accent = Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent?.Trim();
-        if (string.IsNullOrEmpty(accent) || model is not ("eleven_v3" or "eleven_v4" or "eleven_v4_turbo"))
+        if (!Fork.ElevenLabsGeneralAccent || string.IsNullOrEmpty(accent) || model is not ("eleven_v3" or "eleven_v4" or "eleven_v4_turbo"))
         {
             return text;
         }
@@ -797,7 +804,7 @@ public class ElevenLabs : ITtsEngine
 
     public Task<string[]> GetModels()
     {
-        return Task.FromResult(new[]
+        var models = new List<string>
         {
             "eleven_v4_turbo",
             "eleven_v4",
@@ -805,7 +812,15 @@ public class ElevenLabs : ITtsEngine
             "eleven_v3",
             "eleven_multilingual_v2",
             "eleven_turbo_v2_5"
-        });
+        };
+
+        if (!Fork.ElevenLabsV4)
+        {
+            // Fork: the v4 models are ours - upstream's ElevenLabs list has neither.
+            models.RemoveAll(m => m is "eleven_v4" or "eleven_v4_turbo");
+        }
+
+        return Task.FromResult(models.ToArray());
     }
 
     public bool ImportVoice(string fileName)

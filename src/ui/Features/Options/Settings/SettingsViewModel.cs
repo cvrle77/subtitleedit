@@ -135,6 +135,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _forkFeatures;
     // Clean each TTS line's text before it is sent to the engine / written to the session.
     [ObservableProperty] private bool _ttsCleanText;
+    // ElevenLabs v4 models + chunked generation.
+    [ObservableProperty] private bool _elevenLabsV4;
+    // The hidden general accent prepended to every line.
+    [ObservableProperty] private bool _elevenLabsGeneralAccent;
     [ObservableProperty] private int _adjustSpeedParallelism;
     [ObservableProperty] private bool _showTestingTools;
     [ObservableProperty] private bool _textToSpeechElevenLabsParallel;
@@ -894,6 +898,8 @@ public partial class SettingsViewModel : ObservableObject
         MinimalContextMenus = general.MinimalContextMenus;
         ForkFeatures = general.ForkFeatures;
         TtsCleanText = Se.Settings.Video.TextToSpeech.TtsCleanText;
+        ElevenLabsV4 = Se.Settings.Video.TextToSpeech.ElevenLabsV4;
+        ElevenLabsGeneralAccent = Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccentEnabled;
         AdjustSpeedParallelism = Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism;
         ShowTestingTools = Se.Settings.Video.TextToSpeech.ShowTestingTools;
         TextToSpeechElevenLabsParallel = Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel;
@@ -1836,6 +1842,8 @@ public partial class SettingsViewModel : ObservableObject
         general.MinimalContextMenus = MinimalContextMenus;
         general.ForkFeatures = ForkFeatures;
         Se.Settings.Video.TextToSpeech.TtsCleanText = TtsCleanText;
+        Se.Settings.Video.TextToSpeech.ElevenLabsV4 = ElevenLabsV4;
+        Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccentEnabled = ElevenLabsGeneralAccent;
         Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism = AdjustSpeedParallelism < 1 ? 1 : AdjustSpeedParallelism;
         Se.Settings.Video.TextToSpeech.ShowTestingTools = ShowTestingTools;
         Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel = TextToSpeechElevenLabsParallel;

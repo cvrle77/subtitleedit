@@ -1203,6 +1203,8 @@ public class SettingsPage : UserControl
             MakeGroupHeader("Text to speech"),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechFastMerge, nameof(_vm.TextToSpeechFastMerge)),
             MakeCheckboxSetting("Clean the text before TTS (tags, contractions, acronyms)", nameof(_vm.TtsCleanText)),
+            MakeCheckboxSetting("ElevenLabs v4 models + chunked generation", nameof(_vm.ElevenLabsV4)),
+            MakeCheckboxSetting("ElevenLabs general accent (hidden accent tag on every line)", nameof(_vm.ElevenLabsGeneralAccent)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechDescriptiveFilenames, nameof(_vm.TextToSpeechDescriptiveFilenames)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechThreeColumnReview, nameof(_vm.TextToSpeechThreeColumnReview)),
             new SettingsItem(Se.Language.Options.Settings.AdjustSpeedParallelism, () => UiUtil.MakeNumericUpDownInt(
