@@ -137,7 +137,6 @@ public class ReviewSpeechWindow : Window
 
             var tagColumn = MakeTagColumn(vm);
             vm.TagPalette = tagColumn;
-            tagColumn[!Visual.IsVisibleProperty] = new Binding(nameof(ReviewSpeechViewModel.ShowReviewTagPalette));
             grid.Add(tagColumn, 0, 0);
             vm.ActiveTags.CollectionChanged += (_, _) => RefreshTagChips();
             RefreshTagChips();
@@ -717,23 +716,20 @@ public class ReviewSpeechWindow : Window
                 new Expander
                 {
                     Header = "Fork features",
-                    IsExpanded = false,
+                    IsExpanded = true,
                     Content = new StackPanel
                     {
                         Orientation = Orientation.Vertical,
                         Spacing = 2,
                         Children =
                         {
-                            MakeReviewSwitch("Video player in the review", nameof(vm.ShowReviewVideo)),
                             MakeReviewSwitch("Anchor marker above the waveform", nameof(vm.ShowReviewAnchorMarker)),
                             MakeReviewSwitch("Credit panel", nameof(vm.ShowReviewCredits)),
                             MakeReviewSwitch("Tag palette + coloured tags", nameof(vm.ShowReviewTagPalette)),
-                            MakeReviewSwitch("Grid look (zebra, centring, column order)", nameof(vm.ShowReviewGridLook)),
                             MakeReviewSwitch("Split / Merge in the grid menu", nameof(vm.ShowReviewSplitMerge)),
                             MakeReviewSwitch("Tint the playing track's play-head", nameof(vm.ShowReviewPlayheadTint)),
                             MakeReviewSwitch("Play from the block's beginning", nameof(vm.ShowReviewPlayFromBlockStart)),
                             MakeReviewSwitch("Regenerate previews only the clip", nameof(vm.ShowReviewRegeneratePreviewOnly)),
-                            MakeReviewSwitch("Two waveforms (original + generated)", nameof(vm.ShowReviewTwoWaveforms)),
                         },
                     },
                 },
@@ -858,6 +854,8 @@ public class ReviewSpeechWindow : Window
             Source = scroll,
             Converter = new Avalonia.Data.Converters.FuncValueConverter<Avalonia.Size, double>(s => s.Height),
         });
+        // Only the tags are hidden with the tag feature - the video above them stays.
+        scroll[!Visual.IsVisibleProperty] = new Binding(nameof(ReviewSpeechViewModel.ShowReviewTagPalette));
 
         var leftColumn = new Grid
         {

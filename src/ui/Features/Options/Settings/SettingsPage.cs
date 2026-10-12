@@ -1205,6 +1205,11 @@ public class SettingsPage : UserControl
             MakeCheckboxSetting("Clean the text before TTS (tags, contractions, acronyms)", nameof(_vm.TtsCleanText)),
             MakeCheckboxSetting("ElevenLabs v4 models + chunked generation", nameof(_vm.ElevenLabsV4)),
             MakeCheckboxSetting("TTS review layout (three columns, auto-continue in the controls column)", nameof(_vm.TtsLayout)),
+            // These three are decided when the review window is built, so they live here, not in the
+            // window's live switch panel.
+            MakeCheckboxSetting("Review window: video player", nameof(_vm.ReviewVideoPlayer)),
+            MakeCheckboxSetting("Review window: two waveforms (off = upstream single waveform)", nameof(_vm.ReviewTwoWaveforms)),
+            MakeCheckboxSetting("Review window: grid look (zebra, centring, column order)", nameof(_vm.ReviewGridLook)),
             MakeCheckboxSetting("ElevenLabs general accent (hidden accent tag on every line)", nameof(_vm.ElevenLabsGeneralAccent)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechDescriptiveFilenames, nameof(_vm.TextToSpeechDescriptiveFilenames)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechThreeColumnReview, nameof(_vm.TextToSpeechThreeColumnReview)),

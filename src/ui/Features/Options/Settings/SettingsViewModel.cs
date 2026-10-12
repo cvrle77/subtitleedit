@@ -139,6 +139,10 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _elevenLabsV4;
     // The review's fork layout (three columns, auto-continue in the controls column).
     [ObservableProperty] private bool _ttsLayout;
+    // Review-window switches that are decided when the window is built (not live).
+    [ObservableProperty] private bool _reviewVideoPlayer;
+    [ObservableProperty] private bool _reviewTwoWaveforms;
+    [ObservableProperty] private bool _reviewGridLook;
     // The hidden general accent prepended to every line.
     [ObservableProperty] private bool _elevenLabsGeneralAccent;
     [ObservableProperty] private int _adjustSpeedParallelism;
@@ -902,6 +906,9 @@ public partial class SettingsViewModel : ObservableObject
         TtsCleanText = Se.Settings.Video.TextToSpeech.TtsCleanText;
         ElevenLabsV4 = Se.Settings.Video.TextToSpeech.ElevenLabsV4;
         TtsLayout = Se.Settings.Video.TextToSpeech.TtsLayout;
+        ReviewVideoPlayer = Se.Settings.Video.TextToSpeech.ReviewVideoPlayer;
+        ReviewTwoWaveforms = Se.Settings.Video.TextToSpeech.ReviewTwoWaveforms;
+        ReviewGridLook = Se.Settings.Video.TextToSpeech.ReviewGridLook;
         ElevenLabsGeneralAccent = Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccentEnabled;
         AdjustSpeedParallelism = Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism;
         ShowTestingTools = Se.Settings.Video.TextToSpeech.ShowTestingTools;
@@ -1847,6 +1854,9 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Video.TextToSpeech.TtsCleanText = TtsCleanText;
         Se.Settings.Video.TextToSpeech.ElevenLabsV4 = ElevenLabsV4;
         Se.Settings.Video.TextToSpeech.TtsLayout = TtsLayout;
+        Se.Settings.Video.TextToSpeech.ReviewVideoPlayer = ReviewVideoPlayer;
+        Se.Settings.Video.TextToSpeech.ReviewTwoWaveforms = ReviewTwoWaveforms;
+        Se.Settings.Video.TextToSpeech.ReviewGridLook = ReviewGridLook;
         Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccentEnabled = ElevenLabsGeneralAccent;
         Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism = AdjustSpeedParallelism < 1 ? 1 : AdjustSpeedParallelism;
         Se.Settings.Video.TextToSpeech.ShowTestingTools = ShowTestingTools;
