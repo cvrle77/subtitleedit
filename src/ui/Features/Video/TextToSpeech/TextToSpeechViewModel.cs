@@ -3751,6 +3751,13 @@ public partial class TextToSpeechViewModel : ObservableObject
     // length its lines need.
     private async Task<string> TrimMergedAudioToVideoAsync(string inputFileName, CancellationToken cancellationToken)
     {
+        // Fork: pin the merged track to the video's own length. Off = upstream, which keeps the
+        // length its lines need.
+        if (!Fork.ReviewVideoPlayer)
+        {
+            return inputFileName;
+        }
+
         var videoSeconds = GetVideoDurationSeconds();
         if (videoSeconds <= 0)
         {
