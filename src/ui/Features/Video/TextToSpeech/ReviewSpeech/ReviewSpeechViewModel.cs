@@ -3064,11 +3064,19 @@ public partial class ReviewSpeechViewModel : ObservableObject
             }
 
             _skipAutoContinue = true;
-            // Preview the regenerated clip only - do NOT start the video/playhead. Starting playback
-            // desynced: the video ran from the playhead (mid-block) while the clip ran from the
-            // block start, and the row then advanced mid-word.
-            try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* not ready */ }
-            await StartClipAsync(line.StepResult.CurrentFileName);
+            if (Fork.ReviewRegeneratePreviewOnly)
+            {
+                // Preview the regenerated clip only - do NOT start the video/play-head. Starting
+                // playback desynced: the video ran from the play-head (mid-block) while the clip ran
+                // from the block start, and the row then advanced mid-word.
+                try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* not ready */ }
+                await StartClipAsync(line.StepResult.CurrentFileName);
+            }
+            else
+            {
+                // Upstream behaviour: the regenerated line plays like any other.
+                await PlayRow(line);
+            }
         }
         finally
         {
