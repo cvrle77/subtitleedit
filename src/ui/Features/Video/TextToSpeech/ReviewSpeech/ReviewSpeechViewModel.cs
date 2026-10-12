@@ -2615,7 +2615,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 SpeedFactor = line.StepResult.SpeedFactor,
                 // Text is the clean subtitle form; TextWithTags keeps the audio-tag/emphasis
                 // markup so a re-import restores exactly what was sent to the engine.
-                Text = TtsTextCleaner.Clean(line.Text),
+                Text = Fork.TtsCleanText ? TtsTextCleaner.Clean(line.Text) : line.Text,
                 TextWithTags = line.Text,
                 Include = line.Include,
             });
@@ -3994,7 +3994,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         TextChanges = Lines
             .Where(row => row.Text != row.OriginalText)
             .Select(row => new ReviewTextChange(
-                row.OriginalStartMs, row.OriginalEndMs, TtsTextCleaner.Clean(row.Text)))
+                row.OriginalStartMs, row.OriginalEndMs, Fork.TtsCleanText ? TtsTextCleaner.Clean(row.Text) : row.Text))
             .ToList();
 
         Se.SaveSettings();

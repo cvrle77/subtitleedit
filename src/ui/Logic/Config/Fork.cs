@@ -31,4 +31,6 @@ public static class Fork
     public static bool ReviewRegeneratePreviewOnly => Enabled && Tts.ReviewRegeneratePreviewOnly;
 
     public static bool ReviewTwoWaveforms => Enabled && Tts.ReviewTwoWaveforms;
+
+    public static bool TtsCleanText => Enabled && Tts.TtsCleanText;
 }

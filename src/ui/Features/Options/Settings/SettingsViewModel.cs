@@ -133,6 +133,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _minimalContextMenus;
     // Master switch for every cvrle77 fork feature (see Logic.Config.Fork).
     [ObservableProperty] private bool _forkFeatures;
+    // Clean each TTS line's text before it is sent to the engine / written to the session.
+    [ObservableProperty] private bool _ttsCleanText;
     [ObservableProperty] private int _adjustSpeedParallelism;
     [ObservableProperty] private bool _showTestingTools;
     [ObservableProperty] private bool _textToSpeechElevenLabsParallel;
@@ -891,6 +893,7 @@ public partial class SettingsViewModel : ObservableObject
         PromptBeforeDelete = general.PromptBeforeDelete;
         MinimalContextMenus = general.MinimalContextMenus;
         ForkFeatures = general.ForkFeatures;
+        TtsCleanText = Se.Settings.Video.TextToSpeech.TtsCleanText;
         AdjustSpeedParallelism = Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism;
         ShowTestingTools = Se.Settings.Video.TextToSpeech.ShowTestingTools;
         TextToSpeechElevenLabsParallel = Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel;
@@ -1832,6 +1835,7 @@ public partial class SettingsViewModel : ObservableObject
         general.PromptBeforeDelete = PromptBeforeDelete;
         general.MinimalContextMenus = MinimalContextMenus;
         general.ForkFeatures = ForkFeatures;
+        Se.Settings.Video.TextToSpeech.TtsCleanText = TtsCleanText;
         Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism = AdjustSpeedParallelism < 1 ? 1 : AdjustSpeedParallelism;
         Se.Settings.Video.TextToSpeech.ShowTestingTools = ShowTestingTools;
         Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel = TextToSpeechElevenLabsParallel;

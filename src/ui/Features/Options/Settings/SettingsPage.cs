@@ -1202,6 +1202,7 @@ public class SettingsPage : UserControl
             MakeSeparator(),
             MakeGroupHeader("Text to speech"),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechFastMerge, nameof(_vm.TextToSpeechFastMerge)),
+            MakeCheckboxSetting("Clean the text before TTS (tags, contractions, acronyms)", nameof(_vm.TtsCleanText)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechDescriptiveFilenames, nameof(_vm.TextToSpeechDescriptiveFilenames)),
             MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechThreeColumnReview, nameof(_vm.TextToSpeechThreeColumnReview)),
             new SettingsItem(Se.Language.Options.Settings.AdjustSpeedParallelism, () => UiUtil.MakeNumericUpDownInt(
