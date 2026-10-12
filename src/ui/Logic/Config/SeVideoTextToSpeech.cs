@@ -78,6 +78,11 @@ public class SeVideoTextToSpeech
     // each cue. Off = upstream's single waveform (the original video audio only).
     public bool ReviewTwoWaveforms { get; set; }
 
+    // TTS window/review fork layout: the review's three columns (controls right) and "Auto-continue
+    // playing" moved into the controls column. Off = upstream: controls on the left, auto-continue
+    // in the bottom bar below the waveform.
+    public bool TtsLayout { get; set; }
+
     // ElevenLabs v4 (chunked generation, request stitching, v4 models). Off = upstream, whose
     // ElevenLabs model list has no v4 entries and never chunks.
     public bool ElevenLabsV4 { get; set; }
@@ -443,6 +448,7 @@ public class SeVideoTextToSpeech
         ReviewTwoWaveforms = true;
         TtsCleanText = true;
         ElevenLabsV4 = true;
+        TtsLayout = true;
         ElevenLabsGeneralAccentEnabled = true;
         LastActorVoiceMappings = new List<ActorVoiceMapping>();
     }

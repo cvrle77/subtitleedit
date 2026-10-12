@@ -37,4 +37,6 @@ public static class Fork
     public static bool ElevenLabsV4 => Enabled && Tts.ElevenLabsV4;
 
     public static bool ElevenLabsGeneralAccent => Enabled && Tts.ElevenLabsGeneralAccentEnabled;
+
+    public static bool TtsLayout => Enabled && Tts.TtsLayout;
 }

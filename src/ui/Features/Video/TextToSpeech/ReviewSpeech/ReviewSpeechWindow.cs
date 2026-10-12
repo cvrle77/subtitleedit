@@ -77,7 +77,7 @@ public class ReviewSpeechWindow : Window
         var buttonCancel = UiUtil.MakeButtonCancel(vm.CancelCommand).WithBindEnabled(nameof(vm.IsRegenerateEnabled));
         var panelButtons = UiUtil.MakeButtonBar(buttonUndo, buttonExport, buttonOk, buttonCancel);
 
-        var threeColumn = Se.Settings.Video.TextToSpeech.ThreeColumnReview;
+        var threeColumn = Fork.TtsLayout && Se.Settings.Video.TextToSpeech.ThreeColumnReview;
 
         // An active tag chip is tinted with its CATEGORY color (set inline in RefreshTagChips, so
         // each category has its own); this style only carries the weight, since per-chip colors
@@ -169,6 +169,17 @@ public class ReviewSpeechWindow : Window
         }
 
         Content = grid;
+
+        if (!Fork.TtsLayout)
+        {
+            // Upstream keeps "Auto-continue playing" in the bottom bar, below the waveform, instead
+            // of in the controls column.
+            grid.Add(new CheckBox
+            {
+                Content = Se.Language.Video.TextToSpeech.AutoContinuePlaying,
+                [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.AutoContinue)) { Mode = BindingMode.TwoWay },
+            }, 2, 0);
+        }
 
         // Focus the grid, not a button, so the window receives key events (OnKeyDown needs a
         // focused element) without arming any button: a focused button fires OnClick on bare
@@ -736,7 +747,10 @@ public class ReviewSpeechWindow : Window
             panelPlaybackOptions.Children.Remove(checkBoxSkipGeneralAccent);
         }
 
-        grid.Add(panelPlaybackOptions, 7, 0);
+        if (Fork.TtsLayout)
+        {
+            grid.Add(panelPlaybackOptions, 7, 0);
+        }
         grid.Add(panelInstruction, 8, 0);
         // 9 is filler.
 
