@@ -5938,13 +5938,13 @@
     <Word to="Brašna" from="Vrasnje" />
     <Word to="najlona" from="nailona" />
     <Word to="nadev" from="nadav" />
-    <Word to="ukljucicu" from="upljucicu" />
+    <Word to="uključicu" from="upljucicu" />
     <Word to="dinstamo" from="dimstamo" />
     <Word to="odstoji" from="obstoji" />
     <Word to="uzimamo" from="uzmamo" />
     <Word to="bajadera" from="bajadira" />
     <Word to="jaffa" from="jafa" />
-    <Word to="zicom" from="zitom" />
+    <Word to="žicom" from="zitom" />
     <Word to="celu" from="cevu" />
     <Word to="napunite" from="naprnete" />
     <Word to="jako" from="javku" />
@@ -5957,13 +5957,13 @@
     <Word to="slatka" from="slaska" />
     <Word to="Najlona" from="Nailona" />
     <Word to="Nadev" from="Nadav" />
-    <Word to="Ukljucicu" from="Upljucicu" />
+    <Word to="Uključicu" from="Upljucicu" />
     <Word to="Dinstamo" from="Dimstamo" />
     <Word to="Odstoji" from="Obstoji" />
     <Word to="Uzimamo" from="Uzmamo" />
     <Word to="Bajadera" from="Bajadira" />
     <Word to="Jaffa" from="Jafa" />
-    <Word to="Zicom" from="Zitom" />
+    <Word to="Žicom" from="Zitom" />
     <Word to="Celu" from="Cevu" />
     <Word to="Napunite" from="Naprnete" />
     <Word to="Jako" from="Javku" />
@@ -6211,126 +6211,126 @@
     <LinePart to="decilitar ulja" from="deci ulja" />
     <LinePart from="poslužit će" to="poslužiće" />
     <LinePart from="zavisit će" to="zavisiće" />
-    <LinePart to="pravicemo" from="pravit cemo" />
-    <LinePart to="koristicemo" from="koristit cemo" />
-    <LinePart to="sipacemo" from="sipat cemo" />
-    <LinePart to="Pravicemo" from="Pravit cemo" />
-    <LinePart to="Koristicemo" from="Koristit cemo" />
-    <LinePart to="Sipacemo" from="Sipat cemo" />
-    <LinePart to="aktiviracu" from="aktivirat cu" />
-    <LinePart to="Aktiviracu" from="Aktivirat cu" />
-    <LinePart to="aktiviraces" from="aktivirat ces" />
-    <LinePart to="Aktiviraces" from="Aktivirat ces" />
-    <LinePart to="aktivirace" from="aktivirat ce" />
-    <LinePart to="Aktivirace" from="Aktivirat ce" />
-    <LinePart to="aktiviracemo" from="aktivirat cemo" />
-    <LinePart to="Aktiviracemo" from="Aktivirat cemo" />
-    <LinePart to="aktiviracete" from="aktivirat cete" />
-    <LinePart to="Aktiviracete" from="Aktivirat cete" />
-    <LinePart to="dobicu" from="dobit cu" />
-    <LinePart to="Dobicu" from="Dobit cu" />
-    <LinePart to="dobices" from="dobit ces" />
-    <LinePart to="Dobices" from="Dobit ces" />
-    <LinePart to="dobice" from="dobit ce" />
-    <LinePart to="Dobice" from="Dobit ce" />
-    <LinePart to="dobicemo" from="dobit cemo" />
-    <LinePart to="Dobicemo" from="Dobit cemo" />
-    <LinePart to="dobicete" from="dobit cete" />
-    <LinePart to="Dobicete" from="Dobit cete" />
-    <LinePart to="imacu" from="imat cu" />
-    <LinePart to="Imacu" from="Imat cu" />
-    <LinePart to="imaces" from="imat ces" />
-    <LinePart to="Imaces" from="Imat ces" />
-    <LinePart to="imace" from="imat ce" />
-    <LinePart to="Imace" from="Imat ce" />
-    <LinePart to="imacemo" from="imat cemo" />
-    <LinePart to="Imacemo" from="Imat cemo" />
-    <LinePart to="imacete" from="imat cete" />
-    <LinePart to="Imacete" from="Imat cete" />
-    <LinePart to="koristicu" from="koristit cu" />
-    <LinePart to="Koristicu" from="Koristit cu" />
-    <LinePart to="koristices" from="koristit ces" />
-    <LinePart to="Koristices" from="Koristit ces" />
-    <LinePart to="koristice" from="koristit ce" />
-    <LinePart to="Koristice" from="Koristit ce" />
-    <LinePart to="koristicete" from="koristit cete" />
-    <LinePart to="Koristicete" from="Koristit cete" />
-    <LinePart to="moracu" from="morat cu" />
-    <LinePart to="Moracu" from="Morat cu" />
-    <LinePart to="moraces" from="morat ces" />
-    <LinePart to="Moraces" from="Morat ces" />
-    <LinePart to="morace" from="morat ce" />
-    <LinePart to="Morace" from="Morat ce" />
-    <LinePart to="moracemo" from="morat cemo" />
-    <LinePart to="Moracemo" from="Morat cemo" />
-    <LinePart to="moracete" from="morat cete" />
-    <LinePart to="Moracete" from="Morat cete" />
-    <LinePart to="oblikovacu" from="oblikovat cu" />
-    <LinePart to="Oblikovacu" from="Oblikovat cu" />
-    <LinePart to="oblikovaces" from="oblikovat ces" />
-    <LinePart to="Oblikovaces" from="Oblikovat ces" />
-    <LinePart to="oblikovace" from="oblikovat ce" />
-    <LinePart to="Oblikovace" from="Oblikovat ce" />
-    <LinePart to="oblikovacemo" from="oblikovat cemo" />
-    <LinePart to="Oblikovacemo" from="Oblikovat cemo" />
-    <LinePart to="oblikovacete" from="oblikovat cete" />
-    <LinePart to="Oblikovacete" from="Oblikovat cete" />
-    <LinePart to="posluzicu" from="posluzit cu" />
-    <LinePart to="Posluzicu" from="Posluzit cu" />
-    <LinePart to="posluzices" from="posluzit ces" />
-    <LinePart to="Posluzices" from="Posluzit ces" />
-    <LinePart to="posluzice" from="posluzit ce" />
-    <LinePart to="Posluzice" from="Posluzit ce" />
-    <LinePart to="posluzicemo" from="posluzit cemo" />
-    <LinePart to="Posluzicemo" from="Posluzit cemo" />
-    <LinePart to="posluzicete" from="posluzit cete" />
-    <LinePart to="Posluzicete" from="Posluzit cete" />
-    <LinePart to="pravicu" from="pravit cu" />
-    <LinePart to="Pravicu" from="Pravit cu" />
-    <LinePart to="pravices" from="pravit ces" />
-    <LinePart to="Pravices" from="Pravit ces" />
-    <LinePart to="pravice" from="pravit ce" />
-    <LinePart to="Pravice" from="Pravit ce" />
-    <LinePart to="pravicete" from="pravit cete" />
-    <LinePart to="Pravicete" from="Pravit cete" />
-    <LinePart to="primeticu" from="primetit cu" />
-    <LinePart to="Primeticu" from="Primetit cu" />
-    <LinePart to="primetices" from="primetit ces" />
-    <LinePart to="Primetices" from="Primetit ces" />
-    <LinePart to="primetice" from="primetit ce" />
-    <LinePart to="Primetice" from="Primetit ce" />
-    <LinePart to="primeticemo" from="primetit cemo" />
-    <LinePart to="Primeticemo" from="Primetit cemo" />
-    <LinePart to="primeticete" from="primetit cete" />
-    <LinePart to="Primeticete" from="Primetit cete" />
-    <LinePart to="sipacu" from="sipat cu" />
-    <LinePart to="Sipacu" from="Sipat cu" />
-    <LinePart to="sipaces" from="sipat ces" />
-    <LinePart to="Sipaces" from="Sipat ces" />
-    <LinePart to="sipace" from="sipat ce" />
-    <LinePart to="Sipace" from="Sipat ce" />
-    <LinePart to="sipacete" from="sipat cete" />
-    <LinePart to="Sipacete" from="Sipat cete" />
-    <LinePart to="ukljucicu" from="ukljucit cu" />
-    <LinePart to="Ukljucicu" from="Ukljucit cu" />
-    <LinePart to="ukljucices" from="ukljucit ces" />
-    <LinePart to="Ukljucices" from="Ukljucit ces" />
-    <LinePart to="ukljucice" from="ukljucit ce" />
-    <LinePart to="Ukljucice" from="Ukljucit ce" />
-    <LinePart to="ukljucicemo" from="ukljucit cemo" />
-    <LinePart to="Ukljucicemo" from="Ukljucit cemo" />
-    <LinePart to="ukljucicete" from="ukljucit cete" />
-    <LinePart to="Ukljucicete" from="Ukljucit cete" />
-    <LinePart to="zavisicu" from="zavisit cu" />
-    <LinePart to="Zavisicu" from="Zavisit cu" />
-    <LinePart to="zavisices" from="zavisit ces" />
-    <LinePart to="Zavisices" from="Zavisit ces" />
-    <LinePart to="zavisice" from="zavisit ce" />
-    <LinePart to="Zavisice" from="Zavisit ce" />
-    <LinePart to="zavisicemo" from="zavisit cemo" />
-    <LinePart to="Zavisicemo" from="Zavisit cemo" />
-    <LinePart to="zavisicete" from="zavisit cete" />
-    <LinePart to="Zavisicete" from="Zavisit cete" />
+    <LinePart to="pravićemo" from="pravit cemo" />
+    <LinePart to="koristićemo" from="koristit cemo" />
+    <LinePart to="sipaćemo" from="sipat cemo" />
+    <LinePart to="Pravićemo" from="Pravit cemo" />
+    <LinePart to="Koristićemo" from="Koristit cemo" />
+    <LinePart to="Sipaćemo" from="Sipat cemo" />
+    <LinePart to="aktiviraću" from="aktivirat cu" />
+    <LinePart to="Aktiviraću" from="Aktivirat cu" />
+    <LinePart to="aktiviraćeš" from="aktivirat ces" />
+    <LinePart to="Aktiviraćeš" from="Aktivirat ces" />
+    <LinePart to="aktiviraće" from="aktivirat ce" />
+    <LinePart to="Aktiviraće" from="Aktivirat ce" />
+    <LinePart to="aktiviraćemo" from="aktivirat cemo" />
+    <LinePart to="Aktiviraćemo" from="Aktivirat cemo" />
+    <LinePart to="aktiviraćete" from="aktivirat cete" />
+    <LinePart to="Aktiviraćete" from="Aktivirat cete" />
+    <LinePart to="dobiću" from="dobit cu" />
+    <LinePart to="Dobiću" from="Dobit cu" />
+    <LinePart to="dobićeš" from="dobit ces" />
+    <LinePart to="Dobićeš" from="Dobit ces" />
+    <LinePart to="dobiće" from="dobit ce" />
+    <LinePart to="Dobiće" from="Dobit ce" />
+    <LinePart to="dobićemo" from="dobit cemo" />
+    <LinePart to="Dobićemo" from="Dobit cemo" />
+    <LinePart to="dobićete" from="dobit cete" />
+    <LinePart to="Dobićete" from="Dobit cete" />
+    <LinePart to="imaću" from="imat cu" />
+    <LinePart to="Imaću" from="Imat cu" />
+    <LinePart to="imaćeš" from="imat ces" />
+    <LinePart to="Imaćeš" from="Imat ces" />
+    <LinePart to="imaće" from="imat ce" />
+    <LinePart to="Imaće" from="Imat ce" />
+    <LinePart to="imaćemo" from="imat cemo" />
+    <LinePart to="Imaćemo" from="Imat cemo" />
+    <LinePart to="imaćete" from="imat cete" />
+    <LinePart to="Imaćete" from="Imat cete" />
+    <LinePart to="koristiću" from="koristit cu" />
+    <LinePart to="Koristiću" from="Koristit cu" />
+    <LinePart to="koristićeš" from="koristit ces" />
+    <LinePart to="Koristićeš" from="Koristit ces" />
+    <LinePart to="koristiće" from="koristit ce" />
+    <LinePart to="Koristiće" from="Koristit ce" />
+    <LinePart to="koristićete" from="koristit cete" />
+    <LinePart to="Koristićete" from="Koristit cete" />
+    <LinePart to="moraću" from="morat cu" />
+    <LinePart to="Moraću" from="Morat cu" />
+    <LinePart to="moraćeš" from="morat ces" />
+    <LinePart to="Moraćeš" from="Morat ces" />
+    <LinePart to="moraće" from="morat ce" />
+    <LinePart to="Moraće" from="Morat ce" />
+    <LinePart to="moraćemo" from="morat cemo" />
+    <LinePart to="Moraćemo" from="Morat cemo" />
+    <LinePart to="moraćete" from="morat cete" />
+    <LinePart to="Moraćete" from="Morat cete" />
+    <LinePart to="oblikovaću" from="oblikovat cu" />
+    <LinePart to="Oblikovaću" from="Oblikovat cu" />
+    <LinePart to="oblikovaćeš" from="oblikovat ces" />
+    <LinePart to="Oblikovaćeš" from="Oblikovat ces" />
+    <LinePart to="oblikovaće" from="oblikovat ce" />
+    <LinePart to="Oblikovaće" from="Oblikovat ce" />
+    <LinePart to="oblikovaćemo" from="oblikovat cemo" />
+    <LinePart to="Oblikovaćemo" from="Oblikovat cemo" />
+    <LinePart to="oblikovaćete" from="oblikovat cete" />
+    <LinePart to="Oblikovaćete" from="Oblikovat cete" />
+    <LinePart to="poslužiću" from="posluzit cu" />
+    <LinePart to="Poslužiću" from="Posluzit cu" />
+    <LinePart to="poslužićeš" from="posluzit ces" />
+    <LinePart to="Poslužićeš" from="Posluzit ces" />
+    <LinePart to="poslužiće" from="posluzit ce" />
+    <LinePart to="Poslužiće" from="Posluzit ce" />
+    <LinePart to="poslužićemo" from="posluzit cemo" />
+    <LinePart to="Poslužićemo" from="Posluzit cemo" />
+    <LinePart to="poslužićete" from="posluzit cete" />
+    <LinePart to="Poslužićete" from="Posluzit cete" />
+    <LinePart to="praviću" from="pravit cu" />
+    <LinePart to="Praviću" from="Pravit cu" />
+    <LinePart to="pravićeš" from="pravit ces" />
+    <LinePart to="Pravićeš" from="Pravit ces" />
+    <LinePart to="praviće" from="pravit ce" />
+    <LinePart to="Praviće" from="Pravit ce" />
+    <LinePart to="pravićete" from="pravit cete" />
+    <LinePart to="Pravićete" from="Pravit cete" />
+    <LinePart to="primetiću" from="primetit cu" />
+    <LinePart to="Primetiću" from="Primetit cu" />
+    <LinePart to="primetićeš" from="primetit ces" />
+    <LinePart to="Primetićeš" from="Primetit ces" />
+    <LinePart to="primetiće" from="primetit ce" />
+    <LinePart to="Primetiće" from="Primetit ce" />
+    <LinePart to="primetićemo" from="primetit cemo" />
+    <LinePart to="Primetićemo" from="Primetit cemo" />
+    <LinePart to="primetićete" from="primetit cete" />
+    <LinePart to="Primetićete" from="Primetit cete" />
+    <LinePart to="sipaću" from="sipat cu" />
+    <LinePart to="Sipaću" from="Sipat cu" />
+    <LinePart to="sipaćeš" from="sipat ces" />
+    <LinePart to="Sipaćeš" from="Sipat ces" />
+    <LinePart to="sipaće" from="sipat ce" />
+    <LinePart to="Sipaće" from="Sipat ce" />
+    <LinePart to="sipaćete" from="sipat cete" />
+    <LinePart to="Sipaćete" from="Sipat cete" />
+    <LinePart to="uključiću" from="ukljucit cu" />
+    <LinePart to="Uključiću" from="Ukljucit cu" />
+    <LinePart to="uključićeš" from="ukljucit ces" />
+    <LinePart to="Uključićeš" from="Ukljucit ces" />
+    <LinePart to="uključiće" from="ukljucit ce" />
+    <LinePart to="Uključiće" from="Ukljucit ce" />
+    <LinePart to="uključićemo" from="ukljucit cemo" />
+    <LinePart to="Uključićemo" from="Ukljucit cemo" />
+    <LinePart to="uključićete" from="ukljucit cete" />
+    <LinePart to="Uključićete" from="Ukljucit cete" />
+    <LinePart to="zavisiću" from="zavisit cu" />
+    <LinePart to="Zavisiću" from="Zavisit cu" />
+    <LinePart to="zavisićeš" from="zavisit ces" />
+    <LinePart to="Zavisićeš" from="Zavisit ces" />
+    <LinePart to="zavisiće" from="zavisit ce" />
+    <LinePart to="Zavisiće" from="Zavisit ce" />
+    <LinePart to="zavisićemo" from="zavisit cemo" />
+    <LinePart to="Zavisićemo" from="Zavisit cemo" />
+    <LinePart to="zavisićete" from="zavisit cete" />
+    <LinePart to="Zavisićete" from="Zavisit cete" />
     <LinePart to="aktiviraĆu" from="aktivirat Ću" />
     <LinePart to="AktiviraĆu" from="Aktivirat Ću" />
     <LinePart to="aktiviraĆeš" from="aktivirat Ćeš" />
