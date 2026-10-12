@@ -626,12 +626,19 @@ public class TextToSpeechWindow : Window
         grid.Add(labelEngineDescription, 1, 0);
         grid.Add(panelModel, 2, 0);
         grid.Add(panelVoice, 3, 0);
-        grid.Add(panelGeneralAccent, 4, 0);
-        grid.Add(panelRegion, 5, 0);
-        grid.Add(panelLanguage, 6, 0);
-        grid.Add(panelApiKey, 7, 0);
-        grid.Add(panelKeyFile, 8, 0);
-        grid.Add(panelInstruction, 9, 0);
+        // Fork: the hidden general accent input. Off = upstream, whose window has no such row - the
+        // panels below move up so no gap is left.
+        var settingsRow = 4;
+        if (Fork.ElevenLabsGeneralAccent)
+        {
+            grid.Add(panelGeneralAccent, settingsRow++, 0);
+        }
+
+        grid.Add(panelRegion, settingsRow++, 0);
+        grid.Add(panelLanguage, settingsRow++, 0);
+        grid.Add(panelApiKey, settingsRow++, 0);
+        grid.Add(panelKeyFile, settingsRow++, 0);
+        grid.Add(panelInstruction, settingsRow, 0);
 
         // Give the left (Engine/Voice/Model/...) panel a sensible minimum so the window doesn't
         // collapse into a narrow column when the right-side panel happens to be wider than the
