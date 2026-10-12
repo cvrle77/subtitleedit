@@ -933,7 +933,7 @@ public partial class FixCommonErrorsViewModel : ObservableObject, IFixCallbacks
             ? rebalanceSingleLineMaxLength + 1
             : unbreakLinesShorterThan;
 
-        return new List<FixRuleDisplayItem>
+        var items = new List<FixRuleDisplayItem>
         {
             new(language.RemovedEmptyLinesUnusedLineBreaks, language.RemovedEmptyLinesUnusedLineBreaksExample, 1, true, nameof(FixEmptyLines)),
             new(language.FixOverlappingDisplayTimes, string.Empty, 1, true, nameof(FixOverlappingDisplayTimes)),
@@ -979,6 +979,14 @@ public partial class FixCommonErrorsViewModel : ObservableObject, IFixCallbacks
             // that add/remove text (spaces, periods, dialogs, OCR) have settled the wording.
             new(language.RebalanceLongLines, string.Empty, 1, true, nameof(FixSplitRebalanceLongLines)),
         };
+
+        if (!Fork.Enabled)
+        {
+            // Fork: "rebalance long lines" is ours - upstream has no such rule to list.
+            items.RemoveAll(item => item.FixCommonErrorFunctionName == nameof(FixSplitRebalanceLongLines));
+        }
+
+        return items;
     }
 
     private static string GetDialogStyle(DialogType dialogStyle)
