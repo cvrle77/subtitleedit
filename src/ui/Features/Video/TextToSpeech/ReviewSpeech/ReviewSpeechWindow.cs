@@ -1181,11 +1181,16 @@ public class ReviewSpeechWindow : Window
 
             foreach (var (segment, color) in TtsTagPalette.Segments(text))
             {
-                block.Inlines.Add(new Run(segment)
+                var run = new Run(segment);
+                if (color.HasValue)
                 {
-                    Foreground = color.HasValue ? new SolidColorBrush(color.Value) : null,
-                    FontWeight = color.HasValue ? FontWeight.SemiBold : FontWeight.Normal,
-                });
+                    // Only the tags get an explicit brush: setting Foreground to null on the plain
+                    // runs would override the TextBlock's inherited colour and hide the text.
+                    run.Foreground = new SolidColorBrush(color.Value);
+                    run.FontWeight = FontWeight.SemiBold;
+                }
+
+                block.Inlines.Add(run);
             }
         }
 
