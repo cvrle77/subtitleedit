@@ -65,6 +65,71 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // full pass can be listened to without clicking each row.
     [ObservableProperty] private bool _autoContinue = true;
 
+    // --- Fork feature switches (see Logic.Config.Fork). Each getter is the master switch AND the
+    // feature's own setting, so the master reverts everything; each setter stores the setting and
+    // notifies, so the bound UI follows at once and the review never has to be reopened. ---
+
+    private void SetReviewSwitch(bool value, Action<bool> store, string name)
+    {
+        store(value);
+        OnPropertyChanged(name);
+        OnPropertyChanged(nameof(IsCreditsPanelVisible));
+    }
+
+    public bool ShowReviewVideo
+    {
+        get => Fork.ReviewVideoPlayer;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewVideoPlayer = v, nameof(ShowReviewVideo));
+    }
+
+    public bool ShowReviewAnchorMarker
+    {
+        get => Fork.ReviewAnchorMarker;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewAnchorMarker = v, nameof(ShowReviewAnchorMarker));
+    }
+
+    public bool ShowReviewCredits
+    {
+        get => Fork.ReviewCredits;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewCredits = v, nameof(ShowReviewCredits));
+    }
+
+    public bool ShowReviewTagPalette
+    {
+        get => Fork.ReviewTagPalette;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewTagPalette = v, nameof(ShowReviewTagPalette));
+    }
+
+    public bool ShowReviewGridLook
+    {
+        get => Fork.ReviewGridLook;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewGridLook = v, nameof(ShowReviewGridLook));
+    }
+
+    public bool ShowReviewSplitMerge
+    {
+        get => Fork.ReviewSplitMerge;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewSplitMerge = v, nameof(ShowReviewSplitMerge));
+    }
+
+    public bool ShowReviewPlayheadTint
+    {
+        get => Fork.ReviewPlayheadTint;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewPlayheadTint = v, nameof(ShowReviewPlayheadTint));
+    }
+
+    public bool ShowReviewPlayFromBlockStart
+    {
+        get => Fork.ReviewPlayFromBlockStart;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewPlayFromBlockStart = v, nameof(ShowReviewPlayFromBlockStart));
+    }
+
+    public bool ShowReviewRegeneratePreviewOnly
+    {
+        get => Fork.ReviewRegeneratePreviewOnly;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewRegeneratePreviewOnly = v, nameof(ShowReviewRegeneratePreviewOnly));
+    }
+
     // When checked, a regenerate ignores the configured general accent (the hidden accent tag
     // added to every line on the way to the API) for the line being regenerated.
     [ObservableProperty] private bool _skipGeneralAccent;
@@ -306,6 +371,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
     [ObservableProperty] private string _elevenLabsCreditsSpentText = string.Empty;
     [ObservableProperty] private bool _isElevenLabsCreditsVisible;
 
+    // The credit panel's visibility: the fork switch AND the credit state. Bound by the panel, so
+    // turning the switch off hides it at once.
+    public bool IsCreditsPanelVisible => Fork.ReviewCredits && IsElevenLabsCreditsVisible;
+
     private int? _elevenLabsCreditsBaseline;
 
     // The review's video surface (left column, above the tags). Its sound follows the
@@ -464,7 +533,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         var normal = Se.Settings.Waveform.WaveformCursorColor.FromHexToColor();
         var highlight = Color.FromRgb(0x2E, 0xCC, 0x71);
-        var playing = IsStopVisible;
+        var playing = Fork.ReviewPlayheadTint && IsStopVisible;
         if (AudioVisualizer != null)
         {
             AudioVisualizer.WaveformCursorColor = playing && _isOriginalAudioActive ? highlight : normal;
@@ -1197,7 +1266,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
         if (centerEnabled && av.WavePeaks != null)
         {
             var windowSeconds = av.EndPositionSeconds - av.StartPositionSeconds;
-            var centerTarget = Math.Max(0, seconds - windowSeconds * _anchorFraction);
+            var anchor = Fork.ReviewAnchorMarker ? _anchorFraction : 0.5;
+            var centerTarget = Math.Max(0, seconds - windowSeconds * anchor);
             var centerSuspended = av.IsEditingWithPointer || av.IsMouseWheelInteracting;
 
             if (centerSuspended)

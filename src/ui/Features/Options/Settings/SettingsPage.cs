@@ -1151,6 +1151,10 @@ public class SettingsPage : UserControl
 
         sections.Add(new SettingsSection("cvrle77", IconNames.Cogs, "#c084fc",
         [
+            MakeGroupHeader("Fork features"),
+            MakeCheckboxSetting("Fork features (master switch - off = upstream Subtitle Edit)", nameof(_vm.ForkFeatures)),
+            MakeSeparator(),
+
             MakeGroupHeader("Right-click menus"),
             MakeCheckboxSetting(Se.Language.Options.Settings.MinimalContextMenus, nameof(_vm.MinimalContextMenus)),
             new SettingsItem(Se.Language.Options.Settings.ContextMenuTextBox, () => MakeContextMenuComboBox(_vm.ContextMenuTextBox)),

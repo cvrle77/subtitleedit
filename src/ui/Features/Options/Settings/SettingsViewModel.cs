@@ -131,6 +131,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _moveLinesShortenNeighbor;
     [ObservableProperty] private bool _promptBeforeDelete;
     [ObservableProperty] private bool _minimalContextMenus;
+    // Master switch for every cvrle77 fork feature (see Logic.Config.Fork).
+    [ObservableProperty] private bool _forkFeatures;
     [ObservableProperty] private int _adjustSpeedParallelism;
     [ObservableProperty] private bool _showTestingTools;
     [ObservableProperty] private bool _textToSpeechElevenLabsParallel;
@@ -888,6 +890,7 @@ public partial class SettingsViewModel : ObservableObject
         MoveLinesShortenNeighbor = general.MoveLinesShortenNeighbor;
         PromptBeforeDelete = general.PromptBeforeDelete;
         MinimalContextMenus = general.MinimalContextMenus;
+        ForkFeatures = general.ForkFeatures;
         AdjustSpeedParallelism = Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism;
         ShowTestingTools = Se.Settings.Video.TextToSpeech.ShowTestingTools;
         TextToSpeechElevenLabsParallel = Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel;
@@ -1828,6 +1831,7 @@ public partial class SettingsViewModel : ObservableObject
         general.MoveLinesShortenNeighbor = MoveLinesShortenNeighbor;
         general.PromptBeforeDelete = PromptBeforeDelete;
         general.MinimalContextMenus = MinimalContextMenus;
+        general.ForkFeatures = ForkFeatures;
         Se.Settings.Video.TextToSpeech.AdjustSpeedParallelism = AdjustSpeedParallelism < 1 ? 1 : AdjustSpeedParallelism;
         Se.Settings.Video.TextToSpeech.ShowTestingTools = ShowTestingTools;
         Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel = TextToSpeechElevenLabsParallel;

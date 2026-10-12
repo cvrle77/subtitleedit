@@ -43,6 +43,40 @@ public class SeVideoTextToSpeech
     // does not start in a (possibly slow) remembered location such as Quick access.
     public string LastImportExportFolder { get; set; } = string.Empty;
 
+    // --- Review window features. Each one also requires Se.Settings.General.ForkFeatures, so the
+    // master switch reverts them all to upstream. See Logic.Config.Fork. ---
+
+    // Video player above the tag palette in the review's left column, and playback driven by it
+    // (the video is the clock, the sound comes from the clip player). Off = no video, the review
+    // plays clips the way upstream does.
+    public bool ReviewVideoPlayer { get; set; }
+
+    // The red anchor marker above the waveform: the view scrolls the play-head to the marker
+    // instead of always to the centre.
+    public bool ReviewAnchorMarker { get; set; }
+
+    // ElevenLabs credit panel at the top of the controls column.
+    public bool ReviewCredits { get; set; }
+
+    // Audio-tag palette and the category colouring of "[tag]"s in the grid and the edit box.
+    public bool ReviewTagPalette { get; set; }
+
+    // The review grid's fork look: alternating rows, vertically centred cells and the fork's column
+    // order (Voice + row actions pinned right).
+    public bool ReviewGridLook { get; set; }
+
+    // "Split line" / "Merge lines" in the grid's right-click menu.
+    public bool ReviewSplitMerge { get; set; }
+
+    // Tint the play-head of the waveform that is carrying the sound.
+    public bool ReviewPlayheadTint { get; set; }
+
+    // Play always starts from the block's beginning instead of from the play-head.
+    public bool ReviewPlayFromBlockStart { get; set; }
+
+    // Regenerate previews only the clip, without starting the video/play-head.
+    public bool ReviewRegeneratePreviewOnly { get; set; }
+
     // Remembered widths (pixels) of the three columns in the three-column review layout, so the
     // splitter positions survive reopening the window. 0 = not set yet (use the defaults).
     public double ThreeColumnTagWidth { get; set; }
@@ -381,6 +415,15 @@ public class SeVideoTextToSpeech
         GenerationFolder = string.Empty;
         DeleteTempFiles = true;
         ExportFileNaming = "descriptive";
+        ReviewVideoPlayer = true;
+        ReviewAnchorMarker = true;
+        ReviewCredits = true;
+        ReviewTagPalette = true;
+        ReviewGridLook = true;
+        ReviewSplitMerge = true;
+        ReviewPlayheadTint = true;
+        ReviewPlayFromBlockStart = true;
+        ReviewRegeneratePreviewOnly = true;
         LastActorVoiceMappings = new List<ActorVoiceMapping>();
     }
 }

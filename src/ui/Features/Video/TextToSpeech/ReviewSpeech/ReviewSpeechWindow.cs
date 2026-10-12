@@ -137,6 +137,7 @@ public class ReviewSpeechWindow : Window
 
             var tagColumn = MakeTagColumn(vm);
             vm.TagPalette = tagColumn;
+            tagColumn[!Visual.IsVisibleProperty] = new Binding(nameof(ReviewSpeechViewModel.ShowReviewTagPalette));
             grid.Add(tagColumn, 0, 0);
             vm.ActiveTags.CollectionChanged += (_, _) => RefreshTagChips();
             RefreshTagChips();
@@ -215,13 +216,17 @@ public class ReviewSpeechWindow : Window
             Header = Se.Language.General.SplitLineAtVideoAndTextBoxPosition,
             Command = vm.SplitLineCommand,
         };
-        gridFlyout.Items.Add(menuSplitLine);
-        gridFlyout.Items.Add(new MenuItem
+        if (Fork.ReviewSplitMerge)
         {
-            Header = Se.Language.General.MergeLines,
-            Command = vm.MergeLinesCommand,
-        });
-        gridFlyout.Opening += (_, _) => menuSplitLine.CommandParameter = vm.SelectedLine;
+            gridFlyout.Items.Add(menuSplitLine);
+            gridFlyout.Items.Add(new MenuItem
+            {
+                Header = Se.Language.General.MergeLines,
+                Command = vm.MergeLinesCommand,
+            });
+            gridFlyout.Opening += (_, _) => menuSplitLine.CommandParameter = vm.SelectedLine;
+        }
+
         lineGrid.ContextFlyout = gridFlyout;
 
         // Re-enabled: OK publishes only rows with Include ticked and Export/Import
@@ -585,7 +590,7 @@ public class ReviewSpeechWindow : Window
             Orientation = Orientation.Vertical,
             Spacing = 1,
             Margin = new Thickness(0, 0, 0, 10),
-            [!Visual.IsVisibleProperty] = new Binding(nameof(ReviewSpeechViewModel.IsElevenLabsCreditsVisible)),
+            [!Visual.IsVisibleProperty] = new Binding(nameof(ReviewSpeechViewModel.IsCreditsPanelVisible)),
             Children =
             {
                 new TextBlock { Text = "ElevenLabs credit usage", FontSize = 13, FontWeight = FontWeight.SemiBold, Opacity = 0.8 },
@@ -632,10 +637,12 @@ public class ReviewSpeechWindow : Window
         if (includeTags)
         {
             // Original layout: the ElevenLabs sliders with the tag palette docked right below them.
+            var tagPanel = MakeTagPanel(vm);
+            tagPanel[!Visual.IsVisibleProperty] = new Binding(nameof(ReviewSpeechViewModel.ShowReviewTagPalette));
             grid.Add(new StackPanel
             {
                 Orientation = Orientation.Vertical,
-                Children = { elevenLabsControls, MakeTagPanel(vm) },
+                Children = { elevenLabsControls, tagPanel },
             }, 6, 0);
         }
         else
@@ -658,12 +665,51 @@ public class ReviewSpeechWindow : Window
         };
         ToolTip.SetTip(checkBoxSkipGeneralAccent, "Regenerate without the configured general accent for this line");
 
+        // One checkbox bound to a review fork switch (see ReviewSpeechViewModel) - live, so the
+        // switch takes effect without reopening the window.
+        static CheckBox MakeReviewSwitch(string text, string property)
+        {
+            return new CheckBox
+            {
+                Content = text,
+                [!CheckBox.IsCheckedProperty] = new Binding(property) { Mode = BindingMode.TwoWay },
+            };
+        }
+
         var panelPlaybackOptions = new StackPanel
         {
             Orientation = Orientation.Vertical,
             Spacing = 2,
             Margin = new Thickness(0, 10, 0, 10),
-            Children = { new Separator(), checkBoxAutoContinue, checkBoxSkipGeneralAccent },
+            Children =
+            {
+                new Separator(),
+                checkBoxAutoContinue,
+                checkBoxSkipGeneralAccent,
+                new Separator(),
+                new Expander
+                {
+                    Header = "Fork features",
+                    IsExpanded = false,
+                    Content = new StackPanel
+                    {
+                        Orientation = Orientation.Vertical,
+                        Spacing = 2,
+                        Children =
+                        {
+                            MakeReviewSwitch("Video player in the review", nameof(vm.ShowReviewVideo)),
+                            MakeReviewSwitch("Anchor marker above the waveform", nameof(vm.ShowReviewAnchorMarker)),
+                            MakeReviewSwitch("Credit panel", nameof(vm.ShowReviewCredits)),
+                            MakeReviewSwitch("Tag palette + coloured tags", nameof(vm.ShowReviewTagPalette)),
+                            MakeReviewSwitch("Grid look (zebra, centring, column order)", nameof(vm.ShowReviewGridLook)),
+                            MakeReviewSwitch("Split / Merge in the grid menu", nameof(vm.ShowReviewSplitMerge)),
+                            MakeReviewSwitch("Tint the playing track's play-head", nameof(vm.ShowReviewPlayheadTint)),
+                            MakeReviewSwitch("Play from the block's beginning", nameof(vm.ShowReviewPlayFromBlockStart)),
+                            MakeReviewSwitch("Regenerate previews only the clip", nameof(vm.ShowReviewRegeneratePreviewOnly)),
+                        },
+                    },
+                },
+            },
         };
 
         grid.Add(panelPlaybackOptions, 7, 0);
@@ -1318,6 +1364,7 @@ public class ReviewSpeechWindow : Window
             Cursor = new Cursor(StandardCursorType.SizeWestEast),
         };
         grid.Add(anchorMarker, 0, 1);
+        anchorMarker[!Visual.IsVisibleProperty] = new Binding(nameof(ReviewSpeechViewModel.ShowReviewAnchorMarker));
 
         void PlaceMarker() => anchorMarker.Margin = new Thickness(
             audioVisualizer.Bounds.Width * vm.AnchorFraction - markerWidth / 2, -markerHeight, 0, 0);
