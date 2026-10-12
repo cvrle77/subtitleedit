@@ -5936,6 +5936,44 @@
     <Word to="Steže" from="Stjeze" />
     <Word to="Steže" from="Stijeze" />
     <Word to="Brašna" from="Vrasnje" />
+    <Word to="najlona" from="nailona" />
+    <Word to="nadev" from="nadav" />
+    <Word to="ukljucicu" from="upljucicu" />
+    <Word to="dinstamo" from="dimstamo" />
+    <Word to="odstoji" from="obstoji" />
+    <Word to="uzimamo" from="uzmamo" />
+    <Word to="bajadera" from="bajadira" />
+    <Word to="jaffa" from="jafa" />
+    <Word to="zicom" from="zitom" />
+    <Word to="celu" from="cevu" />
+    <Word to="napunite" from="naprnete" />
+    <Word to="jako" from="javku" />
+    <Word to="topla" from="topala" />
+    <Word to="istisnete" from="istirate" />
+    <Word to="sklanjate" from="skladnjate" />
+    <Word to="pripremljenu" from="pripravljenu" />
+    <Word to="ispekao" from="ispeka" />
+    <Word to="nabijte" from="nabite" />
+    <Word to="slatka" from="slaska" />
+    <Word to="Najlona" from="Nailona" />
+    <Word to="Nadev" from="Nadav" />
+    <Word to="Ukljucicu" from="Upljucicu" />
+    <Word to="Dinstamo" from="Dimstamo" />
+    <Word to="Odstoji" from="Obstoji" />
+    <Word to="Uzimamo" from="Uzmamo" />
+    <Word to="Bajadera" from="Bajadira" />
+    <Word to="Jaffa" from="Jafa" />
+    <Word to="Zicom" from="Zitom" />
+    <Word to="Celu" from="Cevu" />
+    <Word to="Napunite" from="Naprnete" />
+    <Word to="Jako" from="Javku" />
+    <Word to="Topla" from="Topala" />
+    <Word to="Istisnete" from="Istirate" />
+    <Word to="Sklanjate" from="Skladnjate" />
+    <Word to="Pripremljenu" from="Pripravljenu" />
+    <Word to="Ispekao" from="Ispeka" />
+    <Word to="Nabijte" from="Nabite" />
+    <Word to="Slatka" from="Slaska" />
   </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
@@ -6167,6 +6205,12 @@
     <LinePart to="decilitar ulja" from="deci ulja" />
     <LinePart from="poslužit će" to="poslužiće" />
     <LinePart from="zavisit će" to="zavisiće" />
+    <LinePart to="pravicemo" from="pravit cemo" />
+    <LinePart to="koristicemo" from="koristit cemo" />
+    <LinePart to="sipacemo" from="sipat cemo" />
+    <LinePart to="Pravicemo" from="Pravit cemo" />
+    <LinePart to="Koristicemo" from="Koristit cemo" />
+    <LinePart to="Sipacemo" from="Sipat cemo" />
   </PartialLines>
   <BeginLines />
   <EndLines />
