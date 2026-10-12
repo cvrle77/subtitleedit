@@ -1,5 +1,6 @@
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Nikse.SubtitleEdit.Logic.Config;
 using System;
 
 namespace Nikse.SubtitleEdit.Controls;
@@ -14,6 +15,10 @@ namespace Nikse.SubtitleEdit.Controls;
 /// the play/space transport key silently changed a mode (upstream bug #12759, same root cause as
 /// #12093). These toggles keep Space owned by the shortcut and never take it.
 /// </para>
+/// <para>
+/// With the fork features off this behaves exactly like the upstream <see cref="ToggleButton"/>
+/// (Space included), so the control can stay in place at every call site.
+/// </para>
 /// </summary>
 public class NonSpaceToggleButton : ToggleButton
 {
@@ -22,7 +27,7 @@ public class NonSpaceToggleButton : ToggleButton
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
-        if (e.Key == Key.Space)
+        if (Fork.Enabled && e.Key == Key.Space)
         {
             e.Handled = true;
             return;
@@ -33,7 +38,7 @@ public class NonSpaceToggleButton : ToggleButton
 
     protected override void OnKeyUp(KeyEventArgs e)
     {
-        if (e.Key == Key.Space)
+        if (Fork.Enabled && e.Key == Key.Space)
         {
             e.Handled = true;
             return;
