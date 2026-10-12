@@ -228,13 +228,24 @@ public class ReviewSpeechWindow : Window
         };
         if (Fork.ReviewSplitMerge)
         {
-            gridFlyout.Items.Add(menuSplitLine);
-            gridFlyout.Items.Add(new MenuItem
+            var menuMergeLines = new MenuItem
             {
                 Header = Se.Language.General.MergeLines,
                 Command = vm.MergeLinesCommand,
-            });
-            gridFlyout.Opening += (_, _) => menuSplitLine.CommandParameter = vm.SelectedLine;
+            };
+
+            gridFlyout.Items.Add(menuSplitLine);
+            gridFlyout.Items.Add(menuMergeLines);
+
+            // Only the action that applies is offered: Split wants a single row, Merge exactly the
+            // two adjacent ones. Showing both - one of them dead - is what made the menu jump
+            // between one and two rows and pick up a scroll bar.
+            gridFlyout.Opening += (_, _) =>
+            {
+                menuSplitLine.CommandParameter = vm.SelectedLine;
+                menuMergeLines.IsVisible = vm.CanMergeLines;
+                menuSplitLine.IsVisible = !vm.CanMergeLines;
+            };
         }
 
         lineGrid.ContextFlyout = gridFlyout;
