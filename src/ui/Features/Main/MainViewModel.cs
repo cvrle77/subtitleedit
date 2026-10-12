@@ -35318,10 +35318,11 @@ public partial class MainViewModel :
                         }
                     }
 
-                    else if (_playSelectionItem != null && !_pauseRequested)
+                    else if (Fork.Enabled && _playSelectionItem != null && !_pauseRequested)
                     {
-                        // Play-selected running from a gap: select the line the moment the playhead
-                        // reaches it, so the grid hooks on before the line's end.
+                        // Fork: play-selected running from a gap selects the line the moment the
+                        // play-head reaches it, so the grid hooks on before the line's end. Off =
+                        // upstream, which leaves the selection alone until the line is reached.
                         SelectSubtitleUnderPlayheadForPlayback(mediaPlayerSeconds);
                     }
 
