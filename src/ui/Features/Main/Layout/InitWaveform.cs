@@ -1596,12 +1596,7 @@ public class InitWaveform
                     toolbarButtonForSort.Add(new SortedControl { Sort = item.SortOrder, Control = toggleButtonAutoSelectOnPlay });
                     break;
                 case SeWaveformToolbarItemType.Center:
-                    // Fork: the "Center" waveform toolbar toggle is ours.
-                    if (Fork.Enabled)
-                    {
-                        toolbarButtonForSort.Add(new SortedControl { Sort = item.SortOrder, Control = toggleButtonCenter });
-                    }
-
+                    toolbarButtonForSort.Add(new SortedControl { Sort = item.SortOrder, Control = toggleButtonCenter });
                     break;
                 case SeWaveformToolbarItemType.CenterSmooth:
                     // Fork: "Center (smooth)" is ours - upstream's waveform toolbar has no such toggle.
