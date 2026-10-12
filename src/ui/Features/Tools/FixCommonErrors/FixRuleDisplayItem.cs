@@ -101,6 +101,12 @@ public partial class FixRuleDisplayItem : ObservableObject
             new FixSplitRebalanceLongLines(),
         };
 
+        if (!Fork.Enabled)
+        {
+            // Fork: "rebalance long lines" is ours - upstream's Fix Common Errors does not have it.
+            list.RemoveAll(rule => rule is FixSplitRebalanceLongLines);
+        }
+
         return list;
     }
 
