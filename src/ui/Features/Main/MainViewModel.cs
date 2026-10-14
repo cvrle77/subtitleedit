@@ -2074,11 +2074,11 @@ public partial class MainViewModel :
 
     private void CenterOnAnchorNow() => CenterOnAnchorNow(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
 
-    // Anchor the given play-head position. The caller passes the position the user acted on (the
-    // clicked spot) rather than reading the live play-head: right after a click the player is still
-    // settling and PinPlayheadTo moves it by ~2 s, which moved the target and made the glide miss
-    // the anchor or run again and again.
-    private void CenterOnAnchorNow(double playheadSeconds)
+    // Anchor the given play-head position. restart=true (a fresh click) always takes over, so a
+    // click made while the view is still gliding is honoured; the pause path leaves restart=false
+    // and keeps the guard, because it is called repeatedly while the player settles and restarting
+    // there meant the glide never landed.
+    private void CenterOnAnchorNow(double playheadSeconds, bool restart = false)
     {
         var av = AudioVisualizer;
         if (av == null || !Fork.WaveformAnchorMarker || av.WavePeaks == null)
@@ -2087,12 +2087,15 @@ public partial class MainViewModel :
             return;
         }
 
-        // A glide is already running: ignore this call. One click fires several position events, and
-        // recomputing the target on each of them restarted the glide, so the view never landed and
-        // visibly jerked back and forth.
         if (_anchorGlideTimer != null)
         {
-            return;
+            if (!restart)
+            {
+                return;
+            }
+
+            _anchorGlideTimer.Stop();
+            _anchorGlideTimer = null;
         }
 
         var visible = av.EndPositionSeconds - av.StartPositionSeconds;
@@ -38217,7 +38220,7 @@ public partial class MainViewModel :
             // the action below, whose pause calls CenterOnAnchorNow with the live play-head - stale
             // until this click's seek has landed, which made the first click a no-op.
             Se.WriteToolsLog($"MAIN anchor click: seconds={seconds:0.00}, playhead={AudioVisualizer.CurrentVideoPositionSeconds:0.00}, start={AudioVisualizer.StartPositionSeconds:0.00}, end={AudioVisualizer.EndPositionSeconds:0.00}, anchor={AudioVisualizer.AnchorFraction:0.00}, peaks={(AudioVisualizer.WavePeaks != null)}");
-            CenterOnAnchorNow(seconds);
+            CenterOnAnchorNow(seconds, restart: true);
             switch (action)
             {
                 case WaveformSingleClickActionType.SetVideoPositionAndPauseAndSelectSubtitle:
