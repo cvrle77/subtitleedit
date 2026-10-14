@@ -44,6 +44,10 @@ public class SeWaveform
     // The fork's red marker above the main waveform: the view scrolls the play-head to the marker
     // instead of always to the centre. Off = upstream centring (see Fork.WaveformAnchorMarker).
     public bool AnchorMarker { get; set; }
+
+    // Animate that scroll (ease to the anchor) instead of jumping there. Off = the play-head lands
+    // under the marker at once. See Fork.WaveformAnchorGlide.
+    public bool AnchorGlide { get; set; }
     public bool DrawGridLines { get; set; }
 
     /// <summary>
@@ -170,6 +174,7 @@ public class SeWaveform
         SpectrogramCombinedWaveformHeight = 50;
         CenterSmoothSeconds = 2.0;
         AnchorMarker = true;
+        AnchorGlide = true;
         CenterVideoPositionSmooth = false;
         WaveformTextFontSize = 10;
         WaveformTextFontBold = false;

@@ -341,6 +341,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _zoomCentersOnSelection;
     // The fork's red anchor marker above the main waveform.
     [ObservableProperty] private bool _waveformAnchorMarker;
+    // Animate the scroll to the anchor instead of jumping.
+    [ObservableProperty] private bool _waveformAnchorGlide;
 
     [ObservableProperty] private ObservableCollection<string> _waveformDrawStyles;
     [ObservableProperty] private string _selectedWaveformDrawStyle;
@@ -1101,6 +1103,7 @@ public partial class SettingsViewModel : ObservableObject
         WaveformCenterSmoothSeconds = (decimal)Se.Settings.Waveform.CenterSmoothSeconds;
         ZoomCentersOnSelection = Se.Settings.Waveform.ZoomCentersOnSelection;
         WaveformAnchorMarker = Se.Settings.Waveform.AnchorMarker;
+        WaveformAnchorGlide = Se.Settings.Waveform.AnchorGlide;
         WaveformShowToolbar = Se.Settings.Waveform.ShowToolbar;
         WaveformShowOriginalSubtitle = Se.Settings.Waveform.ShowOriginalSubtitle;
 
@@ -2033,6 +2036,7 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Waveform.CenterSmoothSeconds = (double)WaveformCenterSmoothSeconds;
         Se.Settings.Waveform.ZoomCentersOnSelection = ZoomCentersOnSelection;
         Se.Settings.Waveform.AnchorMarker = WaveformAnchorMarker;
+        Se.Settings.Waveform.AnchorGlide = WaveformAnchorGlide;
         Se.Settings.Waveform.FocusTextBoxAfterInsertNew = WaveformFocusTextboxAfterInsertNew;
 
         if (SelectedWaveformDrawStyle == Se.Language.General.Classic)

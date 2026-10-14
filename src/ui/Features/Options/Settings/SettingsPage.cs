@@ -1199,6 +1199,7 @@ public class SettingsPage : UserControl
                 0, 10, 120, _vm, nameof(_vm.WaveformCenterSmoothSeconds), defaultValue: 2.0m)),
             MakeCheckboxSetting(Se.Language.Options.Settings.WaveformZoomCentersOnSelection, nameof(_vm.ZoomCentersOnSelection)),
             MakeCheckboxSetting("Waveform: red anchor marker (play-head stops under it instead of the centre)", nameof(_vm.WaveformAnchorMarker)),
+            MakeCheckboxSetting("Waveform: glide to the anchor (animate instead of jumping)", nameof(_vm.WaveformAnchorGlide)),
 
             MakeSeparator(),
             MakeGroupHeader("Text to speech"),

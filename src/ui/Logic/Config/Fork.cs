@@ -41,4 +41,6 @@ public static class Fork
     public static bool TtsLayout => Enabled && Tts.TtsLayout;
 
     public static bool WaveformAnchorMarker => Enabled && Se.Settings.Waveform.AnchorMarker;
+
+    public static bool WaveformAnchorGlide => Enabled && Se.Settings.Waveform.AnchorGlide;
 }

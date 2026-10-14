@@ -1307,7 +1307,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
                     _centerAnimActive = false;
                 }
 
-                if (!_centerAnimActive && Math.Abs(av.StartPositionSeconds - centerTarget) > 0.15)
+                if (!_centerAnimActive && Fork.WaveformAnchorGlide && Math.Abs(av.StartPositionSeconds - centerTarget) > 0.15)
                 {
                     _centerAnimActive = true;
                     _centerAnimFromSeconds = av.StartPositionSeconds;

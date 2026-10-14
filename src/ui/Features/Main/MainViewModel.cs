@@ -2098,6 +2098,14 @@ public partial class MainViewModel :
 
         var visible = av.EndPositionSeconds - av.StartPositionSeconds;
         var target = playheadSeconds - visible * av.AnchorFraction;
+
+        // Glide off: land under the marker at once.
+        if (!Fork.WaveformAnchorGlide)
+        {
+            av.StartPositionSeconds = target;
+            return;
+        }
+
         var screens = visible > 0 ? Math.Abs(target - av.StartPositionSeconds) / visible : 1.0;
         var durationMs = Math.Sqrt(Math.Min(1.0, screens)) * Se.Settings.Waveform.CenterSmoothSeconds * 1000.0;
 
