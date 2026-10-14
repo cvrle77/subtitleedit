@@ -1922,6 +1922,7 @@ public partial class MainViewModel :
         }
 
         vp.VideoPlayer.Pause();
+        CenterOnAnchorNow();
     }
 
     [RelayCommand]
@@ -2050,6 +2051,21 @@ public partial class MainViewModel :
     {
         RequestPausePlayheadFreeze();
         vp.VideoPlayer.Pause();
+        CenterOnAnchorNow();
+    }
+
+    // Fork: after a pause the view may sit away from the marker - put the play-head under the anchor
+    // at once, since a paused view has no cursor tick to ease it there (the review does the same on
+    // Stop). No-op unless the anchor marker is on.
+    private void CenterOnAnchorNow()
+    {
+        var av = AudioVisualizer;
+        if (av == null || !Fork.WaveformAnchorMarker || av.WavePeaks == null)
+        {
+            return;
+        }
+
+        av.StartPositionSeconds = av.CurrentVideoPositionSeconds - (av.EndPositionSeconds - av.StartPositionSeconds) * av.AnchorFraction;
     }
 
     // Start playback. Always go through here rather than calling Play() directly: a pending pause
