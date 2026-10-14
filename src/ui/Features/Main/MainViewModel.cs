@@ -1976,7 +1976,6 @@ public partial class MainViewModel :
 
         // Playback owns the view now: drop an anchor glide still running, or the centring (which
         // stands down while a glide owns the view) would not follow the play-head at all.
-        Se.WriteToolsLog($"MAIN anchor: play start - glideRunning={(_anchorGlideTimer != null)}, pauseRequested={_pauseRequested}, pausedSettled={_playheadPausedSettled}");
         _anchorGlideTimer?.Stop();
         _anchorGlideTimer = null;
     }
@@ -2083,7 +2082,6 @@ public partial class MainViewModel :
         var av = AudioVisualizer;
         if (av == null || !Fork.WaveformAnchorMarker || av.WavePeaks == null)
         {
-            Se.WriteToolsLog($"MAIN anchor glide SKIPPED: av={(av != null)}, markerOn={Fork.WaveformAnchorMarker}, peaks={(av?.WavePeaks != null)}");
             return;
         }
 
@@ -2102,7 +2100,6 @@ public partial class MainViewModel :
         var target = playheadSeconds - visible * av.AnchorFraction;
         var screens = visible > 0 ? Math.Abs(target - av.StartPositionSeconds) / visible : 1.0;
         var durationMs = Math.Sqrt(Math.Min(1.0, screens)) * Se.Settings.Waveform.CenterSmoothSeconds * 1000.0;
-        Se.WriteToolsLog($"MAIN anchor glide: playhead={playheadSeconds:0.00}, visible={visible:0.00}, target={target:0.00}, from={av.StartPositionSeconds:0.00}, screens={screens:0.000}, durationMs={durationMs:0}");
 
         _anchorGlideTimer?.Stop();
         _anchorGlideTimer = null;
@@ -38219,7 +38216,6 @@ public partial class MainViewModel :
             // path (OnVideoPositionChanged only fires for the wheel and right-click). It runs before
             // the action below, whose pause calls CenterOnAnchorNow with the live play-head - stale
             // until this click's seek has landed, which made the first click a no-op.
-            Se.WriteToolsLog($"MAIN anchor click: seconds={seconds:0.00}, playhead={AudioVisualizer.CurrentVideoPositionSeconds:0.00}, start={AudioVisualizer.StartPositionSeconds:0.00}, end={AudioVisualizer.EndPositionSeconds:0.00}, anchor={AudioVisualizer.AnchorFraction:0.00}, peaks={(AudioVisualizer.WavePeaks != null)}");
             CenterOnAnchorNow(seconds, restart: true);
             switch (action)
             {
