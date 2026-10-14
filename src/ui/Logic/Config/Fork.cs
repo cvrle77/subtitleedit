@@ -39,4 +39,6 @@ public static class Fork
     public static bool ElevenLabsGeneralAccent => Enabled && Tts.ElevenLabsGeneralAccentEnabled;
 
     public static bool TtsLayout => Enabled && Tts.TtsLayout;
+
+    public static bool WaveformAnchorMarker => Enabled && Se.Settings.Waveform.AnchorMarker;
 }

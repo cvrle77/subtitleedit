@@ -40,6 +40,10 @@ public class SeWaveform
     // position" is on and the play-head is off-center (starting playback, a seek, scrubbing) -
     // instead of snapping the whole waveform over. Configurable in Settings.
     public double CenterSmoothSeconds { get; set; }
+
+    // The fork's red marker above the main waveform: the view scrolls the play-head to the marker
+    // instead of always to the centre. Off = upstream centring (see Fork.WaveformAnchorMarker).
+    public bool AnchorMarker { get; set; }
     public bool DrawGridLines { get; set; }
 
     /// <summary>
@@ -165,6 +169,7 @@ public class SeWaveform
         FocusTextBoxAfterInsertNew = true;
         SpectrogramCombinedWaveformHeight = 50;
         CenterSmoothSeconds = 2.0;
+        AnchorMarker = true;
         CenterVideoPositionSmooth = false;
         WaveformTextFontSize = 10;
         WaveformTextFontBold = false;

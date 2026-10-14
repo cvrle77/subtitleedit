@@ -466,6 +466,63 @@ public class InitWaveform
             mainGrid.Children.Add(vm.AudioVisualizer);
         }
 
+        // Fork: the red anchor marker above the waveform. Dragged left/right it moves the spot the
+        // view scrolls the play-head to (see AudioVisualizer.AnchorFraction). No layout row of its
+        // own - it overlaps the gap above the waveform with its tip on the waveform's top edge.
+        if (Fork.WaveformAnchorMarker)
+        {
+            const double markerWidth = 12;
+            const double markerHeight = 9;
+            var anchorMarker = new Avalonia.Controls.Shapes.Path
+            {
+                Data = Geometry.Parse($"M 0,0 L {markerWidth},0 L {markerWidth / 2},{markerHeight} Z"),
+                Fill = Brushes.Red,
+                VerticalAlignment = VerticalAlignment.Top,
+                HorizontalAlignment = HorizontalAlignment.Left,
+                Cursor = new Cursor(StandardCursorType.SizeWestEast),
+            };
+            Grid.SetRow(anchorMarker, Grid.GetRow(vm.AudioVisualizer));
+            mainGrid.Children.Add(anchorMarker);
+
+            void PlaceMarker() => anchorMarker.Margin = new Thickness(
+                vm.AudioVisualizer.Bounds.Width * vm.AudioVisualizer.AnchorFraction - markerWidth / 2, -markerHeight, 0, 0);
+
+            vm.AudioVisualizer.PropertyChanged += (_, e) =>
+            {
+                if (e.Property == Visual.BoundsProperty)
+                {
+                    PlaceMarker();
+                }
+            };
+
+            var draggingMarker = false;
+            anchorMarker.PointerPressed += (_, e) =>
+            {
+                draggingMarker = true;
+                e.Pointer.Capture(anchorMarker);
+                e.Handled = true;
+            };
+            anchorMarker.PointerMoved += (_, e) =>
+            {
+                if (!draggingMarker || vm.AudioVisualizer.Bounds.Width <= 0)
+                {
+                    return;
+                }
+
+                vm.AudioVisualizer.AnchorFraction = Math.Clamp(e.GetPosition(vm.AudioVisualizer).X / vm.AudioVisualizer.Bounds.Width, 0.02, 0.98);
+                PlaceMarker();
+                e.Handled = true;
+            };
+            anchorMarker.PointerReleased += (_, e) =>
+            {
+                draggingMarker = false;
+                e.Pointer.Capture(null);
+                e.Handled = true;
+            };
+
+            PlaceMarker();
+        }
+
         // Footer
         // A WrapPanel so a toolbar wider than the waveform pane continues on a second row instead
         // of being clipped at both ends (#15034).

@@ -339,6 +339,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _waveformRememberZoom;
     [ObservableProperty] private decimal _waveformCenterSmoothSeconds;
     [ObservableProperty] private bool _zoomCentersOnSelection;
+    // The fork's red anchor marker above the main waveform.
+    [ObservableProperty] private bool _waveformAnchorMarker;
 
     [ObservableProperty] private ObservableCollection<string> _waveformDrawStyles;
     [ObservableProperty] private string _selectedWaveformDrawStyle;
@@ -1098,6 +1100,7 @@ public partial class SettingsViewModel : ObservableObject
         WaveformRememberZoom = Se.Settings.Waveform.RememberZoom;
         WaveformCenterSmoothSeconds = (decimal)Se.Settings.Waveform.CenterSmoothSeconds;
         ZoomCentersOnSelection = Se.Settings.Waveform.ZoomCentersOnSelection;
+        WaveformAnchorMarker = Se.Settings.Waveform.AnchorMarker;
         WaveformShowToolbar = Se.Settings.Waveform.ShowToolbar;
         WaveformShowOriginalSubtitle = Se.Settings.Waveform.ShowOriginalSubtitle;
 
@@ -2029,6 +2032,7 @@ public partial class SettingsViewModel : ObservableObject
         Se.Settings.Waveform.RememberZoom = WaveformRememberZoom;
         Se.Settings.Waveform.CenterSmoothSeconds = (double)WaveformCenterSmoothSeconds;
         Se.Settings.Waveform.ZoomCentersOnSelection = ZoomCentersOnSelection;
+        Se.Settings.Waveform.AnchorMarker = WaveformAnchorMarker;
         Se.Settings.Waveform.FocusTextBoxAfterInsertNew = WaveformFocusTextboxAfterInsertNew;
 
         if (SelectedWaveformDrawStyle == Se.Language.General.Classic)

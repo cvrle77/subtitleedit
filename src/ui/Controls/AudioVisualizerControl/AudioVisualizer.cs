@@ -106,6 +106,16 @@ public class AudioVisualizer : Control
         set => SetValue(CurrentVideoPositionSecondsProperty, value);
     }
 
+    /// <summary>
+    /// Where on screen the play-head is anchored while the view follows it: the fraction of the
+    /// visible window it sits at. 0.5 is the centre (upstream behaviour); the fork's red marker
+    /// above the waveform sets this. Only honoured while <see cref="Fork.WaveformAnchorMarker"/> is
+    /// on, so turning the option off restores the classic centring.
+    /// </summary>
+    public double AnchorFraction { get; set; } = 0.5;
+
+    private double EffectiveAnchorFraction => Fork.WaveformAnchorMarker ? AnchorFraction : 0.5;
+
     public bool InvertMouseWheel
     {
         get => GetValue(InvertMouseWheelProperty);
@@ -1140,7 +1150,7 @@ public class AudioVisualizer : Control
             if (visibleSeconds > 0 &&
                 (keepCentered || newVideoPosition < StartPositionSeconds || newVideoPosition > EndPositionSeconds))
             {
-                var followStart = newVideoPosition - visibleSeconds / 2;
+                var followStart = newVideoPosition - visibleSeconds * EffectiveAnchorFraction;
                 StartPositionSeconds = followStart < 0 ? 0 : followStart;
                 OnHorizontalScroll?.Invoke(this, new PositionEventArgs { PositionInSeconds = StartPositionSeconds });
             }
@@ -1168,7 +1178,7 @@ public class AudioVisualizer : Control
             var videoPosition = RelativeXPositionToSeconds(point.X);
             if (Se.Settings.Waveform.CenterVideoPosition && WavePeaks != null)
             {
-                var halfWidthInSeconds = (Bounds.Width / 2) / (WavePeaks.SampleRate * ZoomFactor);
+                var halfWidthInSeconds = (Bounds.Width * EffectiveAnchorFraction) / (WavePeaks.SampleRate * ZoomFactor);
                 videoPosition = StartPositionSeconds + halfWidthInSeconds;
             }
             OnVideoPositionChanged?.Invoke(this, new PositionEventArgs { PositionInSeconds = videoPosition });
@@ -1180,7 +1190,7 @@ public class AudioVisualizer : Control
             // only worked while paused (#12864). Honor the scroll by seeking the video to the
             // new view center instead: the play-head stays pinned to the middle and the video
             // follows the scroll, matching SE 4. Paused scrolling stays free (no seek).
-            var halfWidthInSeconds = (Bounds.Width / 2) / (WavePeaks.SampleRate * ZoomFactor);
+            var halfWidthInSeconds = (Bounds.Width * EffectiveAnchorFraction) / (WavePeaks.SampleRate * ZoomFactor);
             OnVideoPositionChanged?.Invoke(this, new PositionEventArgs { PositionInSeconds = StartPositionSeconds + halfWidthInSeconds });
         }
 
