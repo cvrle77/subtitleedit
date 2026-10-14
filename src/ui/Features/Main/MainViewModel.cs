@@ -2071,6 +2071,7 @@ public partial class MainViewModel :
         var av = AudioVisualizer;
         if (av == null || !Fork.WaveformAnchorMarker || av.WavePeaks == null)
         {
+            Se.WriteToolsLog($"MAIN anchor glide SKIPPED: av={(av != null)}, markerOn={Fork.WaveformAnchorMarker}, peaks={(av?.WavePeaks != null)}");
             return;
         }
 
@@ -2078,6 +2079,7 @@ public partial class MainViewModel :
         var target = av.CurrentVideoPositionSeconds - visible * av.AnchorFraction;
         var screens = visible > 0 ? Math.Abs(target - av.StartPositionSeconds) / visible : 1.0;
         var durationMs = Math.Sqrt(Math.Min(1.0, screens)) * Se.Settings.Waveform.CenterSmoothSeconds * 1000.0;
+        Se.WriteToolsLog($"MAIN anchor glide: visible={visible:0.00}, target={target:0.00}, from={av.StartPositionSeconds:0.00}, screens={screens:0.000}, durationMs={durationMs:0}");
 
         _anchorGlideTimer?.Stop();
         _anchorGlideTimer = null;
@@ -36575,6 +36577,8 @@ public partial class MainViewModel :
         // directly so an ease here would fight the pointer.
         if (!vp.IsPlaying && !AudioVisualizer.IsEditingWithPointer && !AudioVisualizer.IsMouseWheelInteracting)
         {
+            var av = AudioVisualizer;
+            Se.WriteToolsLog($"MAIN anchor: click newPosition={newPosition:0.00}, playhead={av.CurrentVideoPositionSeconds:0.00}, start={av.StartPositionSeconds:0.00}, end={av.EndPositionSeconds:0.00}, anchor={av.AnchorFraction:0.00}, peaks={(av.WavePeaks != null)}, markerOn={Fork.WaveformAnchorMarker}");
             CenterOnAnchorNow();
         }
 
