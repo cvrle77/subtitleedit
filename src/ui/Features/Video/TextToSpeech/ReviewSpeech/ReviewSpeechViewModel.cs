@@ -794,7 +794,13 @@ public partial class ReviewSpeechViewModel : ObservableObject
         IsStopVisible = false;
         _playingRow = null;
         _activeClipRow = null;
-        _cursorTimer?.Stop();
+        // Keep the tick alive while a "glide to the anchor" is still pending (Stop left the play-head
+        // off the marker): the tick stops itself once it has settled.
+        if (!_settleToAnchor)
+        {
+            _cursorTimer?.Stop();
+        }
+
         try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* core not initialised yet */ }
         foreach (var l in Lines)
         {
