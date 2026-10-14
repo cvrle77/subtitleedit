@@ -1973,6 +1973,12 @@ public partial class MainViewModel :
         AlignPausedPlayerWithCursor();
         _pauseRequested = false;
         _playStartGate.PlayRequested(Stopwatch.GetTimestamp());
+
+        // Playback owns the view now: drop an anchor glide still running, or the centring (which
+        // stands down while a glide owns the view) would not follow the play-head at all.
+        Se.WriteToolsLog($"MAIN anchor: play start - glideRunning={(_anchorGlideTimer != null)}, pauseRequested={_pauseRequested}, pausedSettled={_playheadPausedSettled}");
+        _anchorGlideTimer?.Stop();
+        _anchorGlideTimer = null;
     }
 
     /// <summary>
