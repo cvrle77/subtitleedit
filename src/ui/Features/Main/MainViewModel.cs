@@ -24176,8 +24176,8 @@ public partial class MainViewModel :
         var av = AudioVisualizer;
         if (WaveformCenterAny)
         {
-            var waveformHalfSeconds = (av.EndPositionSeconds - av.StartPositionSeconds) / 2.0;
-            av.StartPositionSeconds = newPosition - waveformHalfSeconds;
+            var anchor = Fork.WaveformAnchorMarker ? av.AnchorFraction : 0.5;
+            av.StartPositionSeconds = newPosition - (av.EndPositionSeconds - av.StartPositionSeconds) * anchor;
         }
         else
         {
@@ -35233,7 +35233,7 @@ public partial class MainViewModel :
                     }
                     else if (vp.Position > av.EndPositionSeconds) // scrolling backward
                     {
-                        vp.Position = av.StartPositionSeconds + ((av.EndPositionSeconds - av.StartPositionSeconds) / 2.0);
+                        vp.Position = av.StartPositionSeconds + ((av.EndPositionSeconds - av.StartPositionSeconds) * (Fork.WaveformAnchorMarker ? av.AnchorFraction : 0.5));
                     }
                 }
                 else if (av != null && isPlaying && !WaveformCenterAny &&
@@ -35514,8 +35514,11 @@ public partial class MainViewModel :
                 var smoothCenter = WaveformCenterSmooth && !WaveformCenter;
                 if (centered)
                 {
-                    var halfSeconds = (av.EndPositionSeconds - av.StartPositionSeconds) / 2.0;
-                    var centerTarget = Math.Max(0, est - halfSeconds);
+                    // The fork's red marker: the play-head stops under it instead of in the middle
+                    // (Fork.WaveformAnchorMarker). 0.5 is the classic centre.
+                    var visibleSeconds = av.EndPositionSeconds - av.StartPositionSeconds;
+                    var anchor = Fork.WaveformAnchorMarker ? av.AnchorFraction : 0.5;
+                    var centerTarget = Math.Max(0, est - visibleSeconds * anchor);
                     var centerSuspended = av.IsEditingWithPointer || av.IsMouseWheelInteracting;
 
                     if (centerSuspended)
