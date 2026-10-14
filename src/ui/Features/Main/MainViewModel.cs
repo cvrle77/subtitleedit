@@ -2057,9 +2057,15 @@ public partial class MainViewModel :
         CenterOnAnchorNow();
     }
 
-    // Fork: after a pause the view may sit away from the marker - put the play-head under the anchor
-    // at once, since a paused view has no cursor tick to ease it there (the review does the same on
-    // Stop). No-op unless the anchor marker is on.
+    // Fork: after a pause the view may sit away from the marker - glide the play-head under the
+    // anchor (distance-based, same curve as the review). A paused view has no cursor tick to ease
+    // it, so this runs its own timer. No-op unless the anchor marker is on.
+    private DispatcherTimer? _anchorGlideTimer;
+    private double _anchorGlideFrom;
+    private double _anchorGlideTo;
+    private long _anchorGlideStartTicks;
+    private double _anchorGlideMs;
+
     private void CenterOnAnchorNow()
     {
         var av = AudioVisualizer;
@@ -2068,7 +2074,37 @@ public partial class MainViewModel :
             return;
         }
 
-        av.StartPositionSeconds = av.CurrentVideoPositionSeconds - (av.EndPositionSeconds - av.StartPositionSeconds) * av.AnchorFraction;
+        var visible = av.EndPositionSeconds - av.StartPositionSeconds;
+        var target = av.CurrentVideoPositionSeconds - visible * av.AnchorFraction;
+        var screens = visible > 0 ? Math.Abs(target - av.StartPositionSeconds) / visible : 1.0;
+        var durationMs = Math.Sqrt(Math.Min(1.0, screens)) * Se.Settings.Waveform.CenterSmoothSeconds * 1000.0;
+
+        _anchorGlideTimer?.Stop();
+        _anchorGlideTimer = null;
+        if (durationMs <= 1)
+        {
+            // Nothing to glide (already there, or adjacent): land at once.
+            av.StartPositionSeconds = target;
+            return;
+        }
+
+        _anchorGlideFrom = av.StartPositionSeconds;
+        _anchorGlideTo = target;
+        _anchorGlideStartTicks = Environment.TickCount64;
+        _anchorGlideMs = durationMs;
+        _anchorGlideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _anchorGlideTimer.Tick += (_, _) =>
+        {
+            var t = Math.Clamp((Environment.TickCount64 - _anchorGlideStartTicks) / _anchorGlideMs, 0, 1);
+            var eased = 1 - Math.Pow(1 - t, 3);
+            av.StartPositionSeconds = _anchorGlideFrom + (_anchorGlideTo - _anchorGlideFrom) * eased;
+            if (t >= 1)
+            {
+                _anchorGlideTimer?.Stop();
+                _anchorGlideTimer = null;
+            }
+        };
+        _anchorGlideTimer.Start();
     }
 
     // Start playback. Always go through here rather than calling Play() directly: a pending pause
