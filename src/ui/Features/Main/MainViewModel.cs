@@ -36586,17 +36586,6 @@ public partial class MainViewModel :
         newPosition = Math.Max(0, newPosition);
         newPosition = Math.Min(vp.Duration, newPosition);
 
-        // Fork: a paused click in empty space (and a scrub) lands here, not on the block-click path -
-        // glide the play-head under the anchor. Skipped while the user drags, which sets the view
-        // directly so an ease here would fight the pointer.
-        if (!vp.IsPlaying && !AudioVisualizer.IsEditingWithPointer && !AudioVisualizer.IsMouseWheelInteracting)
-        {
-            var av = AudioVisualizer;
-            Se.WriteToolsLog($"MAIN anchor: click newPosition={newPosition:0.00}, playhead={av.CurrentVideoPositionSeconds:0.00}, start={av.StartPositionSeconds:0.00}, end={av.EndPositionSeconds:0.00}, anchor={av.AnchorFraction:0.00}, peaks={(av.WavePeaks != null)}, markerOn={Fork.WaveformAnchorMarker}");
-            // Anchor the CLICKED position, not the live play-head (which the player is still settling).
-            CenterOnAnchorNow(newPosition);
-        }
-
         // Throttled: the pin below keeps the cursor/centered view exact per input event; the
         // actual mpv seek is issued at most every ScrubSeekMinIntervalMs, and a deferred target
         // is landed by the trailing check in the cursor timer. See the fields for the why.
@@ -38216,6 +38205,13 @@ public partial class MainViewModel :
         {
             // Land the playhead on a frame boundary when "Snap to frames" is on.
             var seconds = SnapSecondsToFrame(e.Seconds);
+
+            // Fork: glide the view so the clicked spot lands under the anchor. This is the real click
+            // path (OnVideoPositionChanged only fires for the wheel and right-click). It runs before
+            // the action below, whose pause calls CenterOnAnchorNow with the live play-head - stale
+            // until this click's seek has landed, which made the first click a no-op.
+            Se.WriteToolsLog($"MAIN anchor click: seconds={seconds:0.00}, playhead={AudioVisualizer.CurrentVideoPositionSeconds:0.00}, start={AudioVisualizer.StartPositionSeconds:0.00}, end={AudioVisualizer.EndPositionSeconds:0.00}, anchor={AudioVisualizer.AnchorFraction:0.00}, peaks={(AudioVisualizer.WavePeaks != null)}");
+            CenterOnAnchorNow(seconds);
             switch (action)
             {
                 case WaveformSingleClickActionType.SetVideoPositionAndPauseAndSelectSubtitle:
