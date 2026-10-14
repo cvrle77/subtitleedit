@@ -807,6 +807,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         Se.WriteToolsLog($"TTS review: PlayAudio \"{Path.GetFileName(fileName)}\" (original={_isOriginalAudioActive}, video={(VideoPlayerControl?.VideoPlayer.IsPlaying.ToString() ?? "null")}, row={(_playingRow == null ? "null" : "yes")})");
 
+        // Any playback start cancels a pending "glide to the anchor" left by Stop.
+        _settleToAnchor = false;
+        _settleTicks = 0;
+
         // The video is the master clock in both modes: it plays from the block start and the
         // play-head follows it. The sound - Original or generated - comes from the clip player
         // (see ApplyVideoAudio).
@@ -1233,6 +1237,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // the anchor, so the view scrolls to put the play-head there instead of always in the middle.
     private double _anchorFraction = 0.5;
 
+    // Set when Stop leaves the play-head away from the marker: the cursor tick keeps running until
+    // the view has glided the play-head under the anchor. Cleared by any playback start AND by the
+    // tick's own hard limit, so it can never leave the play-head frozen.
+    private bool _settleToAnchor;
+    private int _settleTicks;
+
     public double AnchorFraction => _anchorFraction;
 
     internal void SetAnchorFraction(double fraction)
@@ -1355,6 +1365,22 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         if (_isClosing)
         {
+            return;
+        }
+
+        // After Stop the view may still have to glide the play-head under the marker. The tick guard
+        // is a hard limit (10 s at 60 fps): even if the ease never reports itself finished, the flag
+        // is dropped here rather than leaving the play-head frozen.
+        if (_settleToAnchor)
+        {
+            SetWaveformPlayhead(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+            if (!_centerAnimActive || ++_settleTicks > 600)
+            {
+                _settleToAnchor = false;
+                _settleTicks = 0;
+                _cursorTimer?.Stop();
+            }
+
             return;
         }
 
@@ -3961,7 +3987,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         _playingRow = null;
         _activeClipRow = null;
-        _cursorTimer?.Stop();
+        // Stop can leave the play-head away from the marker: keep the cursor tick running so the view
+        // keeps gliding until the play-head lands under the anchor. Every playback start clears the
+        // flag, and the tick stops itself once settled (see CursorTick / PlayAudio).
+        _settleToAnchor = true;
+        _settleTicks = 0;
+        _cursorTimer?.Start();
         try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* not ready */ }
         IsPlayVisible = true;
         IsStopVisible = false;
