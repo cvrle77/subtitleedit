@@ -1957,6 +1957,9 @@ public partial class MainViewModel :
         _playStartGate.PauseRequested(); // a pause supersedes any play still waiting to be observed
         _playheadPausedSettled = false; // reconcile the cursor to mpv's final frame once this pause settles
         _playheadPauseSettleTs = Stopwatch.GetTimestamp();
+        // Every pause in the app funnels through here, so this is the one place that has to pull the
+        // view onto the anchor (Fork.WaveformAnchorMarker).
+        CenterOnAnchorNow();
     }
 
     // Playback (re)started, so a pause freeze from a moment ago is stale: while it is set the cursor
