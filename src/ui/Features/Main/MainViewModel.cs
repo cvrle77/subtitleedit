@@ -35561,7 +35561,7 @@ public partial class MainViewModel :
                             var screens = visible > 0
                                 ? Math.Abs(centerTarget - _centerAnimFromSeconds) / visible
                                 : 1.0;
-                            var duration = Math.Min(1.0, screens) * Se.Settings.Waveform.CenterSmoothSeconds;
+                            var duration = Math.Sqrt(Math.Min(1.0, screens)) * Se.Settings.Waveform.CenterSmoothSeconds;
                             var progress = (Stopwatch.GetTimestamp() - _centerAnimStartTicks) / (double)Stopwatch.Frequency / duration;
                             if (progress >= 1)
                             {
