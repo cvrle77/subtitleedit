@@ -35518,7 +35518,9 @@ public partial class MainViewModel :
                     // (Fork.WaveformAnchorMarker). 0.5 is the classic centre.
                     var visibleSeconds = av.EndPositionSeconds - av.StartPositionSeconds;
                     var anchor = Fork.WaveformAnchorMarker ? av.AnchorFraction : 0.5;
-                    var centerTarget = Math.Max(0, est - visibleSeconds * anchor);
+                    // No 0 clamp: the view may run left of zero (empty space) so the play-head can
+                    // reach the anchor even at the very start of the video.
+                    var centerTarget = est - visibleSeconds * anchor;
                     var centerSuspended = av.IsEditingWithPointer || av.IsMouseWheelInteracting;
 
                     if (centerSuspended)

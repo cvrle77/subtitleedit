@@ -1151,7 +1151,9 @@ public class AudioVisualizer : Control
                 (keepCentered || newVideoPosition < StartPositionSeconds || newVideoPosition > EndPositionSeconds))
             {
                 var followStart = newVideoPosition - visibleSeconds * EffectiveAnchorFraction;
-                StartPositionSeconds = followStart < 0 ? 0 : followStart;
+                // With the anchor marker the view may run left of zero (empty space) - clamping it
+                // there is what stopped the play-head reaching the anchor at the video start.
+                StartPositionSeconds = Fork.WaveformAnchorMarker ? followStart : (followStart < 0 ? 0 : followStart);
                 OnHorizontalScroll?.Invoke(this, new PositionEventArgs { PositionInSeconds = StartPositionSeconds });
             }
 

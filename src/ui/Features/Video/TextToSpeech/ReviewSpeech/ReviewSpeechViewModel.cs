@@ -1286,7 +1286,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
         {
             var windowSeconds = av.EndPositionSeconds - av.StartPositionSeconds;
             var anchor = Fork.ReviewAnchorMarker ? _anchorFraction : 0.5;
-            var centerTarget = Math.Max(0, seconds - windowSeconds * anchor);
+            // No 0 clamp: at the video start the view has to be able to run left of zero (empty
+            // space) or the play-head can never reach the anchor there.
+            var centerTarget = seconds - windowSeconds * anchor;
             var centerSuspended = av.IsEditingWithPointer || av.IsMouseWheelInteracting;
 
             if (centerSuspended)
