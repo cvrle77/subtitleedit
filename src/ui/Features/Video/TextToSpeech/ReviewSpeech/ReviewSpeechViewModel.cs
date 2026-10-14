@@ -1239,15 +1239,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // the anchor, so the view scrolls to put the play-head there instead of always in the middle.
     private double _anchorFraction = 0.5;
 
-    // Last anchor diagnostic line written, so the 60 fps path cannot flood the log.
-    private string _lastAnchorDiag = string.Empty;
-
     public double AnchorFraction => _anchorFraction;
 
     internal void SetAnchorFraction(double fraction)
     {
         _anchorFraction = Math.Clamp(fraction, 0.02, 0.98);
-        Se.WriteToolsLog($"TTS review anchor drag: fraction={_anchorFraction:0.00}, playhead={AudioVisualizer?.CurrentVideoPositionSeconds:0.00}, start={AudioVisualizer?.StartPositionSeconds:0.00}, end={AudioVisualizer?.EndPositionSeconds:0.00}, peaks={(AudioVisualizer?.WavePeaks != null)}");
         SetWaveformPlayhead(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
     }
 
@@ -1286,23 +1282,6 @@ public partial class ReviewSpeechViewModel : ObservableObject
         // flag, and this window must follow, otherwise turning on only "Center (smooth)" left the
         // playhead walking off the right edge here.
         var centerEnabled = Se.Settings.Waveform.CenterVideoPosition || Se.Settings.Waveform.CenterVideoPositionSmooth;
-
-        // Diagnostic: why does the anchor not engage before the first Play? Logs the state only when
-        // it looks degenerate (no peaks, zero-width window) or when the values change, so it cannot
-        // flood the log at 60 fps.
-        var diag = $"TTS review anchor: peaks={(av.WavePeaks != null)}, window={av.EndPositionSeconds - av.StartPositionSeconds:0.00}, start={av.StartPositionSeconds:0.00}, seconds={seconds:0.00}, anchor={_anchorFraction:0.00}, enabled={centerEnabled}, anim={_centerAnimActive}";
-        if (av.WavePeaks == null || av.EndPositionSeconds - av.StartPositionSeconds <= 0)
-        {
-            if (diag != _lastAnchorDiag)
-            {
-                _lastAnchorDiag = diag;
-                Se.WriteToolsLog(diag);
-            }
-        }
-        else
-        {
-            _lastAnchorDiag = diag;
-        }
 
         if (centerEnabled && av.WavePeaks != null)
         {

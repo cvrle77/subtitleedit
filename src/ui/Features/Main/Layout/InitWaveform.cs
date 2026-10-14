@@ -510,6 +510,10 @@ public class InitWaveform
                 }
 
                 vm.AudioVisualizer.AnchorFraction = Math.Clamp(e.GetPosition(vm.AudioVisualizer).X / vm.AudioVisualizer.Bounds.Width, 0.02, 0.98);
+                // Move the view at once so the play-head sits under the new anchor - with nothing
+                // playing there is no cursor tick to ease it there.
+                var av = vm.AudioVisualizer;
+                av.StartPositionSeconds = av.CurrentVideoPositionSeconds - (av.EndPositionSeconds - av.StartPositionSeconds) * av.AnchorFraction;
                 PlaceMarker();
                 e.Handled = true;
             };
