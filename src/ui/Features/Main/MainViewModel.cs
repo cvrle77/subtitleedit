@@ -24245,7 +24245,7 @@ public partial class MainViewModel :
         }
 
         var av = AudioVisualizer;
-        if (WaveformCenterAny)
+        if (WaveformCenterAny && _anchorGlideTimer == null)
         {
             var anchor = Fork.WaveformAnchorMarker ? av.AnchorFraction : 0.5;
             av.StartPositionSeconds = newPosition - (av.EndPositionSeconds - av.StartPositionSeconds) * anchor;
@@ -35580,7 +35580,7 @@ public partial class MainViewModel :
                                          Se.Settings.Waveform.CenterVideoPositionAlsoWhenPaused &&
                                          !av.IsEditingWithPointer &&
                                          Math.Abs(est - _pausedCenterLastSeconds) > 0.001;
-                var centered = WaveformCenterAny && av.WavePeaks != null && (isPlaying || centerPausedChange);
+                var centered = _anchorGlideTimer == null && WaveformCenterAny && av.WavePeaks != null && (isPlaying || centerPausedChange);
                 // Only the smooth toggle eases; the original Center toggle keeps its instant snap.
                 var smoothCenter = WaveformCenterSmooth && !WaveformCenter;
                 if (centered)
