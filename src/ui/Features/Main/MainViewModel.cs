@@ -2075,6 +2075,16 @@ public partial class MainViewModel :
             return;
         }
 
+        // A glide is already running: ignore this call. One click fires several position events, and
+        // the player keeps reporting its own settling position while the view glides - recomputing
+        // the target on each of them moved it (337 -> 335 -> 339 -> 336) and restarted the glide, so
+        // the view never landed and visibly jerked back and forth. Pin the target for the glide's
+        // lifetime; the next click computes a fresh one.
+        if (_anchorGlideTimer != null)
+        {
+            return;
+        }
+
         var visible = av.EndPositionSeconds - av.StartPositionSeconds;
         var target = av.CurrentVideoPositionSeconds - visible * av.AnchorFraction;
         var screens = visible > 0 ? Math.Abs(target - av.StartPositionSeconds) / visible : 1.0;
