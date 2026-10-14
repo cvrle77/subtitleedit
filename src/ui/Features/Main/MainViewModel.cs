@@ -2066,7 +2066,13 @@ public partial class MainViewModel :
     private long _anchorGlideStartTicks;
     private double _anchorGlideMs;
 
-    private void CenterOnAnchorNow()
+    private void CenterOnAnchorNow() => CenterOnAnchorNow(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+
+    // Anchor the given play-head position. The caller passes the position the user acted on (the
+    // clicked spot) rather than reading the live play-head: right after a click the player is still
+    // settling and PinPlayheadTo moves it by ~2 s, which moved the target and made the glide miss
+    // the anchor or run again and again.
+    private void CenterOnAnchorNow(double playheadSeconds)
     {
         var av = AudioVisualizer;
         if (av == null || !Fork.WaveformAnchorMarker || av.WavePeaks == null)
@@ -2076,20 +2082,18 @@ public partial class MainViewModel :
         }
 
         // A glide is already running: ignore this call. One click fires several position events, and
-        // the player keeps reporting its own settling position while the view glides - recomputing
-        // the target on each of them moved it (337 -> 335 -> 339 -> 336) and restarted the glide, so
-        // the view never landed and visibly jerked back and forth. Pin the target for the glide's
-        // lifetime; the next click computes a fresh one.
+        // recomputing the target on each of them restarted the glide, so the view never landed and
+        // visibly jerked back and forth.
         if (_anchorGlideTimer != null)
         {
             return;
         }
 
         var visible = av.EndPositionSeconds - av.StartPositionSeconds;
-        var target = av.CurrentVideoPositionSeconds - visible * av.AnchorFraction;
+        var target = playheadSeconds - visible * av.AnchorFraction;
         var screens = visible > 0 ? Math.Abs(target - av.StartPositionSeconds) / visible : 1.0;
         var durationMs = Math.Sqrt(Math.Min(1.0, screens)) * Se.Settings.Waveform.CenterSmoothSeconds * 1000.0;
-        Se.WriteToolsLog($"MAIN anchor glide: visible={visible:0.00}, target={target:0.00}, from={av.StartPositionSeconds:0.00}, screens={screens:0.000}, durationMs={durationMs:0}");
+        Se.WriteToolsLog($"MAIN anchor glide: playhead={playheadSeconds:0.00}, visible={visible:0.00}, target={target:0.00}, from={av.StartPositionSeconds:0.00}, screens={screens:0.000}, durationMs={durationMs:0}");
 
         _anchorGlideTimer?.Stop();
         _anchorGlideTimer = null;
@@ -36589,7 +36593,8 @@ public partial class MainViewModel :
         {
             var av = AudioVisualizer;
             Se.WriteToolsLog($"MAIN anchor: click newPosition={newPosition:0.00}, playhead={av.CurrentVideoPositionSeconds:0.00}, start={av.StartPositionSeconds:0.00}, end={av.EndPositionSeconds:0.00}, anchor={av.AnchorFraction:0.00}, peaks={(av.WavePeaks != null)}, markerOn={Fork.WaveformAnchorMarker}");
-            CenterOnAnchorNow();
+            // Anchor the CLICKED position, not the live play-head (which the player is still settling).
+            CenterOnAnchorNow(newPosition);
         }
 
         // Throttled: the pin below keeps the cursor/centered view exact per input event; the
