@@ -1973,6 +1973,12 @@ public partial class MainViewModel :
         AlignPausedPlayerWithCursor();
         _pauseRequested = false;
         _playStartGate.PlayRequested(Stopwatch.GetTimestamp());
+
+        // Playback owns the view now: drop any anchor glide still running, or the centring below
+        // (which stands down while a glide owns the view) would not follow the play-head at all.
+        Se.WriteToolsLog($"MAIN anchor: play start - glideRunning={(_anchorGlideTimer != null)}, pauseRequested={_pauseRequested}, pausedSettled={_playheadPausedSettled}");
+        _anchorGlideTimer?.Stop();
+        _anchorGlideTimer = null;
     }
 
     /// <summary>
@@ -2081,13 +2087,10 @@ public partial class MainViewModel :
             return;
         }
 
-        // A glide is already running: ignore this call. One click fires several position events, and
-        // recomputing the target on each of them restarted the glide, so the view never landed and
-        // visibly jerked back and forth.
-        if (_anchorGlideTimer != null)
-        {
-            return;
-        }
+        // Always restart: a click is one event now, so there is no burst to coalesce - and a stale
+        // glide left running must not swallow the new target (that made a click do nothing).
+        _anchorGlideTimer?.Stop();
+        _anchorGlideTimer = null;
 
         var visible = av.EndPositionSeconds - av.StartPositionSeconds;
         var target = playheadSeconds - visible * av.AnchorFraction;
