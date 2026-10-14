@@ -1233,6 +1233,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // the anchor, so the view scrolls to put the play-head there instead of always in the middle.
     private double _anchorFraction = 0.5;
 
+    // Set when Stop leaves the play-head away from the marker: the cursor tick keeps running until
+    // the view has glided the play-head under the anchor.
+    private bool _settleToAnchor;
+
     public double AnchorFraction => _anchorFraction;
 
     internal void SetAnchorFraction(double fraction)
@@ -1355,6 +1359,20 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         if (_isClosing)
         {
+            return;
+        }
+
+        // After Stop the view may still have to glide the play-head under the marker: run that ease
+        // here (the playing paths below return early), and stop the tick once it has settled.
+        if (_settleToAnchor)
+        {
+            SetWaveformPlayhead(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+            if (!_centerAnimActive)
+            {
+                _settleToAnchor = false;
+                _cursorTimer?.Stop();
+            }
+
             return;
         }
 
@@ -3961,7 +3979,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         _playingRow = null;
         _activeClipRow = null;
-        _cursorTimer?.Stop();
+        // Stop can leave the play-head away from the marker: keep the cursor tick running so the
+        // view keeps gliding until the play-head lands under the anchor - the tick stops itself then
+        // (see CursorTick).
+        _settleToAnchor = true;
+        _cursorTimer?.Start();
         try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* not ready */ }
         IsPlayVisible = true;
         IsStopVisible = false;
