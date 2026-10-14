@@ -85,11 +85,7 @@ public class AudioVisualizer : Control
     public double StartPositionSeconds
     {
         get => GetValue(StartPositionSecondsProperty);
-        // With the anchor marker the view may sit left of zero (empty space) so the play-head can
-        // reach the anchor even at the very start of the video; otherwise it stays clamped.
-        set => SetValue(StartPositionSecondsProperty, Fork.WaveformAnchorMarker
-            ? Math.Min(value, MaxStartPositionSeconds)
-            : Math.Clamp(value, 0, MaxStartPositionSeconds));
+        set => SetValue(StartPositionSecondsProperty, Math.Clamp(value, 0, MaxStartPositionSeconds));
     }
 
     public double ZoomFactor
