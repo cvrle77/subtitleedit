@@ -35553,7 +35553,15 @@ public partial class MainViewModel :
 
                         if (_centerAnimActive)
                         {
-                            var duration = Math.Max(0.1, Se.Settings.Waveform.CenterSmoothSeconds);
+                            // Distance-based duration: one screen of travel takes CenterSmoothSeconds,
+                            // an adjacent block (nothing to skip) takes none - a 0 duration makes the
+                            // progress check below snap at once. Measured in screens, so the feel does
+                            // not change with the zoom level.
+                            var visible = av.EndPositionSeconds - av.StartPositionSeconds;
+                            var screens = visible > 0
+                                ? Math.Abs(centerTarget - _centerAnimFromSeconds) / visible
+                                : 1.0;
+                            var duration = Math.Min(1.0, screens) * Se.Settings.Waveform.CenterSmoothSeconds;
                             var progress = (Stopwatch.GetTimestamp() - _centerAnimStartTicks) / (double)Stopwatch.Frequency / duration;
                             if (progress >= 1)
                             {
