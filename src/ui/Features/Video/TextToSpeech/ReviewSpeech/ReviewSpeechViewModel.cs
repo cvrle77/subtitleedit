@@ -1957,6 +1957,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // video to seek, so nothing plays until the user presses Play.
     public void OnWaveformPositionClicked(double seconds)
     {
+        Se.WriteToolsLog($"TTS review click: seconds={seconds:0.00}, playingRow={(_playingRow == null ? "null" : "yes")}, playhead={AudioVisualizer?.CurrentVideoPositionSeconds:0.00}, start={AudioVisualizer?.StartPositionSeconds:0.00}, end={AudioVisualizer?.EndPositionSeconds:0.00}, anchor={_anchorFraction:0.00}, anim={_centerAnimActive}");
         if (_playingRow == null)
         {
             SetWaveformPlayhead(seconds);
