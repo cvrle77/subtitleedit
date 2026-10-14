@@ -36570,6 +36570,14 @@ public partial class MainViewModel :
         newPosition = Math.Max(0, newPosition);
         newPosition = Math.Min(vp.Duration, newPosition);
 
+        // Fork: a paused click in empty space (and a scrub) lands here, not on the block-click path -
+        // glide the play-head under the anchor. Skipped while the user drags, which sets the view
+        // directly so an ease here would fight the pointer.
+        if (!vp.IsPlaying && !AudioVisualizer.IsEditingWithPointer && !AudioVisualizer.IsMouseWheelInteracting)
+        {
+            CenterOnAnchorNow();
+        }
+
         // Throttled: the pin below keeps the cursor/centered view exact per input event; the
         // actual mpv seek is issued at most every ScrubSeekMinIntervalMs, and a deferred target
         // is landed by the trailing check in the cursor timer. See the fields for the why.
