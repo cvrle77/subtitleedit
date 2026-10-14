@@ -381,6 +381,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // turning the switch off hides it at once.
     public bool IsCreditsPanelVisible => Fork.ReviewCredits && IsElevenLabsCreditsVisible;
 
+    // The binding listens on IsCreditsPanelVisible, so a change of the credit state alone (an
+    // imported session fetching the balance) has to announce the computed name too - without this
+    // the panel only appeared once the switch was toggled.
+    partial void OnIsElevenLabsCreditsVisibleChanged(bool value) => OnPropertyChanged(nameof(IsCreditsPanelVisible));
+
     private int? _elevenLabsCreditsBaseline;
 
     // The review's video surface (left column, above the tags). Its sound follows the
