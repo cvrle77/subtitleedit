@@ -115,7 +115,19 @@ public class AudioVisualizer : Control
     public double CurrentVideoPositionSeconds
     {
         get => GetValue(CurrentVideoPositionSecondsProperty);
-        set => SetValue(CurrentVideoPositionSecondsProperty, value);
+        set
+        {
+            // Diagnostic (anchor work): who moves the play-head while the view is at rest? The glide
+            // target is derived from it, so a drifting play-head is what made the target wander and
+            // the view re-glide (and jerk).
+            if (Fork.WaveformAnchorMarker && GetIsVideoPlaying?.Invoke() != true)
+            {
+                var caller = new System.Diagnostics.StackTrace(1, false).GetFrame(0)?.GetMethod()?.Name ?? "?";
+                Se.WriteToolsLog($"MAIN playhead set: {value:0.00} (was {CurrentVideoPositionSeconds:0.00}) by {caller}");
+            }
+
+            SetValue(CurrentVideoPositionSecondsProperty, value);
+        }
     }
 
     /// <summary>
