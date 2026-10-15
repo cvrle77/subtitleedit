@@ -5980,7 +5980,9 @@
     <Word to="ukljuČicu" from="upljuČicu" />
     <Word to="UkljuČicu" from="UpljuČicu" />
     <Word to="celu" from="Ćevu" />
-  </WholeWords>
+      <Word to="ukrojite" from="udrojite" />
+    <Word to="Ukrojite" from="Udrojite" />
+</WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
     <LinePart to="napravićeš" from="napravit ćeš" />
@@ -6451,7 +6453,13 @@
     <LinePart to="ZavisiĆemo" from="Zavisit Ćemo" />
     <LinePart to="zavisiĆete" from="zavisit Ćete" />
     <LinePart to="ZavisiĆete" from="Zavisit Ćete" />
-  </PartialLines>
+      <LinePart to="Taj deo vam" from="Taj delo" />
+    <LinePart to="taj deo vam" from="taj delo" />
+    <LinePart to="uključim rernu" from="uključim jednu" />
+    <LinePart to="Uključim rernu" from="Uključim jednu" />
+    <LinePart to="spustiću" from="spustit ću" />
+    <LinePart to="Spustiću" from="Spustit ću" />
+</PartialLines>
   <BeginLines />
   <EndLines />
   <WholeLines />
