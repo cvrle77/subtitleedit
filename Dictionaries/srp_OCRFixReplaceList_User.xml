@@ -5982,6 +5982,35 @@
     <Word to="celu" from="Ćevu" />
       <Word to="ukrojite" from="udrojite" />
     <Word to="Ukrojite" from="Udrojite" />
+    <Word to="pistaćima" from="pistačima" />
+    <Word to="Pistaćima" from="Pistačima" />
+    <Word to="pistaća" from="pistača" />
+    <Word to="Pistaća" from="Pistača" />
+    <Word to="pistać" from="pistač" />
+    <Word to="Pistać" from="Pistač" />
+    <Word to="Pistać" from="Pistec" />
+    <Word to="samlela" from="samolila" />
+    <Word to="Samlela" from="Samolila" />
+    <Word to="isečete" from="isječete" />
+    <Word to="Isečete" from="Isječete" />
+    <Word to="otopljenim" from="otupljenim" />
+    <Word to="Otopljenim" from="Otupljenim" />
+    <Word to="maslacem" from="maslacom" />
+    <Word to="Maslacem" from="Maslacom" />
+    <Word to="sasvim" from="zasvim" />
+    <Word to="Sasvim" from="Zasvim" />
+    <Word to="pistaća" from="pistacja" />
+    <Word to="Pistaća" from="Pistacja" />
+    <Word to="pistaća" from="pistacija" />
+    <Word to="Pistaća" from="Pistacija" />
+    <Word to="maslac" from="mastac" />
+    <Word to="Maslac" from="Mastac" />
+    <Word to="romboide" from="ramboide" />
+    <Word to="Romboide" from="Ramboide" />
+    <Word to="trouglove" from="troglove" />
+    <Word to="Trouglove" from="Troglove" />
+    <Word to="bikarbone" from="bikargore" />
+    <Word to="Bikarbone" from="Bikargore" />
 </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
