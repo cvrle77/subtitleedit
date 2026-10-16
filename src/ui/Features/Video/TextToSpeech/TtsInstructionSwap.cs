@@ -59,7 +59,7 @@ public static class TtsInstructionSwap
 
     private static bool UsesInstructionSwap(ITtsEngine? engine)
     {
-        return engine is Qwen3TtsCpp or Qwen3TtsCrispAsr or OmniVoiceTtsCpp;
+        return engine is Qwen3TtsCpp or Qwen3TtsCrispAsr or OmniVoiceTtsCpp or BreezeTtsAudioCpp;
     }
 
     private static string? Swap(ITtsEngine? engine, string? instruction)

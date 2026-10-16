@@ -693,7 +693,17 @@ public class ElevenLabs : ITtsEngine
                 var fileName = Path.Combine(outputDir, Guid.NewGuid() + ".mp3");
                 if (!await CutChunkAudioAsync(ffmpeg, chunkFile, start, end, fileName, cancellationToken))
                 {
-                    return (new List<TtsResult>(), "Could not cut the ElevenLabs chunk audio (ffmpeg failed).");
+                    // Keep the cues already cut and mark only this one failed. Returning an empty
+                    // list made the caller treat the whole chunk as failed and regenerate every cue
+                    // in it per line - a second paid request for audio ElevenLabs had already
+                    // generated and billed.
+                    results.Add(new TtsResult
+                    {
+                        Text = cueTexts[i],
+                        Error = true,
+                        ErrorMessage = "Could not cut the ElevenLabs chunk audio (ffmpeg failed).",
+                    });
+                    continue;
                 }
 
                 results.Add(new TtsResult { Text = cueTexts[i], FileName = fileName, RequestId = i == 0 ? timed.RequestId : string.Empty });
@@ -810,8 +820,7 @@ public class ElevenLabs : ITtsEngine
             "eleven_v4",
             "eleven_turbo_v2_5",
             "eleven_v3",
-            "eleven_multilingual_v2",
-            "eleven_turbo_v2_5"
+            "eleven_multilingual_v2"
         };
 
         if (!Fork.ElevenLabsV4)

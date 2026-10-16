@@ -25,12 +25,13 @@ public class SileroVadTests
     }
 
     [Fact]
-    public void FindSpeechStartAfter_SegmentStartingAtPosition_IsSkipped()
+    public void FindSpeechStartAfter_SegmentStartingAtPosition_ReturnsThatSegmentStart()
     {
         var segments = new List<(double Start, double End)> { (9, 11), (15, 17) };
 
-        // A cut exactly on a segment start belongs to that segment, not the next one.
-        Assert.Equal(15, SileroVad.FindSpeechStartAfter(segments, 9));
+        // A cut exactly on a segment start belongs to that segment, not the next one - returning
+        // the next start would move the line forward and drop the speech in between.
+        Assert.Equal(9, SileroVad.FindSpeechStartAfter(segments, 9));
     }
 
     [Fact]

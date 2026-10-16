@@ -837,6 +837,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
                     ?? 0
                 : AudioVisualizer?.CurrentVideoPositionSeconds ?? 0;
             _playingRow = startRow;
+            // Set before the clip is loaded: the cursor tick starts the row's clip whenever it sees
+            // a row that is not _activeClipRow, so leaving this null across the load started the
+            // same row twice - two mpv cores, and the second one destroyed the first mid-load.
+            _activeClipRow = startRow;
 
             if (!video.IsPlaying)
             {
@@ -872,6 +876,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
         if (string.IsNullOrEmpty(clip))
         {
             // e.g. ffmpeg is not configured, so the original audio cannot be cut - stay silent.
+            // The rows were disabled and the playback timer is stopped by now (only StartClipAsync
+            // restarts it), so a bare return left every button dead until the window was reopened.
+            ResetPlaybackUiState();
             return;
         }
 
@@ -2661,7 +2668,18 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
             if (!sourceIsTarget && !string.IsNullOrEmpty(targetFileName))
             {
-                File.Copy(sourceFileName, targetFileName, true);
+                try
+                {
+                    File.Copy(sourceFileName, targetFileName, true);
+                }
+                catch (Exception e)
+                {
+                    // A locked source (a player holding the wav) used to kill the whole export
+                    // half-way: some clips already replaced and no JSON written, so the folder no
+                    // longer matched any session. Count it like a missing file and keep going.
+                    missingAudioCount++;
+                    SeLogger.Error(e, $"ReviewSpeech: could not export the audio file \"{targetFileName}\"");
+                }
             }
 
             exportFormat.Items.Add(new TtsImportExportItem
@@ -3677,6 +3695,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
             OriginalText = text,
             OriginalStartMs = source.OriginalStartMs,
             OriginalEndMs = source.OriginalEndMs,
+            FromSplitOrMerge = true,
         };
         row.StartHistory();
         return row;
@@ -4063,10 +4082,21 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         // The copy that reaches the main subtitle is cleaned of TTS-only markup (audio tags,
         // (,,,) pauses, CAPS emphasis) while keeping every real edit the user made.
+        // One change per original subtitle line. Rows born from Split share their original line's
+        // time codes, so publishing each half separately made the consumer keep one of the two
+        // changes (same range) and the line lost the other half's text - join them instead. A row
+        // born from Merge spans TWO original lines and has no single range to map back to, so it
+        // publishes nothing (the main subtitle keeps its two lines).
         TextChanges = Lines
-            .Where(row => row.Text != row.OriginalText)
-            .Select(row => new ReviewTextChange(
-                row.OriginalStartMs, row.OriginalEndMs, Fork.TtsCleanText ? TtsTextCleaner.Clean(row.Text) : row.Text))
+            .GroupBy(row => (row.OriginalStartMs, row.OriginalEndMs))
+            .Where(g => g.Any(row => row.Text != row.OriginalText))
+            .Where(g => !g.First().FromSplitOrMerge || g.Count() > 1)
+            .Select(g =>
+            {
+                var text = string.Join(" ", g.Select(row => row.Text));
+                return new ReviewTextChange(g.Key.OriginalStartMs, g.Key.OriginalEndMs,
+                    Fork.TtsCleanText ? TtsTextCleaner.Clean(text) : text);
+            })
             .ToList();
 
         Se.SaveSettings();

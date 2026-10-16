@@ -31,6 +31,11 @@ public partial class ReviewRow : ObservableObject
     public double OriginalStartMs { get; set; }
     public double OriginalEndMs { get; set; }
 
+    // True for rows born from Split/Merge: two Split halves share their original line's time codes
+    // (so their texts are published joined), while a merged row spans two original lines and cannot
+    // be mapped back to one - see the publish in ReviewSpeechViewModel.Ok.
+    public bool FromSplitOrMerge { get; set; }
+
     public ReviewRow()
     {
         Include = true;
@@ -122,6 +127,7 @@ public partial class ReviewRow : ObservableObject
             OriginalText = OriginalText,
             OriginalStartMs = OriginalStartMs,
             OriginalEndMs = OriginalEndMs,
+            FromSplitOrMerge = FromSplitOrMerge,
         };
     }
 }

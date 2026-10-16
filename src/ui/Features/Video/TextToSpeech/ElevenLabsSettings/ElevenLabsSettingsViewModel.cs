@@ -50,7 +50,6 @@ public partial class ElevenLabsSettingsViewModel : ObservableObject
         SpeakerBoost = Se.Settings.Video.TextToSpeech.ElevenLabsSpeakerBoost;
         Speed = Se.Settings.Video.TextToSpeech.ElevenLabsSpeed;
         StyleExaggeration = Se.Settings.Video.TextToSpeech.ElevenLabsStyleeExaggeration;
-        GenerateInParallel = Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel;
         UpdateParallelInfo();
     }
 
@@ -61,7 +60,8 @@ public partial class ElevenLabsSettingsViewModel : ObservableObject
         Se.Settings.Video.TextToSpeech.ElevenLabsSpeakerBoost = SpeakerBoost;
         Se.Settings.Video.TextToSpeech.ElevenLabsSpeed = Speed;
         Se.Settings.Video.TextToSpeech.ElevenLabsStyleeExaggeration = StyleExaggeration;
-        Se.Settings.Video.TextToSpeech.ElevenLabsGenerateInParallel = GenerateInParallel;
+        // The parallel switch moved to Settings > cvrle77 and is no longer shown here: writing the
+        // value this dialog loaded at construction overwrote a change made on that page.
         Se.SaveSettings();
     }
 

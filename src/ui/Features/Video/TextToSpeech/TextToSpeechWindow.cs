@@ -611,6 +611,9 @@ public class TextToSpeechWindow : Window
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                // Row 9: the instruction panel, which the accent row (fork) pushes one row down.
+                // Without this Avalonia clamped it onto the key-file row.
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
             },
             ColumnDefinitions =
             {

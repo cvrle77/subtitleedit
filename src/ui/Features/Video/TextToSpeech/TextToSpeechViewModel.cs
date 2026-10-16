@@ -3752,8 +3752,9 @@ public partial class TextToSpeechViewModel : ObservableObject
     private async Task<string> TrimMergedAudioToVideoAsync(string inputFileName, CancellationToken cancellationToken)
     {
         // Fork: pin the merged track to the video's own length. Off = upstream, which keeps the
-        // length its lines need.
-        if (!Fork.ReviewVideoPlayer)
+        // length its lines need. Gated on the master switch, not on the review window's video
+        // player - turning that layout switch off used to disable the trim as well.
+        if (!Fork.Enabled)
         {
             return inputFileName;
         }
@@ -4373,6 +4374,19 @@ public partial class TextToSpeechViewModel : ObservableObject
 
                         if (cueResults.Count == cueTexts.Count)
                         {
+                            // A cue the chunk could not cut is reported, not silently left without
+                            // audio (its FileName is empty; the review row can be regenerated).
+                            foreach (var failed in cueResults.Where(r => r.Error))
+                            {
+                                lock (errorLock)
+                                {
+                                    if (!errorMessages.Contains(failed.ErrorMessage))
+                                    {
+                                        errorMessages.Add(failed.ErrorMessage);
+                                    }
+                                }
+                            }
+
                             for (var k = 0; k < cueResults.Count; k++)
                             {
                                 var paragraphIndex = chunk.ParagraphIndexes[k];

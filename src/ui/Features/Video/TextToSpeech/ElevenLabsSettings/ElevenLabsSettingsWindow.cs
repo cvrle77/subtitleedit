@@ -107,6 +107,9 @@ public class ElevenLabsSettingsWindow : Window
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
                 new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                // Row 5: the button bar. Without it Avalonia clamped the bar onto the Style
+                // exaggeration row (row 4) and drew it over the slider.
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
             },
             ColumnDefinitions =
             {

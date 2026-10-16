@@ -296,14 +296,16 @@ public sealed class SileroVad : IDisposable
     }
 
     /// <summary>
-    /// The start of the first speech segment that begins after <paramref name="positionSeconds"/>,
+    /// The start of the first speech segment that begins at or after <paramref name="positionSeconds"/>,
     /// or null when there is none. This is what the split trim uses: a plain lookup, no per-split work.
+    /// A cut exactly on a segment start belongs to that segment: skipping it moved the line to the
+    /// next segment and dropped the speech in between.
     /// </summary>
     public static double? FindSpeechStartAfter(IReadOnlyList<(double Start, double End)> segments, double positionSeconds)
     {
         foreach (var segment in segments)
         {
-            if (segment.Start > positionSeconds)
+            if (segment.Start >= positionSeconds)
             {
                 return segment.Start;
             }
