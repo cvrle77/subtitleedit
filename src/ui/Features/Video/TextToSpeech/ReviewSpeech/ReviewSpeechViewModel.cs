@@ -392,6 +392,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // "Original"/"Generated" waveform labels: muted while the generated clips play.
     public VideoPlayerControl? VideoPlayerControl { get; set; }
     private double _lastVideoSeekSeconds = -1;
+    // When that seek was asked for. A freshly opened mpv keeps reporting the pre-seek position (0)
+    // for a moment, and acting on it moved the play-head - and started the first block's clip.
+    private long _lastSeekTicks;
     private bool _isOriginalAudioActive;
     // Row's own audio, cut out of the video, so "Original" plays through the same per-line flow as
     // a generated clip. Keyed by the row's time range.
@@ -843,6 +846,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
                     // mpv paints no frame until it has played once, and a bare Play() on a core left
                     // mid-seek is accepted without ever resuming (no picture, no sound).
                     _lastVideoSeekSeconds = startSeconds;
+                    _lastSeekTicks = Stopwatch.GetTimestamp();
                     await VideoPlayerControl.Open(_videoFileName, startSeconds);
                     VideoPlayerControl.SeekTo(startSeconds);
                     video.Play();
@@ -1122,7 +1126,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
             // All three are REMAINING credits, so the arithmetic reads Fixed - Now = Spent.
             var fixedRemaining = Math.Max(0, limit - _elevenLabsCreditsBaseline.Value);
             var nowRemaining = Math.Max(0, limit - used);
-            var spent = Math.Max(0, _elevenLabsCreditsBaseline.Value - used);
+            // used grows as the session spends, so spent is used - baseline (Fixed - Now).
+            var spent = Math.Max(0, used - _elevenLabsCreditsBaseline.Value);
 
             ElevenLabsCreditsFixedText = $"Fixed: {fixedRemaining:N0}";
             ElevenLabsCreditsNowText = $"Now: {nowRemaining:N0}";
@@ -1274,6 +1279,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         if (VideoPlayerControl != null && !VideoPlayerControl.VideoPlayer.IsPlaying && Math.Abs(seconds - _lastVideoSeekSeconds) >= 0.25)
         {
             _lastVideoSeekSeconds = seconds;
+            _lastSeekTicks = Stopwatch.GetTimestamp();
             try { VideoPlayerControl.SeekTo(seconds); } catch { /* not ready */ }
         }
 
@@ -1390,6 +1396,17 @@ public partial class ReviewSpeechViewModel : ObservableObject
         if (video != null && video.IsPlaying)
         {
             var videoPosition = video.Position;
+
+            // The seek we asked for has not landed yet: hold the play-head where we asked for it
+            // instead of following the stale position. mpv reports the pre-seek position - 0 right
+            // after Open - and the gap-skip below then jumped the video to the first block and
+            // started its clip (wrong sound, play-head back on block one).
+            if (SeekNotLanded(videoPosition))
+            {
+                SetWaveformPlayhead(_lastVideoSeekSeconds);
+                return;
+            }
+
             var row = RowAtPosition(videoPosition);
 
             // Skip the silence between lines, like the review's playback always did: while in a gap,
@@ -1400,6 +1417,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 if (nextStart.HasValue)
                 {
                     _lastVideoSeekSeconds = nextStart.Value;
+                    _lastSeekTicks = Stopwatch.GetTimestamp();
                     try { VideoPlayerControl!.SeekTo(nextStart.Value); } catch { /* not ready */ }
                     videoPosition = nextStart.Value;
                     row = RowAtPosition(videoPosition);
@@ -1456,6 +1474,20 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
 
         SetWaveformPlayhead(waveformParagraph.StartTime.TotalSeconds + positionSeconds);
+    }
+
+    // True while the video is still reporting the position it had before the seek we asked for.
+    // mpv accepts a seek and keeps the old position for a moment (0 right after Open), so the
+    // cursor tick must not act on it - it would read the wrong row and start the wrong clip.
+    // Bounded by a grace window, so a seek that never lands (a failed load) resumes normal play.
+    private bool SeekNotLanded(double videoPosition)
+    {
+        if (Math.Abs(videoPosition - _lastVideoSeekSeconds) <= 1.0)
+        {
+            return false;
+        }
+
+        return (Stopwatch.GetTimestamp() - _lastSeekTicks) / (double)Stopwatch.Frequency < 0.75;
     }
 
     private void InvalidateWaveforms()
@@ -4645,6 +4677,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 if (start.HasValue)
                 {
                     _lastVideoSeekSeconds = start.Value;
+                    _lastSeekTicks = Stopwatch.GetTimestamp();
                     // Move the play-head immediately, then seek the video: the mpv seek is async, so
                     // without this the play-head briefly showed the old row (the "from the play-head
                     // or from the start" race).
