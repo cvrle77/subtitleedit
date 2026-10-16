@@ -1101,14 +1101,21 @@ public partial class ReviewSpeechViewModel : ObservableObject
         (int Used, int Limit)? credits;
         try
         {
-            credits = await _ttsDownloadService.GetElevenLabsCredits(_cancellationToken);
+            // Deliberately NOT _cancellationToken: Stop() cancels it and every Play/Regenerate
+            // replaces it (ReplaceCts), so the refresh that runs right after a regenerate was
+            // cancelled and its OperationCanceledException swallowed - the panel then kept the
+            // numbers from the first refresh for the rest of the session (Fixed == Now, no error).
+            // This is one small read-only GET; letting it finish is harmless.
+            credits = await _ttsDownloadService.GetElevenLabsCredits(CancellationToken.None);
         }
         catch (OperationCanceledException)
         {
+            Se.WriteToolsLog("TTS review credits: refresh cancelled - the panel keeps its old values");
             return;
         }
         catch (Exception ex)
         {
+            Se.WriteToolsLog("TTS review credits: refresh failed - " + ex.Message, true);
             SeLogger.Error(ex, "ReviewSpeech: could not read the ElevenLabs credit balance");
             return;
         }
@@ -1139,6 +1146,14 @@ public partial class ReviewSpeechViewModel : ObservableObject
             ElevenLabsCreditsFixedText = $"Fixed: {fixedRemaining:N0}";
             ElevenLabsCreditsNowText = $"Now: {nowRemaining:N0}";
             ElevenLabsCreditsSpentText = $"Spent: {spent:N0}";
+
+            // Diagnostic (credit panel): the numbers behind Fixed/Now/Spent. If the panel stops
+            // moving, this line is what says whether the refresh ran at all and what the account
+            // reported. Remove once the panel is trusted.
+            Se.WriteToolsLog(
+                $"TTS review credits: preSession={(ElevenLabsUsedBeforeSession?.ToString() ?? "null")}, " +
+                $"baseline={_elevenLabsCreditsBaseline.Value}, used={used}, limit={limit}, " +
+                $"fixed={fixedRemaining}, now={nowRemaining}, spent={spent}");
         });
     }
 
