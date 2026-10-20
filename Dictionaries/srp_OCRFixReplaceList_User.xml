@@ -6011,6 +6011,28 @@
     <Word to="Trouglove" from="Troglove" />
     <Word to="bikarbone" from="bikargore" />
     <Word to="Bikarbone" from="Bikargore" />
+    <Word to="bajadera" from="bajodera" />
+    <Word to="Bajadera" from="Bajodera" />
+    <Word to="kalup" from="kalip" />
+    <Word to="Kalup" from="Kalip" />
+    <Word to="otapa" from="otafa" />
+    <Word to="Otapa" from="Otafa" />
+    <Word to="mnogo" from="mnog" />
+    <Word to="Mnogo" from="Mnog" />
+    <Word to="prodrmamo" from="prodromamo" />
+    <Word to="Prodrmamo" from="Prodromamo" />
+    <Word to="prodrmati" from="prodromati" />
+    <Word to="Prodrmati" from="Prodromati" />
+    <Word to="frižider" from="frižer" />
+    <Word to="Frižider" from="Frižer" />
+    <Word to="mikrotalasnoj" from="mikrotalastnom" />
+    <Word to="Mikrotalasnoj" from="Mikrotalastnom" />
+    <Word to="skalpelom" from="skalpenom" />
+    <Word to="Skalpelom" from="Skalpenom" />
+    <Word to="kokosom" from="kokusu" />
+    <Word to="Kokosom" from="Kokusu" />
+    <Word to="vri" from="vrije" />
+    <Word to="Vri" from="Vrije" />
 </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
@@ -6488,6 +6510,13 @@
     <LinePart to="Uključim rernu" from="Uključim jednu" />
     <LinePart to="spustiću" from="spustit ću" />
     <LinePart to="Spustiću" from="Spustit ću" />
+    <LinePart to="da biste" from="da bi ste" />
+    <LinePart to="Da biste" from="Da bi ste" />
+    <LinePart to="kao žvaka" from="ku žvaka" />
+    <LinePart to="Kao žvaka" from="Ku žvaka" />
+    <LinePart to="ubuduće" from="u buduće" />
+    <LinePart to="Ubuduće" from="U buduće" />
+    <LinePart to="Ostaviću" from="Ostavit ću" />
 </PartialLines>
   <BeginLines />
   <EndLines />
