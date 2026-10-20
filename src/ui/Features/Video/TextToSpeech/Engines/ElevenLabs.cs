@@ -58,6 +58,10 @@ public class ElevenLabs : ITtsEngine
     }
 
     private const string JsonFileName = "ElevenLabsVoices.json";
+
+    // A chunk cut shorter than this cannot hold the cue's speech: it means the two cut boundaries
+    // collapsed onto each other, so the cue is regenerated as a single line instead.
+    private const double MinChunkCueSeconds = 0.10;
     private readonly ITtsDownloadService _ttsDownloadService;
 
     public ElevenLabs(ITtsDownloadService ttsDownloadService)
@@ -648,11 +652,17 @@ public class ElevenLabs : ITtsEngine
         boundaryReliable[cueTexts.Count] = true; // no cue starts here, so the tail is harmless
 
         // Keep the boundaries strictly increasing, so a snapped pause can never reorder the cues.
+        // A boundary that had to be nudged sits on top of its neighbour: the cue between the two
+        // gets a sliver of silence (which the silence trim then reduces to nothing) and its words
+        // stay inside the previous cue's clip. Mark both edges unreliable so those cues are
+        // regenerated as single lines instead of one block swallowing the next.
         for (var i = 1; i < boundaries.Length; i++)
         {
             if (boundaries[i] <= boundaries[i - 1])
             {
                 boundaries[i] = boundaries[i - 1] + 0.05;
+                boundaryReliable[i] = false;
+                boundaryReliable[i - 1] = false;
             }
         }
 
@@ -672,22 +682,19 @@ public class ElevenLabs : ITtsEngine
         {
             for (var i = 0; i < cueTexts.Count; i++)
             {
-                // No confident pause at one of this cue's edges: the chunk cut would clip the next
-                // line's opening or leak it into this one. Regenerate just this cue as a single line,
-                // exactly like manual per-line regeneration, and keep that clip instead.
-                if (!boundaryReliable[i] || !boundaryReliable[i + 1])
+                var start = boundaries[i];
+                var end = boundaries[i + 1];
+
+                // No confident pause at one of this cue's edges, or the cut between them is too
+                // short to hold speech: the chunk cut would clip the next line's opening or leak it
+                // into this one. Regenerate just this cue as a single line, exactly like manual
+                // per-line regeneration, and keep that clip instead.
+                if (!boundaryReliable[i] || !boundaryReliable[i + 1] || end - start < MinChunkCueSeconds)
                 {
                     var single = await Speak(cueTexts[i], outputFolder, voice, language, null, model, cancellationToken);
                     results.Add(single);
-                    Se.WriteToolsLog($"ElevenLabs chunk: cue {i + 1}/{cueTexts.Count} had no confident pause - regenerated as a single line");
+                    Se.WriteToolsLog($"ElevenLabs chunk: cue {i + 1}/{cueTexts.Count} had no usable pause - regenerated as a single line");
                     continue;
-                }
-
-                var start = boundaries[i];
-                var end = boundaries[i + 1];
-                if (end <= start)
-                {
-                    end = start + 0.05;
                 }
 
                 var fileName = Path.Combine(outputDir, Guid.NewGuid() + ".mp3");
@@ -703,6 +710,18 @@ public class ElevenLabs : ITtsEngine
                         Error = true,
                         ErrorMessage = "Could not cut the ElevenLabs chunk audio (ffmpeg failed).",
                     });
+                    continue;
+                }
+
+                // The cut produced a file with no audio in it (a header-only WAV/MP3). Keep the
+                // cue's own words by regenerating it as a single line rather than shipping silence
+                // as this block's audio.
+                if (!TtsAudioFile.HasAudio(fileName))
+                {
+                    try { File.Delete(fileName); } catch { /* best-effort temp cleanup */ }
+                    var reSpeak = await Speak(cueTexts[i], outputFolder, voice, language, null, model, cancellationToken);
+                    results.Add(reSpeak);
+                    Se.WriteToolsLog($"ElevenLabs chunk: cue {i + 1}/{cueTexts.Count} cut produced no audio - regenerated as a single line", true);
                     continue;
                 }
 

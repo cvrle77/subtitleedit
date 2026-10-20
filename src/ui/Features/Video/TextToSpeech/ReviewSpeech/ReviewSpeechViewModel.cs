@@ -1565,29 +1565,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return cached;
         }
 
-        var seconds = 0.0;
-        try
-        {
-            if (File.Exists(fileName))
-            {
-                using var stream = File.OpenRead(fileName);
-                var header = new WaveHeader2(stream);
-                if (header.ChunkId == "RIFF" && header.Format == "WAVE" && header.BytesPerSecond > 0)
-                {
-                    seconds = header.LengthInSeconds;
-                }
-            }
-        }
-        catch
-        {
-            // Not a WAV - ElevenLabs (and the chunk cuts) produce MP3, and WaveHeader2 throws on it.
-            // The MP3 reader below handles it; logging an error per clip would just be noise.
-        }
-
-        if (seconds <= 0)
-        {
-            seconds = Mp3DurationReader.TryGetDurationSeconds(fileName) ?? 0;
-        }
+        var seconds = TtsAudioFile.GetLengthSeconds(fileName);
 
         _audioLengthCache[fileName] = seconds;
         return seconds;
@@ -2633,10 +2611,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
             // A row can point at a deleted/moved file (e.g. an imported session whose folder was
             // cleaned). File.Copy used to throw unhandled mid-export, leaving some files copied
             // and no JSON written. Export the row without audio instead and report the count.
-            if (string.IsNullOrEmpty(sourceFileName) || !File.Exists(sourceFileName))
+            if (!TtsAudioFile.HasAudio(sourceFileName))
             {
                 missingAudioCount++;
-                SeLogger.Error($"ReviewSpeech export: audio file missing for line {index}: \"{sourceFileName}\"");
+                SeLogger.Error($"ReviewSpeech export: audio file missing or empty for line {index}: \"{sourceFileName}\"");
                 targetFileName = string.Empty;
             }
 
@@ -2750,7 +2728,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
             await MessageBox.Show(
                 Window,
                 Se.Language.General.Warning,
-                $"{missingAudioCount} line(s) had no audio file and were exported without audio - see error-log.txt in the Subtitle Edit data folder.",
+                $"{missingAudioCount} line(s) had no audio (the file is missing, or the clip holds no audio at all) and were exported without audio - see error-log.txt in the Subtitle Edit data folder.",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
         }
@@ -4066,6 +4044,24 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         Se.WriteToolsLog("TTS review: OK clicked - closing");
 
+        // Blocks without audio (a failed generation, or a clip whose cut/trim produced a header-only
+        // file) would otherwise be published silently and end up as gaps in the merged audio.
+        var rowsWithoutAudio = Lines.Count(row => row.Include && !TtsAudioFile.HasAudio(row.StepResult.CurrentFileName));
+        if (rowsWithoutAudio > 0)
+        {
+            var answer = await MessageBox.Show(
+                Window,
+                Se.Language.General.Warning,
+                $"{rowsWithoutAudio} included block(s) have no generated audio (the generation failed or produced an empty clip)." +
+                Environment.NewLine + Environment.NewLine + "Publish anyway?",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+
         // Optionally keep a session next to the subtitle being worked on first - the same export the
         // Export button writes, but silently (no picker, no prompts). Enabled in Settings > cvrle77.
         if (Se.Settings.Video.TextToSpeech.ReviewOkAlsoExports)
@@ -4152,7 +4148,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
         var trimProcess = FfmpegGenerator.TrimSilenceStartAndEnd(item.CurrentFileName, outputFileNameTrim, TtsSilenceThreshold.Amplitude(peakDbfs));
         await trimProcess.StartAndWaitAsync(_cancellationToken);
 
-        var currentFile = File.Exists(outputFileNameTrim) && new FileInfo(outputFileNameTrim).Length > 0
+        // HasAudio, not "longer than 0 bytes": a WAV with a header and no samples is ~78 bytes and
+        // used to pass, so a clip the trim had emptied became the row's audio.
+        var currentFile = TtsAudioFile.HasAudio(outputFileNameTrim)
             ? outputFileNameTrim
             : item.CurrentFileName;
 
@@ -4164,7 +4162,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
             var vadProcess = FfmpegGenerator.CompressInternalSilence(currentFile, vadOutput, vadMaxSilence, TtsSilenceThreshold.DbLiteral(peakDbfs));
             await vadProcess.StartAndWaitAsync(_cancellationToken);
 
-            if (File.Exists(vadOutput) && new FileInfo(vadOutput).Length > 0)
+            if (TtsAudioFile.HasAudio(vadOutput))
             {
                 currentFile = vadOutput;
             }
@@ -4239,10 +4237,28 @@ public partial class ReviewSpeechViewModel : ObservableObject
         await speedProcess.StartAndWaitAsync(_cancellationToken);
 
         // Fallback: if rubberband failed, retry with atempo
-        if (doHighQualityStretch && (!File.Exists(outputFileName2) || new FileInfo(outputFileName2).Length == 0))
+        if (doHighQualityStretch && !TtsAudioFile.HasAudio(outputFileName2))
         {
             var fallbackProcess = FfmpegGenerator.ChangeSpeed(currentFile, outputFileName2, (float)factor);
             await fallbackProcess.StartAndWaitAsync(_cancellationToken);
+        }
+
+        // A stretch that produced no audio (or only a header) must not become the row's clip: keep
+        // the un-stretched audio, the same fallback the main TTS pipeline uses.
+        if (!TtsAudioFile.HasAudio(outputFileName2))
+        {
+            Se.WriteToolsLog($"TTS review: speed change (factor {factor:0.###}) produced no audio for line {index + 1} - keeping the original speed", true);
+            return new TtsStepResult
+            {
+                Paragraph = p,
+                Text = item.Text,
+                CurrentFileName = currentFile,
+                SpeedFactor = 1.0f,
+                Voice = item.Voice,
+                EngineName = item.EngineName,
+                Model = item.Model,
+                Instruction = item.Instruction,
+            };
         }
 
         return new TtsStepResult

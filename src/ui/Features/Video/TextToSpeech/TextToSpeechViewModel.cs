@@ -3624,7 +3624,7 @@ public partial class TextToSpeechViewModel : ObservableObject
                 // A failed merge used to go unnoticed: the loop advanced to the (missing) output
                 // and deleted the last good intermediate, so every later merge failed too and the
                 // wreck only surfaced far downstream. Stop with an error instead.
-                if (!File.Exists(outputFileName) || new FileInfo(outputFileName).Length == 0)
+                if (!TtsAudioFile.HasAudio(outputFileName))
                 {
                     SeLogger.Error($"TextToSpeech: merging segment {index + 1} produced no output (input=\"{item.CurrentFileName}\")");
                     Se.WriteToolsLog($"TTS merge: segment {index + 1} failed - ffmpeg produced no output for \"{item.CurrentFileName}\"", true);
@@ -3732,7 +3732,7 @@ public partial class TextToSpeechViewModel : ObservableObject
             }
         }
 
-        if (!File.Exists(outputFileName) || new FileInfo(outputFileName).Length == 0)
+        if (!TtsAudioFile.HasAudio(outputFileName))
         {
             SeLogger.Error("TextToSpeech: fast merge produced no output");
             Se.WriteToolsLog("TTS fast merge: produced no output - falling back to the linear merge", true);
@@ -3775,7 +3775,7 @@ public partial class TextToSpeechViewModel : ObservableObject
         var trimProcess = FfmpegGenerator.TrimAudioToDuration(inputFileName, trimmedFileName, (float)videoSeconds);
         await trimProcess.StartAndWaitAsync(cancellationToken);
 
-        if (File.Exists(trimmedFileName) && new FileInfo(trimmedFileName).Length > 0)
+        if (TtsAudioFile.HasAudio(trimmedFileName))
         {
             DeleteFileNoError(inputFileName);
             return trimmedFileName;
@@ -5407,7 +5407,7 @@ public partial class TextToSpeechViewModel : ObservableObject
                 var vadProcess = FfmpegGenerator.CompressInternalSilence(currentFile, vadOutput, vadMaxSilence, TtsSilenceThreshold.DbLiteral(peakDbfs));
                 await vadProcess.StartAndWaitAsync(cancellationToken, segmentOperationTimeout);
 
-                if (File.Exists(vadOutput) && new FileInfo(vadOutput).Length > 0)
+                if (TtsAudioFile.HasAudio(vadOutput))
                 {
                     currentFile = vadOutput;
                 }
@@ -5474,13 +5474,13 @@ public partial class TextToSpeechViewModel : ObservableObject
             await speedProcess.StartAndWaitAsync(cancellationToken, segmentOperationTimeout);
 
             // Fallback: if rubberband failed (not available in the build), retry with atempo.
-            if (doHighQualityStretch && (!File.Exists(outputFileName2) || new FileInfo(outputFileName2).Length == 0))
+            if (doHighQualityStretch && !TtsAudioFile.HasAudio(outputFileName2))
             {
                 var fallbackProcess = FfmpegGenerator.ChangeSpeed(currentFile, outputFileName2, (float)factor);
                 await fallbackProcess.StartAndWaitAsync(cancellationToken, segmentOperationTimeout);
             }
 
-            if (!File.Exists(outputFileName2) || new FileInfo(outputFileName2).Length == 0)
+            if (!TtsAudioFile.HasAudio(outputFileName2))
             {
                 // Speed change produced nothing - keep the un-stretched audio so the segment is not
                 // lost (it may overlap the next line slightly).
