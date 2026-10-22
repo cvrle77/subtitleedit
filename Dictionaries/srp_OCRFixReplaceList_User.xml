@@ -6035,6 +6035,30 @@
     <Word to="Vri" from="Vrije" />
       <Word to="Tisnete" from="Tiskate" />
     <Word to="tisnete" from="tiskate" />
+    <Word to="maslac" from="maslat" />
+    <Word to="Maslac" from="Maslat" />
+    <Word to="prhko" from="prvko" />
+    <Word to="Prhko" from="Prvko" />
+    <Word to="moderna" from="modernna" />
+    <Word to="Moderna" from="Modernna" />
+    <Word to="iseckamo" from="isackamo" />
+    <Word to="Iseckamo" from="Isackamo" />
+    <Word to="puding" from="pudin" />
+    <Word to="Puding" from="Pudin" />
+    <Word to="najlon" from="najlom" />
+    <Word to="Najlon" from="Najlom" />
+    <Word to="suše" from="suševu" />
+    <Word to="Suše" from="Suševu" />
+    <Word to="griz" from="griž" />
+    <Word to="Griz" from="Griž" />
+    <Word to="korica" from="klorica" />
+    <Word to="Korica" from="Klorica" />
+    <Word to="sečemo" from="sećemo" />
+    <Word to="Sečemo" from="Sećemo" />
+    <Word to="razna" from="raznost" />
+    <Word to="Razna" from="Raznost" />
+    <Word to="srculenca" from="srcolenca" />
+    <Word to="Srculenca" from="Srcolenca" />
 </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
@@ -6528,6 +6552,14 @@
     <LinePart to="Je do mleka" from="Je da mlijeka" />
     <LinePart to="i ćao" from="i ćav" />
     <LinePart to="I ćao" from="I ćav" />
+    <LinePart to="pun arome" from="puna rome" />
+    <LinePart to="Pun arome" from="Puna rome" />
+    <LinePart to="ovde imam" from="odimam" />
+    <LinePart to="Ovde imam" from="Odimam" />
+    <LinePart to="stavljam nama" from="stavljam nam" />
+    <LinePart to="Stavljam nama" from="Stavljam nam" />
+    <LinePart to="di si ti poš'o krmeljivi Tošo" from="disti pošao krmeljivi tušo" />
+    <LinePart to="Di si ti poš'o krmeljivi Tošo" from="Disti pošao krmeljivi tušo" />
 </PartialLines>
   <BeginLines />
   <EndLines />
