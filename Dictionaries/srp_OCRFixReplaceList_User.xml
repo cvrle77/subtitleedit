@@ -6580,6 +6580,8 @@
     <LinePart to="Pa uzmem" from="Pouzmem" />
     <LinePart to="pa uzmem" from="pouzmem" />
     <LinePart to="Biće" from="Bit će" />
+    <LinePart to="Pizza nadev" from="Pizzanadev" />
+    <LinePart to="pizza nadev" from="pizzanadev" />
 </PartialLines>
   <BeginLines />
   <EndLines />
