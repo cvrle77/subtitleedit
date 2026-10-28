@@ -6059,6 +6059,20 @@
     <Word to="Razna" from="Raznost" />
     <Word to="srculenca" from="srcolenca" />
     <Word to="Srculenca" from="Srcolenca" />
+    <Word to="zahteva" from="zahtjeva" />
+    <Word to="Zahteva" from="Zahtjeva" />
+    <Word to="ponesete" from="ponešete" />
+    <Word to="Ponesete" from="Ponešete" />
+    <Word to="maslacem" from="maslovcem" />
+    <Word to="Maslacem" from="Maslovcem" />
+    <Word to="lopticu" from="lovticu" />
+    <Word to="Lopticu" from="Lovticu" />
+    <Word to="sekač" from="sekar" />
+    <Word to="Sekač" from="Sekar" />
+    <Word to="preterani" from="pretjerani" />
+    <Word to="Preterani" from="Pretjerani" />
+    <Word to="Prekrijem" from="Prekrejem" />
+    <Word to="prekrijem" from="prekrejem" />
 </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
@@ -6560,6 +6574,12 @@
     <LinePart to="Stavljam nama" from="Stavljam nam" />
     <LinePart to="di si ti poš'o krmeljivi Tošo" from="disti pošao krmeljivi tušo" />
     <LinePart to="Di si ti poš'o krmeljivi Tošo" from="Disti pošao krmeljivi tušo" />
+    <LinePart to="videćete" from="vidjet ćete" />
+    <LinePart to="se testo" from="se tesno" />
+    <LinePart to="Se testo" from="Se tesno" />
+    <LinePart to="Pa uzmem" from="Pouzmem" />
+    <LinePart to="pa uzmem" from="pouzmem" />
+    <LinePart to="Biće" from="Bit će" />
 </PartialLines>
   <BeginLines />
   <EndLines />
