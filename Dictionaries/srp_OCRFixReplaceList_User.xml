@@ -6076,6 +6076,38 @@
     <Word from="ugubna" to="ukupna" />
       <Word to="ukućani" from="ukućeni" />
     <Word to="Ukućani" from="Ukućeni" />
+    <Word to="sipam" from="cipam" />
+    <Word to="Sipam" from="Cipam" />
+    <Word to="umočim" from="umučim" />
+    <Word to="Umočim" from="Umučim" />
+    <Word to="rernu" from="revno" />
+    <Word to="Rernu" from="Revno" />
+    <Word to="ubacite" from="ubaćite" />
+    <Word to="Ubacite" from="Ubaćite" />
+    <Word to="ubacujete" from="ubaćujete" />
+    <Word to="Ubacujete" from="Ubaćujete" />
+    <Word to="prebacimo" from="prevacimo" />
+    <Word to="Prebacimo" from="Prevacimo" />
+    <Word to="ćoška" from="čoška" />
+    <Word to="Ćoška" from="Čoška" />
+    <Word to="ubacimo" from="ubaćemo" />
+    <Word to="Ubacimo" from="Ubaćemo" />
+    <Word to="premažete" from="premažati" />
+    <Word to="Premažete" from="Premažati" />
+    <Word to="pleh" from="plajf" />
+    <Word to="Pleh" from="Plajf" />
+    <Word to="krug" from="kruk" />
+    <Word to="Krug" from="Kruk" />
+    <Word to="bacite" from="vacite" />
+    <Word to="Bacite" from="Vacite" />
+    <Word to="olakšati" from="olahšati" />
+    <Word to="Olakšati" from="Olahšati" />
+    <Word to="stepeni" from="stepenje" />
+    <Word to="Stepeni" from="Stepenje" />
+    <Word to="susama" from="susava" />
+    <Word to="Susama" from="Susava" />
+    <Word to="susam" from="susav" />
+    <Word to="Susam" from="Susav" />
 </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
@@ -6587,6 +6619,17 @@
     <LinePart to="pizza nadev" from="pizzanadev" />
     <LinePart from="dodat će" to="dodaće" />
       <LinePart to="maslaca što" from="maslo sa što" />
+    <LinePart to="ne ume" from="neume" />
+    <LinePart to="Ne ume" from="Neume" />
+    <LinePart to="kako bismo" from="kako bi smo" />
+    <LinePart to="Kako bismo" from="Kako bi smo" />
+    <LinePart to="otprilike" from="u prilike" />
+    <LinePart to="nego što" from="na što" />
+    <LinePart to="Nego što" from="Na što" />
+    <LinePart to="naraste" from="na raste" />
+    <LinePart to="Naraste" from="Na raste" />
+    <LinePart to="Rerni je" from="Revnije" />
+    <LinePart to="Ne mnogo" from="Nemnogo" />
 </PartialLines>
   <BeginLines />
   <EndLines />
