@@ -6033,7 +6033,7 @@
     <Word to="Kokosom" from="Kokusu" />
     <Word to="vri" from="vrije" />
     <Word to="Vri" from="Vrije" />
-      <Word to="Tisnete" from="Tiskate" />
+    <Word to="Tisnete" from="Tiskate" />
     <Word to="tisnete" from="tiskate" />
     <Word to="maslac" from="maslat" />
     <Word to="Maslac" from="Maslat" />
@@ -6073,6 +6073,9 @@
     <Word to="Preterani" from="Pretjerani" />
     <Word to="Prekrijem" from="Prekrejem" />
     <Word to="prekrijem" from="prekrejem" />
+    <Word from="ugubna" to="ukupna" />
+      <Word to="ukućani" from="ukućeni" />
+    <Word to="Ukućani" from="Ukućeni" />
 </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
@@ -6558,7 +6561,7 @@
     <LinePart to="Ubuduće" from="U buduće" />
     <LinePart to="Ostaviću" from="Ostavit ću" />
     <LinePart from="te kada" to="tek kada" />
-      <LinePart to="odbija saradnju" from="odbija sa radnjom" />
+    <LinePart to="odbija saradnju" from="odbija sa radnjom" />
     <LinePart to="Odbija saradnju" from="Odbija sa radnjom" />
     <LinePart to="je do mleka" from="je da mleka" />
     <LinePart to="Je do mleka" from="Je da mleka" />
@@ -6582,6 +6585,8 @@
     <LinePart to="Biće" from="Bit će" />
     <LinePart to="Pizza nadev" from="Pizzanadev" />
     <LinePart to="pizza nadev" from="pizzanadev" />
+    <LinePart from="dodat će" to="dodaće" />
+      <LinePart to="maslaca što" from="maslo sa što" />
 </PartialLines>
   <BeginLines />
   <EndLines />
