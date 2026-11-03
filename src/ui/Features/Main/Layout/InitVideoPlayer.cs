@@ -229,7 +229,12 @@ public static class InitVideoPlayer
             HorizontalAlignment = HorizontalAlignment.Stretch,
             Volume = Se.Settings.Video.Volume,
         };
-        control.VolumeChanged += v => { Se.Settings.Video.Volume = v; };
+        Se.WriteToolsLog($"VIDEO volume: main player created, setting={Se.Settings.Video.Volume:0.#}, control={control.Volume:0.#}");
+        control.VolumeChanged += v =>
+        {
+            Se.Settings.Video.Volume = v;
+            Se.WriteToolsLog($"VIDEO volume: changed by user to {v:0.#}");
+        };
         return control;
     }
 }
