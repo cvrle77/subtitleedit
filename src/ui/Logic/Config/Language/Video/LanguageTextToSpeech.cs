@@ -39,6 +39,7 @@ public class LanguageTextToSpeech
     public string Instructions { get; set; }
     public string InstructionsHint { get; set; }
     public string OpenAiSpeedHint { get; set; }
+    public string Output { get; set; }
     public string OutputFormatHint { get; set; }
     public string RegenerateAudio { get; set; }
     public string AutoContinuePlaying { get; set; }
@@ -363,6 +364,7 @@ public class LanguageTextToSpeech
         Instructions = "Instructions";
         InstructionsHint = "Optional speaking style, e.g. \"Speak in a calm, warm voice\". Sent only to models that support it (not tts-1/tts-1-hd)";
         OpenAiSpeedHint = "Speech speed from 0.25 to 4.0 (1.0 is normal). Not every model supports it";
+        Output = "Output";
         OutputFormatHint = "Audio format requested from the server. \"Auto\" asks for MP3 and switches to PCM for models that only return PCM (e.g. Gemini TTS)";
         RegenerateAudio = "Regenerate audio";
         AutoContinuePlaying = "Auto-continue playing";

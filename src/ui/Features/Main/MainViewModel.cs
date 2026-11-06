@@ -458,6 +458,7 @@ public partial class MainViewModel :
     // rather than in the toggle's CheckedChanged so it holds no matter what set the value.
     partial void OnWaveformCenterChanged(bool value)
     {
+        Se.Settings.Waveform.CenterVideoPosition = value;
         OnPropertyChanged(nameof(WaveformCenterAny));
         if (value && WaveformCenterSmooth)
         {
@@ -5241,11 +5242,6 @@ public partial class MainViewModel :
     partial void OnSelectCurrentSubtitleWhilePlayingChanged(bool value)
     {
         Se.Settings.General.SelectCurrentSubtitleWhilePlaying = value;
-    }
-
-    partial void OnWaveformCenterChanged(bool value)
-    {
-        Se.Settings.Waveform.CenterVideoPosition = value;
     }
 
     [RelayCommand]

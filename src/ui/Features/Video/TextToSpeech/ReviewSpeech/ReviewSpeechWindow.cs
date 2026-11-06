@@ -1629,7 +1629,7 @@ public class ReviewSpeechWindow : Window
     // CommandParameter rather than relying on SelectedLine.
     private static MenuFlyout MakeWaveformMenu(ReviewSpeechViewModel vm, AudioVisualizer av)
     {
-        var menuPlay = new MenuItem { Header = Se.Language.Video.TextToSpeech.PlayLine, Command = vm.PlayRowCommand };
+        var menuPlay = new MenuItem { Header = Se.Language.General.PlayLine, Command = vm.PlayRowCommand };
         var menuRegenerate = new MenuItem { Header = Se.Language.Video.TextToSpeech.RegenerateAudio, Command = vm.RegenerateAudioCommand };
         var menuHistory = new MenuItem { Header = Se.Language.General.ShowHistory, Command = vm.ShowHistoryCommand };
         var menuFit = new MenuItem { Header = Se.Language.Video.TextToSpeech.FitDurationToGeneratedAudio, Command = vm.FitDurationToAudioCommand };
