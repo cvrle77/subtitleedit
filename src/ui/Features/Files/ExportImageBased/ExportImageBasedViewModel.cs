@@ -8,7 +8,6 @@ using Avalonia.Skia;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Nikse.SubtitleEdit.Core.BluRaySup;
 using Nikse.SubtitleEdit.Core.Common;
 using Nikse.SubtitleEdit.Core.SubtitleFormats;
 using Nikse.SubtitleEdit.Features.Main;
@@ -19,7 +18,6 @@ using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Media;
 using SkiaSharp;
-using SkiaSharp.HarfBuzz;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -28,7 +26,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Timers;
-using Nikse.SubtitleEdit.UiLogic.Media;
 
 namespace Nikse.SubtitleEdit.Features.Files.ExportImageBased;
 
@@ -89,6 +86,10 @@ public partial class ExportImageBasedViewModel : ObservableObject, IClosingClean
     [ObservableProperty] private bool _isFullFrame;
     [ObservableProperty] private Color _fullFrameBackgroundColor;
     [ObservableProperty] private bool _isFullFrameVisible;
+    [ObservableProperty] private bool _isHdrPalette;
+    [ObservableProperty] private bool _isHdrPaletteVisible;
+    [ObservableProperty] private ObservableCollection<int> _hdrWhiteNits = [100, 150, 203, 250, 300, 400, 500];
+    [ObservableProperty] private int _selectedHdrWhiteNits = 203;
     [ObservableProperty] private ObservableCollection<Export3DModeDisplay> _modes3D = null!;
     [ObservableProperty] private Export3DModeDisplay _selectedMode3D = null!;
     [ObservableProperty] private ObservableCollection<int> _depths3D = null!;
@@ -156,6 +157,9 @@ public partial class ExportImageBasedViewModel : ObservableObject, IClosingClean
     private readonly IFileHelper _fileHelper;
     private readonly IFolderHelper _folderHelper;
     private readonly IWindowService _windowService;
+
+    /// <summary>For the preview's "Image background color..." menu entry.</summary>
+    internal IWindowService WindowService => _windowService;
 
     public ExportImageBasedViewModel(IFileHelper fileHelper, IFolderHelper folderHelper, IWindowService windowService)
     {
@@ -382,8 +386,8 @@ public partial class ExportImageBasedViewModel : ObservableObject, IClosingClean
         {
             var answer = await MessageBox.Show(
                 Window,
-                "Delete lines?",
-                $"Do you want to delete {selectedItems.Count} lines?",
+                Se.Language.General.DeleteLines,
+                string.Format(Se.Language.General.DeleteXLinesQuestion, selectedItems.Count),
                 MessageBoxButtons.YesNoCancel,
                 MessageBoxIcon.Question);
 
@@ -457,9 +461,20 @@ public partial class ExportImageBasedViewModel : ObservableObject, IClosingClean
         {
             await ExportRun(fileOrFolderName, cancellationToken);
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // cancelled by the user or a new run
+        }
         catch (Exception exception)
         {
             Se.LogError(exception);
+            if (Window != null)
+            {
+                // e.g. a D-Cinema MXF with more images than one track file can hold
+                await MessageBox.Show(Window, Se.Language.General.Error,
+                    string.Format(Se.Language.General.CouldNotSaveFileXErrorY, fileOrFolderName, exception.Message),
+                    MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
         finally
         {
@@ -639,6 +654,7 @@ public partial class ExportImageBasedViewModel : ObservableObject, IClosingClean
             FramesPerSecond = SelectedFrameRate,
             IsFullFrame = IsFullFrameVisible && IsFullFrame,
             FullFrameBackgroundColor = FullFrameBackgroundColor.ToSKColor(),
+            HdrWhiteNits = IsHdrPaletteVisible && IsHdrPalette ? SelectedHdrWhiteNits : 0,
             // D-Cinema has no 3D mode (see IsMode3DVisible), only the depth - its Z-position.
             Mode3D = IsMode3DVisible ? SelectedMode3D?.Mode ?? Export3DMode.None : Export3DMode.None,
             Depth3D = IsDepth3DEnabled ? SelectedDepth3D : 0,
@@ -761,6 +777,7 @@ public partial class ExportImageBasedViewModel : ObservableObject, IClosingClean
         // are dropped on (Final Cut Pro & co), and Blu-ray sup, which SE4 offered it for too. The
         // other formats position the subtitle themselves from its own bitmap size.
         IsFullFrameVisible = exportHandler.ExportImageType is ExportImageType.Fcp or ExportImageType.BluRaySup;
+        IsHdrPaletteVisible = exportHandler.ExportImageType == ExportImageType.BluRaySup;
 
         // D-Cinema has no packed 3D frame to draw into; like SE4 it keeps only the depth, which it
         // writes as the Z-position of each image.
@@ -783,6 +800,11 @@ public partial class ExportImageBasedViewModel : ObservableObject, IClosingClean
             _ = Task.Run(() =>
             {
                 var mediaInfo = FfmpegMediaInfo2.Parse(videoFileName);
+                if (exportHandler is ExportHandlerDCinemaSmpte2014Mxf mxfHandler && mediaInfo?.Duration is { TotalMilliseconds: > 0 } videoDuration)
+                {
+                    mxfHandler.ReelDuration = TimeSpan.FromMilliseconds(videoDuration.TotalMilliseconds);
+                }
+
                 if (mediaInfo?.Dimension is { Width: > 0, Height: > 0 } dimension)
                 {
                     Dispatcher.UIThread.Post(() =>
@@ -1171,6 +1193,8 @@ public partial class ExportImageBasedViewModel : ObservableObject, IClosingClean
             SelectedFrameRate = FrameRates.Contains(profile.FramesPerSecond) ? profile.FramesPerSecond : 25;
             IsFullFrame = profile.IsFullFrame;
             FullFrameBackgroundColor = profile.FullFrameBackgroundColor.FromHex().ToAvaloniaColor();
+            IsHdrPalette = profile.IsHdrPalette;
+            SelectedHdrWhiteNits = HdrWhiteNits.Contains(profile.HdrWhiteNits) ? profile.HdrWhiteNits : 203;
             SelectedMode3D = Modes3D.FirstOrDefault(m => m.Mode == profile.Mode3D) ?? Modes3D[0];
             SelectedDepth3D = Math.Clamp(profile.Depth3D, Stereo3DImage.MinDepth, Stereo3DImage.MaxDepth);
             SelectedTextEffect = TextEffectItems.FirstOrDefault(t => t.Preset.ToString() == profile.TextEffect)
@@ -1216,6 +1240,8 @@ public partial class ExportImageBasedViewModel : ObservableObject, IClosingClean
                 : SelectedFrameRate;
             profile.IsFullFrame = IsFullFrame;
             profile.FullFrameBackgroundColor = FullFrameBackgroundColor.FromColorToHex(true);
+            profile.IsHdrPalette = IsHdrPalette;
+            profile.HdrWhiteNits = SelectedHdrWhiteNits;
             profile.Mode3D = SelectedMode3D?.Mode ?? Export3DMode.None;
             profile.Depth3D = SelectedDepth3D;
             profile.TextEffect = SelectedTextEffect?.Preset.ToString() ?? string.Empty;

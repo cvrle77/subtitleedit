@@ -29,10 +29,8 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Timers;
-using Nikse.SubtitleEdit.UiLogic.Media;
 
 namespace Nikse.SubtitleEdit.Features.Video.TransparentSubtitles;
 
@@ -82,6 +80,9 @@ public partial class TransparentSubtitlesViewModel : ObservableObject
     [ObservableProperty] private ObservableCollection<BurnInJobItem> _jobItems;
     [ObservableProperty] private BurnInJobItem? _selectedJobItem;
     [ObservableProperty] private bool _isGenerating;
+    // Hold off system sleep while the job runs (#16183); the display may still turn off.
+    private readonly SleepInhibitorScope _sleepInhibitor = new(Se.Language.Video.VideoTransparent.Title);
+
     [ObservableProperty] private bool _isBatchMode;
     [ObservableProperty] private Bitmap? _imagePreview;
     [ObservableProperty] private bool _useSourceResolution;
@@ -366,10 +367,8 @@ public partial class TransparentSubtitlesViewModel : ObservableObject
                 }
 
                 await MessageBox.Show(Window!,
-                    "Unable to generate video",
-                    "Output video file not generated: " + jobItem.OutputVideoFileName + Environment.NewLine +
-                    "ffmpeg exit code: " + exitCode + Environment.NewLine +
-                    "Parameters: " + process.StartInfo.Arguments,
+                    Se.Language.General.UnableToGenerateVideo,
+                    string.Format(Se.Language.General.OutputVideoFileNotGeneratedX, jobItem.OutputVideoFileName) + Environment.NewLine + string.Format(Se.Language.General.FfmpegExitCodeX, exitCode) + Environment.NewLine + string.Format(Se.Language.General.ParametersX, process.StartInfo.Arguments),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
 
@@ -1039,8 +1038,8 @@ public partial class TransparentSubtitlesViewModel : ObservableObject
         if (IsCutActive && CutFrom >= CutTo)
         {
             await MessageBox.Show(Window!,
-                "Cut settings error",
-                "Cut end time must be after cut start time",
+                Se.Language.General.CutSettingsError,
+                Se.Language.General.CutEndMustBeAfterCutStart,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
 
@@ -1073,8 +1072,8 @@ public partial class TransparentSubtitlesViewModel : ObservableObject
             if (string.IsNullOrWhiteSpace(jobItem.SubtitleFileName))
             {
                 await MessageBox.Show(Window!,
-                    "Missing subtitle",
-                    "Please add a subtitle to all batch items",
+                    Se.Language.General.MissingSubtitle,
+                    Se.Language.General.AddSubtitleToAllBatchItems,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
 
@@ -1225,43 +1224,6 @@ public partial class TransparentSubtitlesViewModel : ObservableObject
             e.Handled = true;
             UiUtil.ShowHelp("features/transparent-subtitles");
         }
-    }
-
-    private static string TryGetSubtitleFileName(string fileName)
-    {
-        var srt = Path.ChangeExtension(fileName, ".srt");
-        if (File.Exists(srt))
-        {
-            return srt;
-        }
-
-        var assa = Path.ChangeExtension(fileName, ".ass");
-        if (File.Exists(assa))
-        {
-            return assa;
-        }
-
-        var dir = Path.GetDirectoryName(fileName);
-        if (string.IsNullOrEmpty(dir))
-        {
-            return string.Empty;
-        }
-
-        var searchPath = Path.GetFileNameWithoutExtension(fileName);
-        var files = Directory.GetFiles(dir, searchPath + "*");
-        var subtitleExtensions = SubtitleFormat.AllSubtitleFormats.Select(p => p.Extension).Distinct();
-        foreach (var ext in subtitleExtensions)
-        {
-            foreach (var file in files)
-            {
-                if (file.EndsWith(ext, StringComparison.InvariantCultureIgnoreCase))
-                {
-                    return file;
-                }
-            }
-        }
-
-        return string.Empty;
     }
 
     private void UpdateOutputProperties()
@@ -1666,6 +1628,8 @@ public partial class TransparentSubtitlesViewModel : ObservableObject
         });
     }
 
+    partial void OnIsGeneratingChanged(bool value) => _sleepInhibitor.SetActive(value);
+
     internal void OnClosing()
     {
         // Stop the poll timers and any still-running encode - closing the window (title bar X)
@@ -1674,6 +1638,7 @@ public partial class TransparentSubtitlesViewModel : ObservableObject
         // "done" dialog on the closed window.
         _isClosing = true;
         _doAbort = true;
+        _sleepInhibitor.Dispose();
         _timerGenerate.StopAndDispose(TimerGenerateElapsed);
         _timerAnalyze.StopAndDispose(TimerAnalyzeElapsed);
         if (_ffmpegProcess != null)

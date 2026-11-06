@@ -19,11 +19,21 @@ namespace Nikse.SubtitleEdit.Controls;
 /// With the fork features off this behaves exactly like the upstream <see cref="ToggleButton"/>
 /// (Space included), so the control can stay in place at every call site.
 /// </para>
+/// <para>
+/// A <see cref="ToggleButton"/> that never reacts to the Space key (see <see cref="NonSpaceButton"/>)
+/// and does not flip <see cref="ToggleButton.IsChecked"/> itself when clicked: the owner sets it
+/// from the state the click's command changed, so a command that does nothing (e.g. a player
+/// without subtitle support) leaves the button as it was.
+/// </para>
 /// </summary>
 public class NonSpaceToggleButton : ToggleButton
 {
     // Keep the default ToggleButton styling instead of looking for a NonSpaceToggleButton style.
     protected override Type StyleKeyOverride => typeof(ToggleButton);
+
+    protected override void Toggle()
+    {
+    }
 
     protected override void OnKeyDown(KeyEventArgs e)
     {

@@ -2,6 +2,7 @@
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Templates;
 using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -77,22 +78,14 @@ public class InitWaveform
         {
             vm.AudioVisualizer = settings.UseSkiaRenderer ? new SkiaAudioVisualizer() : new AudioVisualizer();
             vm.AudioVisualizer.DrawGridLines = settings.DrawGridLines;
-            vm.AudioVisualizer.WaveformColor = settings.WaveformColor.FromHexToColor();
-            vm.AudioVisualizer.WaveformBackgroundColor = settings.WaveformBackgroundColor.FromHexToColor();
-            vm.AudioVisualizer.WaveformSelectedColor = settings.WaveformSelectedColor.FromHexToColor();
-            vm.AudioVisualizer.WaveformCursorColor = settings.WaveformCursorColor.FromHexToColor();
-            vm.AudioVisualizer.WaveformShotChangeColor = settings.WaveformShotChangeColor.FromHexToColor();
-            vm.AudioVisualizer.WaveformGridColor = settings.WaveformGridColor.FromHexToColor();
-            vm.AudioVisualizer.WaveformParagraphLeftColor = settings.WaveformParagraphLeftColor.FromHexToColor();
-            vm.AudioVisualizer.WaveformParagraphRightColor = settings.WaveformParagraphRightColor.FromHexToColor();
-            vm.AudioVisualizer.WaveformFancyHighColor = settings.WaveformFancyHighColor.FromHexToColor();
-            vm.AudioVisualizer.ParagraphBackground = settings.ParagraphBackground.FromHexToColor();
-            vm.AudioVisualizer.ParagraphSelectedBackground = settings.ParagraphSelectedBackground.FromHexToColor();
+            WaveformColors.Current.ApplyTo(vm.AudioVisualizer);
+            vm.AudioVisualizer.EmptyBackgroundTile = UiTheme.GetThemeArt(UiTheme.WaveformBackgroundFileName);
             vm.AudioVisualizer.InvertMouseWheel = settings.InvertMouseWheel;
             vm.AudioVisualizer.VerticalAlignment = VerticalAlignment.Stretch;
             vm.AudioVisualizer.Height = double.NaN; // Auto height
             vm.AudioVisualizer.WaveformDrawStyle = GetWaveformDrawStyle(settings.WaveformDrawStyle);
             vm.AudioVisualizer.MinGapSeconds = Se.Settings.General.MinimumBetweenLines.GetMilliseconds() / 1000.0;
+            vm.AudioVisualizer.MovesSameTimeLinesTogether = () => vm.IsFormatAssa;
             vm.AudioVisualizer.FocusOnMouseOver = settings.FocusOnMouseOver;
             vm.AudioVisualizer.IsReadOnly = Se.Settings.General.LockTimeCodes;
             vm.AudioVisualizer.WaveformHeightPercentage = settings.SpectrogramCombinedWaveformHeight;
@@ -371,6 +364,15 @@ public class InitWaveform
             };
             flyout.Items.Add(showOriginalSubtitleMenuItem);
 
+            var lockOriginalToTranslationMenuItem = new MenuItem
+            {
+                Header = Se.Language.Waveform.LockOriginalToTranslation,
+                ToggleType = MenuItemToggleType.CheckBox,
+                Command = vm.ToggleLockOriginalToTranslationCommand,
+            };
+            flyout.Items.Add(lockOriginalToTranslationMenuItem);
+            vm.MenuItemAudioVisualizerLockOriginalToTranslation = lockOriginalToTranslationMenuItem;
+
             var showSpeechOnlyMenuItem = new MenuItem
             {
                 Header = Se.Language.Waveform.ShowSpeechOnly,
@@ -433,6 +435,11 @@ public class InitWaveform
                 GetVideoFileName = () => vm.CurrentVideoFileName,
                 GetAllParagraphs = () => vm.Subtitles,
                 GetHasOriginal = () => vm.ShowColumnOriginalText,
+                GetCanEditOriginalTimeCodes = () => vm.CanEditOriginalTimeCodes && !vm.IsOriginalLockedToTranslation,
+                HasOriginalLine = vm.HasOriginalLine,
+                GetReadOnlyOriginalTimeCodes = vm.GetReadOnlyOriginalTimeCodes,
+                SetOriginalTimeCodes = vm.SetRowOriginalTimeCodes,
+                SelectParagraph = vm.SelectAndScrollToSubtitle,
                 TextLabel = Se.Language.General.Text,
                 OriginalLabel = Se.Language.General.OriginalText,
                 LayerLabel = Se.Language.General.Layer,
@@ -1197,6 +1204,59 @@ public class InitWaveform
             [AutomationProperties.NameProperty] = languageHints.InitialText,
         };
 
+        // Rule-profile picker (#16236): the profiles from Settings > Rules in a slim drop-down
+        // behind an icon, like the audio-track picker, so the active profile can be switched
+        // without opening a dialog. Long names are trimmed in the closed box (the drop-down shows
+        // them in full); the tooltip names the active profile.
+        var settingRuleProfile = GetToolbarSettingFor(SeWaveformToolbarItemType.RuleProfile);
+        var ruleProfileLabel = string.Format(languageHints.RuleProfileHint, string.Empty).TrimEnd();
+        var iconRuleProfile = new Icon
+        {
+            Value = IconNames.Tune,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(4, 0, 2, 0),
+            FontSize = 18,
+        };
+        var comboBoxRuleProfile = new ComboBox
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 4, 0),
+            FontSize = settingRuleProfile.FontSize,
+            MaxHeight = 22,
+            MinHeight = 22,
+            MinWidth = 0,
+            MaxWidth = 180,
+            Padding = new Thickness(4, 2, 0, 2),
+            Background = Brushes.Transparent,
+            BorderThickness = new Thickness(0),
+            [AutomationProperties.NameProperty] = ruleProfileLabel,
+            // Bound, not assigned: the template's TextBlock is recycled for the closed box, so an
+            // assigned Text would keep showing the first profile after a switch.
+            ItemTemplate = new FuncDataTemplate<string>((_, _) => new TextBlock
+            {
+                [!TextBlock.TextProperty] = new Binding(),
+                TextTrimming = TextTrimming.CharacterEllipsis,
+                VerticalAlignment = VerticalAlignment.Center,
+            }, true),
+        };
+        comboBoxRuleProfile.Bind(ItemsControl.ItemsSourceProperty, new Binding(nameof(vm.RuleProfiles)));
+        comboBoxRuleProfile.Bind(SelectingItemsControl.SelectedItemProperty, new Binding(nameof(vm.SelectedRuleProfile)) { Mode = BindingMode.TwoWay });
+        var panelRuleProfile = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(settingRuleProfile.LeftMargin, 0, settingRuleProfile.RightMargin, 0),
+            DataContext = vm,
+            Children = { iconRuleProfile, comboBoxRuleProfile },
+        };
+        if (Se.Settings.Appearance.ShowHints)
+        {
+            panelRuleProfile.Bind(ToolTip.TipProperty, new Binding(nameof(vm.SelectedRuleProfile))
+            {
+                Converter = new Avalonia.Data.Converters.FuncValueConverter<string?, string>(name => string.Format(languageHints.RuleProfileHint, name ?? string.Empty).TrimEnd()),
+            });
+        }
+
         var settingMore = GetToolbarSettingFor(SeWaveformToolbarItemType.More);
         var buttonMore = new NonSpaceButton
         {
@@ -1340,6 +1400,7 @@ public class InitWaveform
             toggleButtonCenterSmooth,
             panelVideoSeek,
             textBoxInitialText,
+            panelRuleProfile,
             buttonMore,
             buttonTimelineGrouping
         );
@@ -1526,7 +1587,10 @@ public class InitWaveform
 
         button.Content = (back ? "-" : "+") + ms.ToString(CultureInfo.InvariantCulture);
         button.Command = ShortcutsMain.GetMoveLinesCommand(vm, scope, slot, back);
-        ToolTip.SetTip(button, UiUtil.MakeToolTip(hint, shortcuts, ShortcutsMain.GetMoveLinesCommandName(scope, slot, back)));
+        if (Se.Settings.Appearance.ShowHints)
+        {
+            ToolTip.SetTip(button, UiUtil.MakeToolTip(hint, shortcuts, ShortcutsMain.GetMoveLinesCommandName(scope, slot, back)));
+        }
 
         // The content is just "-100", so give screen readers the full action.
         AutomationProperties.SetName(button, string.Format(hint, string.Empty).TrimEnd());
@@ -1565,6 +1629,7 @@ public class InitWaveform
         ToggleButton toggleButtonCenterSmooth,
         StackPanel panelVideoSeek,
         TextBox textBoxInitialText,
+        StackPanel panelRuleProfile,
         Button buttonMore,
         Button? buttonTimelineGrouping)
     {
@@ -1675,6 +1740,9 @@ public class InitWaveform
                     break;
                 case SeWaveformToolbarItemType.InitialText:
                     toolbarButtonForSort.Add(new SortedControl { Sort = item.SortOrder, Control = textBoxInitialText });
+                    break;
+                case SeWaveformToolbarItemType.RuleProfile:
+                    toolbarButtonForSort.Add(new SortedControl { Sort = item.SortOrder, Control = panelRuleProfile });
                     break;
                 case SeWaveformToolbarItemType.TimelineTrackGrouping:
                     // Null outside the editor-style layout: there are no rows to group.

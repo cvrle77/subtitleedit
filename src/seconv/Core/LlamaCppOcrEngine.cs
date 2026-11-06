@@ -1,6 +1,5 @@
 using Nikse.SubtitleEdit.Core.Common;
 using SkiaSharp;
-using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using Nikse.SubtitleEdit.UiLogic.LlamaCpp;
@@ -36,7 +35,7 @@ internal sealed class LlamaCppOcrEngine : IOcrEngine
         _modelName = modelName;
         _language = string.IsNullOrWhiteSpace(language) ? "English" : language;
         // Shared with the UI's default so the two cannot drift; --ocr-prompt overrides it, and a
-        // curated model with its own tuned prompt (LFM2.5-VL) gets that unless --ocr-prompt is set.
+        // curated model with its own tuned prompt (LFM3-VL) gets that unless --ocr-prompt is set.
         _promptTemplate = LlamaCppServerManager.ResolveOcrPrompt(model, prompt);
         _quiet = quiet;
         _httpClient = new HttpClient
@@ -61,25 +60,62 @@ internal sealed class LlamaCppOcrEngine : IOcrEngine
         var url = options.OcrUrl?.Trim();
         if (!string.IsNullOrEmpty(url))
         {
-            // User-managed server: accept a bare host:port and complete it to the
-            // chat/completions endpoint (same convention as --translate-url).
-            var fullUrl = url.Contains("/v1/", StringComparison.OrdinalIgnoreCase)
-                ? url
-                : url.TrimEnd('/') + "/v1/chat/completions";
+            var fullUrl = CompleteUrl(url);
             var modelName = string.IsNullOrWhiteSpace(options.OcrModel)
                 ? "glmocr"
-                : Path.GetFileNameWithoutExtension(options.OcrModel.Trim());
-            // Only for the prompt: a curated model named by file/stem still gets its own tuned
-            // prompt against a user-managed server. The engine itself stays in URL mode.
-            var curated = LlamaCppServerManager.OcrModels.FirstOrDefault(m =>
-                Path.GetFileNameWithoutExtension(m.FileName).Equals(modelName, StringComparison.OrdinalIgnoreCase));
-            var promptTemplate = LlamaCppServerManager.ResolveOcrPrompt(curated, options.OcrPrompt);
+                : ModelStem(options.OcrModel);
+            var promptTemplate = ResolveUrlModePrompt(modelName, options.OcrPrompt);
             return new LlamaCppOcrEngine(fullUrl, null, modelName, options.OcrLanguage, promptTemplate, options.Quiet);
         }
 
         LlamaCppLocal.EnsureServerBinary("the OCR window > llama.cpp", "--ocr-url");
         var model = ResolveOcrModel(options.OcrModel);
         return new LlamaCppOcrEngine(null, model, Path.GetFileNameWithoutExtension(model.FileName), options.OcrLanguage, options.OcrPrompt, options.Quiet);
+    }
+
+    /// <summary>
+    /// Only for the prompt: a model named by file/stem still gets its own tuned prompt against a
+    /// user-managed server, curated or self-supplied like an LFM vision model. The engine itself
+    /// stays in URL mode.
+    /// </summary>
+    internal static string ResolveUrlModePrompt(string modelName, string? userPrompt)
+    {
+        var model = LlamaCppServerManager.OcrModels.FirstOrDefault(m =>
+                        Path.GetFileNameWithoutExtension(m.FileName).Equals(modelName, StringComparison.OrdinalIgnoreCase))
+                    ?? LlamaCppServerManager.CreateCustomOcrModel(modelName, modelName, string.Empty, string.Empty);
+        return LlamaCppServerManager.ResolveOcrPrompt(model, userPrompt);
+    }
+
+    /// <summary>
+    /// Completes a user-supplied --ocr-url to the chat/completions endpoint: a bare
+    /// <c>host:port</c> gets <c>http://</c> (HttpClient rejects a URI without a scheme), and a
+    /// URL without a <c>/v1/</c> path gets <c>/v1/chat/completions</c> appended.
+    /// </summary>
+    internal static string CompleteUrl(string url)
+    {
+        var fullUrl = url.Trim();
+        if (!fullUrl.Contains("://", StringComparison.Ordinal))
+        {
+            fullUrl = "http://" + fullUrl;
+        }
+
+        return fullUrl.Contains("/v1/", StringComparison.OrdinalIgnoreCase)
+            ? fullUrl
+            : fullUrl.TrimEnd('/') + "/v1/chat/completions";
+    }
+
+    /// <summary>
+    /// The model name for a user-managed server: the file name without a trailing <c>.gguf</c>,
+    /// the form the curated lookups (padding, prompt) match on. Only <c>.gguf</c> is stripped -
+    /// <see cref="Path.GetFileNameWithoutExtension(string)"/> would cut "LightOnOCR-3-0.8B-Q8_0"
+    /// to "LightOnOCR-3-0", so the model lost its border padding and was sent the square.
+    /// </summary>
+    internal static string ModelStem(string model)
+    {
+        var fileName = Path.GetFileName(model.Trim());
+        return fileName.EndsWith(".gguf", StringComparison.OrdinalIgnoreCase)
+            ? fileName[..^".gguf".Length]
+            : fileName;
     }
 
     public string Recognize(SKBitmap bitmap)
@@ -103,7 +139,7 @@ internal sealed class LlamaCppOcrEngine : IOcrEngine
             url = LlamaCppServerManager.ApiUrl;
         }
 
-        using var padded = PadToSquare(bitmap);
+        using var padded = AiOcrImagePadding.Pad(bitmap, LlamaCppServerManager.GetOcrPadding(_modelName));
         using var image = SKImage.FromBitmap(padded);
         using var data = image.Encode(SKEncodedImageFormat.Png, 90);
         var base64 = Convert.ToBase64String(data.ToArray());
@@ -129,7 +165,7 @@ internal sealed class LlamaCppOcrEngine : IOcrEngine
         var contents = parser.GetAllTagsByNameAsStrings(json, "content");
         var text = string.Join(string.Empty, contents).Trim();
         text = text.Replace("\\n", Environment.NewLine).Replace("\\\"", "\"");
-        return text.Trim();
+        return OcrHelper.TrimAiOcrLines(text);
     }
 
     /// <summary>
@@ -165,8 +201,7 @@ internal sealed class LlamaCppOcrEngine : IOcrEngine
                         $"expected 'mmproj-{fileName}' or '{stem}-mmproj.gguf' in the same folder.");
                 }
 
-                return new LlamaCppModel(Path.GetFileName(fullPath), fullPath, string.Empty, Url: string.Empty,
-                    MmprojFileName: mmproj);
+                return LlamaCppServerManager.CreateCustomOcrModel(Path.GetFileName(fullPath), fullPath, string.Empty, mmproj);
             }
 
             // Name: match the curated OCR models (with or without .gguf), plus any self-supplied
@@ -201,21 +236,6 @@ internal sealed class LlamaCppOcrEngine : IOcrEngine
 
     private static string Escape(string s) =>
         s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n").Replace("\r", "\\r");
-
-    private static SKBitmap PadToSquare(SKBitmap source)
-    {
-        var margin = (int)(Math.Max(source.Width, source.Height) * 0.2);
-        var side = Math.Max(source.Width, source.Height) + margin;
-        var info = new SKImageInfo(side, side, SKColorType.Rgba8888, SKAlphaType.Opaque);
-        var square = new SKBitmap(info);
-        using var canvas = new SKCanvas(square);
-        canvas.Clear(SKColors.Black);
-        var left = (side - source.Width) / 2f;
-        var top = (side - source.Height) / 2f;
-        canvas.DrawBitmap(source, new SKRect(left, top, left + source.Width, top + source.Height));
-        canvas.Flush();
-        return square;
-    }
 
     public void Dispose() => _httpClient.Dispose();
 }

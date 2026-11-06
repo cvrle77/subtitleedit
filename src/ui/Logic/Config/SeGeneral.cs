@@ -26,6 +26,7 @@ public class SeGeneral
     // Master switch for every cvrle77 fork feature. Off = upstream Subtitle Edit behaviour: each
     // fork feature also checks this (see Logic.Config.Fork), so this one switch reverts them all.
     public bool ForkFeatures { get; set; } = true;
+    public bool SubtitleTextBoxAutoWrapWhileTyping { get; set; }
     public double SubtitleMaximumCharactersPerSeconds { get; set; }
     public double SubtitleOptimalCharactersPerSeconds { get; set; }
     public double SubtitleMaximumWordsPerMinute { get; set; }
@@ -33,6 +34,7 @@ public class SeGeneral
     public string DialogStyle { get; set; }
     public string ContinuationStyle { get; set; }
     public string CpsLineLengthStrategy { get; set; }
+    public string CpsLineLengthIgnoreTagsRegex { get; set; }
 
     public CustomContinuationStyle CustomContinuationStyle { get; set; }
     public bool FixContinuationStyleUncheckInsertsAllCaps { get; set; }
@@ -94,6 +96,7 @@ public class SeGeneral
     public string SubtitleDoubleClickAction { get; set; }
     public bool SubtitleGridCenterSelectedRow { get; set; }
     public string SaveAsBehavior { get; set; }
+    public string FileChangedOutsideAction { get; set; }
     public string SaveAsAppendLanguageCode { get; set; }
     public string DefaultSaveLocation { get; set; }
     public string DefaultSaveLocationCustomFolder { get; set; }
@@ -183,6 +186,10 @@ public class SeGeneral
     /// red when a cue runs past it). Applies to the main window and the text-to-speech review.
     /// </summary>
     public bool ShowVideoEndLine { get; set; } = true;
+    /// Whether retiming a translation line moves the original line it shows by the same amounts,
+    /// keeping any offset between the two. Off lets the original's time codes be edited on their own.
+    /// </summary>
+    public bool LockOriginalToTranslation { get; set; }
 
     /// <summary>
     /// SE4 parity: whether an original subtitle that does not line up 1:1 may be edited (and
@@ -206,6 +213,8 @@ public class SeGeneral
     public bool UndockVideoControls { get; set; }
     public List<SeWindowPosition> WindowPositions { get; set; } = new List<SeWindowPosition>();
     public bool AutoSave { get; set; }
+    public bool CheckSubtitleFileChangedOutside { get; set; }
+    public bool ConfirmOverwriteSubtitleFileChangedOutside { get; set; }
     public bool AutoBackupOn { get; set; }
     public int AutoBackupIntervalMinutes { get; set; }
     public int AutoBackupDeleteAfterDays { get; set; }
@@ -239,7 +248,17 @@ public class SeGeneral
     public bool ColorWordsPerMinute { get; set; }
     public bool ColorTimeCodeOverlap { get; set; }
     public bool ColorGapTooShort { get; set; }
+
+    /// <summary>
+    /// Color the gap when it falls inside [GapRangeMin, GapRangeMax] (inclusive) - the broadcast
+    /// rule that a gap should be either closed (about 2 frames) or at least about 12 frames.
+    /// </summary>
+    public bool ColorGapInRange { get; set; }
+    public MsOrFramesValue GapRangeMin { get; set; } = new() { Milliseconds = 120, Frames = 3 };
+    public MsOrFramesValue GapRangeMax { get; set; } = new() { Milliseconds = 480, Frames = 12 };
     public string ErrorColor { get; set; }
+    public bool ColorCustomErrorRules { get; set; }
+    public List<SeCustomErrorRule> CustomErrorRules { get; set; } = new();
 
     public string FfmpegPath { get; set; }
     public bool FfmpegUseCenterChannelOnly { get; set; }
@@ -330,6 +349,7 @@ public class SeGeneral
         SubtitleMaximumWordsPerMinute = 400;
         DialogStyle = DialogType.DashBothLinesWithSpace.ToString();
         CpsLineLengthStrategy = nameof(CalcAll);
+        CpsLineLengthIgnoreTagsRegex = string.Empty;
         ContinuationStyle = Core.Enums.ContinuationStyle.None.ToString();
         CustomContinuationStyle = new CustomContinuationStyle();
         FixContinuationStyleUncheckInsertsAllCaps = true;
@@ -369,6 +389,7 @@ public class SeGeneral
         SubtitleDoubleClickAction = nameof(SubtitleDoubleClickActionType.GoToSubtitleAndPause);
         SubtitleGridCenterSelectedRow = false;
         SaveAsBehavior = nameof(SaveAsBehaviourType.UseVideoFileNameThenSubtitleFileName);
+        FileChangedOutsideAction = nameof(FileChangedOutsideActionType.ReloadWhenUnmodified);
         DefaultSaveLocation = nameof(DefaultSaveLocationType.SourceFileFolder);
         DefaultSaveLocationCustomFolder = string.Empty;
         SaveAsAppendLanguageCode = nameof(SaveAsLanguageAppendType.None);
@@ -388,6 +409,9 @@ public class SeGeneral
         VadThreshold = 0.5;
         VadMinSpeechSeconds = 0.25;
         VadMinSilenceSeconds = 0.1;
+        LockOriginalToTranslation = true;
+        CheckSubtitleFileChangedOutside = true;
+        ConfirmOverwriteSubtitleFileChangedOutside = true;
         AutoBackupOn = true;
         AutoBackupIntervalMinutes = 5;
         AutoBackupDeleteAfterDays = 90;
@@ -398,6 +422,7 @@ public class SeGeneral
         FavoriteSubtitleFormats = new SubRip().FriendlyName + ";" + new AdvancedSubStationAlpha().FriendlyName;
         FavoriteLanguages = string.Empty;
         CpsLineLengthStrategy = nameof(CalcAll);
+        CpsLineLengthIgnoreTagsRegex = string.Empty;
         RememberPositionAndSize = true;
 
         ColorDurationTooShort = true;
@@ -413,6 +438,7 @@ public class SeGeneral
         ColorTimeCodeOverlap = true;
         ColorGapTooShort = true;
         ErrorColor = Color.FromArgb(50, 255, 0, 0).FromColorToHex();
+        ColorCustomErrorRules = true;
 
         FfmpegPath = string.Empty;
         LibMpvPath = string.Empty;

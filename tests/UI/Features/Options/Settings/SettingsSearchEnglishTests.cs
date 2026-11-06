@@ -1,8 +1,5 @@
 using Nikse.SubtitleEdit.Features.Options.Settings;
 using Nikse.SubtitleEdit.Logic.Config.Language;
-using System;
-using System.IO;
-using System.Linq;
 using System.Text.Json;
 
 namespace UITests.Features.Options.Settings;
@@ -25,7 +22,7 @@ public class SettingsSearchEnglishTests
 
         Assert.Equal(english.Options.Settings.MinGapMs, map["Mindestabstand (ms)"]);
         Assert.Equal(english.General.Profiles, map["Profile"]);
-        Assert.DoesNotContain(english.Options.Settings.MaxLines, map.Keys); // untranslated = same text
+        Assert.DoesNotContain(english.General.MaxNumberOfLines, map.Keys); // untranslated = same text
     }
 
     [Fact]
@@ -34,12 +31,12 @@ public class SettingsSearchEnglishTests
         var english = new SeLanguage();
         var translated = new SeLanguage();
         translated.Options.Settings.MinGapMs = "X";
-        translated.Options.Settings.MaxLines = "X";
+        translated.General.MaxNumberOfLines = "X";
 
         var map = EnglishLabelLookup.Build(translated, english);
 
         Assert.Contains(english.Options.Settings.MinGapMs, map["X"].Split('\n'));
-        Assert.Contains(english.Options.Settings.MaxLines, map["X"].Split('\n'));
+        Assert.Contains(english.General.MaxNumberOfLines, map["X"].Split('\n'));
     }
 
     [Fact]

@@ -30,7 +30,6 @@ using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Timers;
 using Nikse.SubtitleEdit.UiLogic.Export;
@@ -401,7 +400,7 @@ public partial class BurnInViewModel : ObservableObject
         if (_ffmpegProcess.ExitCode != 0)
         {
             DeletePassLogFiles();
-            ReportFfmpegFailure(JobItems[_jobItemIndex], "Two-pass analyze (pass 1) failed for");
+            ReportFfmpegFailure(JobItems[_jobItemIndex], "Two-pass analyze (pass 1) failed for", Se.Language.General.TwoPassAnalyzeFailedFor);
             return;
         }
 
@@ -620,13 +619,13 @@ public partial class BurnInViewModel : ObservableObject
         // "Done" while the stale file was left untouched (issue #14210).
         if (_ffmpegProcess.ExitCode != 0)
         {
-            ReportFfmpegFailure(jobItem, "ffmpeg failed for");
+            ReportFfmpegFailure(jobItem, "ffmpeg failed for", Se.Language.General.FfmpegFailedFor);
             return;
         }
 
         if (!File.Exists(jobItem.OutputVideoFileName))
         {
-            ReportFfmpegFailure(jobItem, "Output video file not generated:");
+            ReportFfmpegFailure(jobItem, "Output video file not generated:", Se.Language.General.OutputVideoFileNotGenerated);
             return;
         }
 
@@ -705,7 +704,7 @@ public partial class BurnInViewModel : ObservableObject
     /// Tells the user that an ffmpeg run failed, and writes the full command line, exit code and
     /// ffmpeg log to the tools log for bug reports.
     /// </summary>
-    private void ReportFfmpegFailure(BurnInJobItem jobItem, string reason)
+    private void ReportFfmpegFailure(BurnInJobItem jobItem, string reason, string displayReason)
     {
         Se.WriteToolsLog(reason + " " + jobItem.OutputVideoFileName + Environment.NewLine +
                          "ffmpeg: " + _ffmpegProcess!.StartInfo.FileName + Environment.NewLine +
@@ -727,10 +726,8 @@ public partial class BurnInViewModel : ObservableObject
             }
 
             await MessageBox.Show(Window!,
-                "Unable to generate video",
-                reason + " " + jobItem.OutputVideoFileName + Environment.NewLine +
-                "ffmpeg exit code: " + _ffmpegProcess.ExitCode + Environment.NewLine +
-                "Parameters: " + _ffmpegProcess.StartInfo.Arguments,
+                Se.Language.General.UnableToGenerateVideo,
+                displayReason + " " + jobItem.OutputVideoFileName + Environment.NewLine + string.Format(Se.Language.General.FfmpegExitCodeX, _ffmpegProcess.ExitCode) + Environment.NewLine + string.Format(Se.Language.General.ParametersX, _ffmpegProcess.StartInfo.Arguments),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
 
@@ -898,8 +895,8 @@ public partial class BurnInViewModel : ObservableObject
             _ = Dispatcher.UIThread.Invoke(async () =>
             {
                 await MessageBox.Show(Window!,
-                    "Unable to generate video",
-                    $"Bit rate too low: {bitRate}k",
+                    Se.Language.General.UnableToGenerateVideo,
+                    string.Format(Se.Language.General.BitRateTooLowX, bitRate),
                     MessageBoxButtons.OK);
             });
             return false;
@@ -1649,8 +1646,8 @@ public partial class BurnInViewModel : ObservableObject
         if (error)
         {
             await MessageBox.Show(Window!,
-                    "Unable to get video info",
-                    "File skipped as video info was unavailable",
+                    Se.Language.General.UnableToGetVideoInfo,
+                    Se.Language.General.FileSkippedNoVideoInfo,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
         }
@@ -1803,8 +1800,8 @@ public partial class BurnInViewModel : ObservableObject
         if (IsCutActive && CutFrom >= CutTo)
         {
             await MessageBox.Show(Window!,
-                "Cut settings error",
-                "Cut end time must be after cut start time",
+                Se.Language.General.CutSettingsError,
+                Se.Language.General.CutEndMustBeAfterCutStart,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
 
@@ -1840,8 +1837,8 @@ public partial class BurnInViewModel : ObservableObject
             if (VideoFileName.Equals(outputVideoFileName, StringComparison.OrdinalIgnoreCase))
             {
                 await MessageBox.Show(Window!,
-                    "Output file error",
-                    "Output video file must be different from input video file",
+                    Se.Language.General.OutputFileError,
+                    Se.Language.General.OutputVideoMustDifferFromInput,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 return;
@@ -1871,8 +1868,8 @@ public partial class BurnInViewModel : ObservableObject
             if (string.IsNullOrWhiteSpace(jobItem.SubtitleFileName))
             {
                 await MessageBox.Show(Window!,
-                    "Missing subtitle",
-                    "Please add a subtitle to all batch items",
+                    Se.Language.General.MissingSubtitle,
+                    Se.Language.General.AddSubtitleToAllBatchItems,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
 
@@ -2314,7 +2311,7 @@ public partial class BurnInViewModel : ObservableObject
 
     private void FillPreset(string videoCodec)
     {
-        VideoPresetText = Se.Language.Video.BurnIn.Preset;
+        VideoPresetText = Se.Language.General.Preset;
         var previousPreset = SelectedVideoPreset;
         SelectedVideoPreset = null;
 
@@ -2405,7 +2402,7 @@ public partial class BurnInViewModel : ObservableObject
 
             defaultItem = string.Empty;
 
-            VideoPresetText = Se.Language.Video.BurnIn.Preset;
+            VideoPresetText = Se.Language.General.Preset;
         }
 
         VideoPresets.Clear();

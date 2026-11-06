@@ -1,12 +1,11 @@
-﻿using System;
-
-namespace Nikse.SubtitleEdit.Logic.Config.Language.File;
+﻿namespace Nikse.SubtitleEdit.Logic.Config.Language.File;
 
 public class LanguageSpellCheck
 {
     public string SpellCheck { get; set; }
     public string GetDictionariesTitle { get; set; }
     public string GetDictionaryInstructions { get; set; }
+    public string UninstallDictionaryX { get; set; }
     public string AddNameToUserDictionary { get; set; }
     public string AddNameToNamesList { get; set; }
     public string AddNamesToNamesList { get; set; }
@@ -34,7 +33,6 @@ public class LanguageSpellCheck
     public string PickLiveSpellCheckDictionary { get; set; }
     public string UndoX { get; set; }
     public string PlayCurrentLineHint { get; set; }
-    public string EditWholeText { get; set; }
     public string EditWholeTextTitle { get; set; }
     public string ContinueFromCurrentLine { get; set; }
     public string ContinueFromTop { get; set; }
@@ -65,6 +63,7 @@ public class LanguageSpellCheck
         SpellCheck = "Spell check";
         GetDictionariesTitle = "Spell check - get dictionaries";
         GetDictionaryInstructions = "Choose your language and click download";
+        UninstallDictionaryX = "Uninstall dictionary \"{0}\"?";
         AddNameToUserDictionary = "Add name to user dictionary";
         AddNameToNamesList = "Add name to names list";
         AddNamesToNamesList = "Add names to names list";
@@ -77,22 +76,21 @@ public class LanguageSpellCheck
         WordNotFound = "Word not found";
         LoadSourceImage = "Show source images too...";
         LineXofY = "Spell checker - line {0} of {1}";
-        ChangeWordFromXToY = "Change word from '{0}' to '{1}'";
-        ChangeAllWordsFromXToY = "Change all words from '{0}' to '{1}'";
-        IgnoreWordXOnce = "Ignore word '{0}' once";
-        IgnoreWordXAlways = "Ignore word '{0}' always";
-        WordXAddedToNamesList = "Word '{0}' added to names list";
-        WordXAddedToUserDictionary = "Word '{0}' added to user dictionary";
-        UseSuggestionX = "Use suggestion '{0}'";
-        UseSuggestionXAlways = "Use suggestion '{0}' always";
-        AddXToUserDictionary = "Add '{0}' to user dictionary";
-        IgnoreAllX = "Ignore all '{0}'";
+        ChangeWordFromXToY = "Change word from \"{0}\" to \"{1}\"";
+        ChangeAllWordsFromXToY = "Change all words from \"{0}\" to \"{1}\"";
+        IgnoreWordXOnce = "Ignore word \"{0}\" once";
+        IgnoreWordXAlways = "Ignore word \"{0}\" always";
+        WordXAddedToNamesList = "Word \"{0}\" added to names list";
+        WordXAddedToUserDictionary = "Word \"{0}\" added to user dictionary";
+        UseSuggestionX = "Use suggestion \"{0}\"";
+        UseSuggestionXAlways = "Use suggestion \"{0}\" always";
+        AddXToUserDictionary = "Add \"{0}\" to user dictionary";
+        IgnoreAllX = "Ignore all \"{0}\"";
         PickSpellCheckDictionaryDotDotDot = "Choose spell check dictionary...";
         ChooseSpellCheckDictionary = "Choose spell check dictionary";
         PickLiveSpellCheckDictionary = "Pick live spell check dictionary";
         UndoX = "Undo: {0}";
         PlayCurrentLineHint = "Play the current line in the video player and pause at its end";
-        EditWholeText = "Edit whole text";
         EditWholeTextTitle = "Spell check - Edit whole text";
         ContinueFromCurrentLine = "Continue spell check from the current line?\n\nYes = continue from the current line\nNo = start from the beginning";
         ContinueFromTop = "Spell check reached the end of the subtitle.\n\nContinue from the top?";

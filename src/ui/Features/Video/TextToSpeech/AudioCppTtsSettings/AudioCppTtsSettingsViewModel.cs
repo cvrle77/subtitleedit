@@ -3,7 +3,6 @@ using Avalonia.Input;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Nikse.SubtitleEdit.Features.Shared;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.DownloadTts;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Engines;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.ModelLicense;
@@ -115,6 +114,20 @@ public static class AudioCppTtsSettingsAdapters
         IsLicenseAccepted: () => true,
         LicenseDefinition: null,
         StartDownloadModels: (vm, modelKey) => vm.StartDownloadKugelAudioAudioCppModels(modelKey));
+
+    public static AudioCppTtsSettingsAdapter VoxtralTts { get; } = new(
+        EngineName: "Voxtral TTS (audio.cpp)",
+        FamilyName: VoxtralTtsAudioCpp.FamilyName,
+        Description: new VoxtralTtsAudioCpp().Description,
+        ModelKeyDefault: VoxtralTtsAudioCpp.ModelKeyQ8_0,
+        ModelKeyAlt: VoxtralTtsAudioCpp.ModelKeyBf16,
+        ResolveModelKey: VoxtralTtsAudioCpp.ResolveModelKey,
+        AreModelsInstalled: VoxtralTtsAudioCpp.AreModelsInstalled,
+        GetModelsFolder: VoxtralTtsAudioCpp.GetSetModelsFolder,
+        GetVoicesFolder: null,
+        IsLicenseAccepted: VoxtralTtsAudioCpp.IsLicenseAccepted,
+        LicenseDefinition: VoxtralTtsAudioCpp.LicenseDefinition,
+        StartDownloadModels: (vm, modelKey) => vm.StartDownloadVoxtralTtsAudioCppModels(modelKey));
 }
 
 public partial class AudioCppTtsSettingsViewModel : ObservableObject

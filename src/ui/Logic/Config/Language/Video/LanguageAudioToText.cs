@@ -35,6 +35,7 @@ public class LanguageAudioToText
     public string SelectModel { get; set; }
     public string AddCustomModelDotDotDot { get; set; }
     public string CustomModelHelp { get; set; }
+    public string CustomModelHelpGguf { get; set; }
     public string ViewToolsLogFile { get; set; }
     public string UpdateXTitle { get; set; }
     public string UpdateXMessage { get; set; }
@@ -58,11 +59,8 @@ public class LanguageAudioToText
     public string QualityReportLinesChecked { get; set; }
     public string QualityReportIssuesFound { get; set; }
     public string QualityReportLinesRemoved { get; set; }
-    public string QualityReportTooShort { get; set; }
     public string QualityReportTooShortHint { get; set; }
-    public string QualityReportTooLong { get; set; }
     public string QualityReportTooLongHint { get; set; }
-    public string QualityReportOverlap { get; set; }
     public string QualityReportOverlapHint { get; set; }
     public string QualityReportNonSpeech { get; set; }
     public string QualityReportNonSpeechHint { get; set; }
@@ -71,7 +69,6 @@ public class LanguageAudioToText
     public string QualityReportRemoved { get; set; }
     public string QualityReportAll { get; set; }
     public string QualityReportIssue { get; set; }
-    public string QualityReportDetail { get; set; }
     public string QualityReportTip { get; set; }
     public string QualityReportDoNotShowAgain { get; set; }
 
@@ -80,9 +77,89 @@ public class LanguageAudioToText
     public string BackendAndUpdateStatus { get; set; }
     public string AddLanguageCodeToFileName { get; set; }
     public string AddLanguageCodeToFileNameHint { get; set; }
+    public string KeepPartialTranscriptionQuestion { get; set; }
+    public string KeepXLinesQuestion { get; set; }
+    public string EngineCouldNotStart { get; set; }
+    public string SharedLibraryXMissing { get; set; }
+    public string SharedLibraryBundledRedownload { get; set; }
+    public string SharedLibraryInstallIt { get; set; }
+    public string IncompleteModel { get; set; }
+    public string IncompleteModelMessage { get; set; }
+    public string UnknownArgumentX { get; set; }
+    public string UnknownArgumentMessage { get; set; }
+    public string CudaFailed { get; set; }
+    public string CudaOutOfMemory { get; set; }
+    public string CuBlasFailed { get; set; }
+    public string CuBlasNotSupportedCause { get; set; }
+    public string TryAnotherModelEngineOrCpu { get; set; }
+    public string ComputeTypeAlreadySet { get; set; }
+    public string AddingXFixesThisAddNow { get; set; }
+    public string CudaNotAvailable { get; set; }
+    public string WhisperXCpuOnly { get; set; }
+    public string EngineBuiltWithoutCuda { get; set; }
+    public string RemoveGpuSettingsOrRunOnCpu { get; set; }
+    public string RemoveGpuSettingsQuestionX { get; set; }
+    public string NoResultFile { get; set; }
+    public string NoResultFileMessage { get; set; }
+    public string NoTranscriptionResult { get; set; }
+    public string CrispAsrNoSubtitles { get; set; }
+    public string CouldNotGenerateAudioFileX { get; set; }
+    public string NoVideoFile { get; set; }
+    public string NoVideoFileFound { get; set; }
+    public string UnableToStartX { get; set; }
+    public string UnableToStartXY { get; set; }
+    public string ProgramFileXNotFoundYRedownload { get; set; }
+    public string XRequiresEngineSelectVersion { get; set; }
+    public string XRequiresCrispAsrSelectVersion { get; set; }
+    public string XRequiresForcedAlignerUseY { get; set; }
+    public string UpdatedModelXAvailable { get; set; }
+    public string XSelectedNotInstalledUseY { get; set; }
+    public string EnglishModelContinue { get; set; }
+    public string NoAudioTrackFound { get; set; }
+    public string NoAudioTrackFoundInX { get; set; }
 
     public LanguageAudioToText()
     {
+        KeepPartialTranscriptionQuestion = "Keep partial transcription?";
+        KeepXLinesQuestion = "Do you want to keep {0} lines?";
+        EngineCouldNotStart = "Speech to text engine could not start";
+        SharedLibraryXMissing = "The speech to text engine could not start - the shared library \"{0}\" is missing.";
+        SharedLibraryBundledRedownload = "This library is part of the engine download, so the installed engine is incomplete.\n\nRe-download the engine (Download button next to the engine) and try again.";
+        SharedLibraryInstallIt = "Install it with your package manager and try again.";
+        IncompleteModel = "Incomplete model";
+        IncompleteModelMessage = "The model is incomplete. Please download the full model.";
+        UnknownArgumentX = "Unknown argument: {0}";
+        UnknownArgumentMessage = "Unknown argument. Please check the advanced settings.";
+        CudaFailed = "CUDA failed";
+        CudaOutOfMemory = "Whisper ran out of CUDA memory - try a smaller model or run on CPU.";
+        CuBlasFailed = "cuBLAS failed";
+        CuBlasNotSupportedCause = "The GPU could not run the model with the compute type the engine picked - cuBLAS returned CUBLAS_STATUS_NOT_SUPPORTED, and no text was transcribed.";
+        TryAnotherModelEngineOrCpu = "Try another model, another engine, or run on CPU.";
+        ComputeTypeAlreadySet = "The parameters already set \"--compute_type\" - try another value, such as \"float16\", \"float32\", or \"bfloat16\" - the \"int8\" types fail this way on many newer GPUs.";
+        AddingXFixesThisAddNow = "Adding \"{0}\" to the parameters normally fixes this.\n\nAdd it now?";
+        CudaNotAvailable = "CUDA not available";
+        WhisperXCpuOnly = "This WhisperX build runs on the CPU only - it cannot use \"--device cuda\", so no text was transcribed.";
+        EngineBuiltWithoutCuda = "This engine was built without CUDA support, so it cannot run on the GPU and no text was transcribed.";
+        RemoveGpuSettingsOrRunOnCpu = "Remove any GPU settings from the parameters, or run on CPU.";
+        RemoveGpuSettingsQuestionX = "Remove the GPU settings from the parameters so it runs on the CPU?\n\nNew parameters: {0}";
+        NoResultFile = "No result file";
+        NoResultFileMessage = "No result file was generated by Whisper, but some text was captured from standard output.";
+        NoTranscriptionResult = "No transcription result";
+        CrispAsrNoSubtitles = "Crisp ASR finished without generating subtitles. Please check the tools log for engine output.";
+        CouldNotGenerateAudioFileX = "Could not generate the audio file (ffmpeg exit code {0}).\nPlease check the tools log for the ffmpeg output.";
+        NoVideoFile = "No video file";
+        NoVideoFileFound = "No video file found!";
+        UnableToStartX = "Unable to start {0}";
+        UnableToStartXY = "Unable to start {0}: {1}";
+        ProgramFileXNotFoundYRedownload = "The {0} program file was not found:\n{1}\n\nIt may have been deleted or quarantined by antivirus software - if so, please restore it or add an exclusion for the folder.\n\nDo you want to re-download \"{0}\"?";
+        XRequiresEngineSelectVersion = "\"{0}\" requires downloading the engine.\n\nSelect a version to download:";
+        XRequiresCrispAsrSelectVersion = "\"{0}\" requires downloading the CrispASR engine.\n\nSelect a version to download:";
+        XRequiresForcedAlignerUseY = "\"{0}\" requires a forced aligner to create timestamps.\nDownload and use {1}?";
+        UpdatedModelXAvailable = "An updated {0} is available (re-converted for Crisp ASR v0.8.36).\nDownload and use it?";
+        XSelectedNotInstalledUseY = "\"{0}\" is selected but not installed.\nDownload and use {1}?";
+        EnglishModelContinue = "English model should only be used with English language.\nContinue anyway?";
+        NoAudioTrackFound = "No audio track found";
+        NoAudioTrackFoundInX = "No audio track was found in {0}";
         Title = "Speech to text";
         Transcribe = "Transcribe";
         TranslateToEnglish = "Translate to English";
@@ -102,7 +179,7 @@ public class LanguageAudioToText
         DetectSpeakersNeedsNewerCrispAsr = "\"Detect speakers\" needs Crisp ASR v{0} or newer, but v{1} is installed.\n\nUpdate Crisp ASR (the gear button next to the engine) or turn off \"Detect speakers\".";
         XNeedsNewerCrispAsr = "{0} needs Crisp ASR v{1} or newer, but v{2} is installed.\n\nDownload and install the update now?";
         Vad = "VAD";
-        VadHint = "Voice activity detection: only the speech is transcribed, cut where the speaker pauses.\nAuto: Silero, and only for the engines that need it (Cohere, Mega, Index-Echo).\nSilero, FireRedVAD, Whisper-VAD, WebRTC: always on, for every Crisp ASR engine. FireRedVAD is the most accurate, Whisper-VAD gives the fewest, cleanest cuts but is the slowest.\nIndex-Echo always uses Silero. --vad, --vad-model or --chunk-seconds in the advanced settings take precedence.";
+        VadHint = "Voice activity detection: only the speech is transcribed, cut where the speaker pauses.\nAuto: Silero, and only for the engines that need it (Cohere, Mega, Index-Echo, Granite).\nSilero, FireRedVAD, Whisper-VAD, WebRTC: always on, for every Crisp ASR engine. FireRedVAD is the most accurate, Whisper-VAD gives the fewest, cleanest cuts but is the slowest.\nIndex-Echo always uses Silero. --vad, --vad-model or --chunk-seconds in the advanced settings take precedence.";
         InputLanguage = "Input language";
         AdvancedWhisperSettings = "Advanced speech-to-text parameters";
         DownloadingSpeechToTextEngine = "Downloading speech-to-text engine";
@@ -116,6 +193,7 @@ public class LanguageAudioToText
         SelectModel = "Select model";
         AddCustomModelDotDotDot = "Add custom model...";
         CustomModelHelp = "You can use your own model: pick the model file (whisper.cpp ggml '.bin') or model folder (faster-whisper folder with a 'model.bin' inside). It is copied to the models folder and added to the list above.";
+        CustomModelHelpGguf = "You can use your own model: pick a qwen3-asr.cpp '.gguf' file (one file holding both the audio encoder and the language model, e.g. from OpenVoiceOS or FlippyDora on Hugging Face). It is copied to the models folder and added to the list above. GGUF files made for llama.cpp, transcribe.cpp or CapsWriter use a different layout and cannot be used.";
         ViewToolsLogFile = "View tools log file";
         UpdateXTitle = "Update {0}?";
         UpdateXMessage = "A newer version of {0} is available.{1}{1}Download and install the update now?";
@@ -139,11 +217,8 @@ public class LanguageAudioToText
         QualityReportLinesChecked = "Lines checked";
         QualityReportIssuesFound = "Issues found";
         QualityReportLinesRemoved = "Lines removed";
-        QualityReportTooShort = "Too short";
         QualityReportTooShortHint = "Shorter than the minimum display time, or reading speed above the maximum";
-        QualityReportTooLong = "Too long";
         QualityReportTooLongHint = "Longer than the maximum display time, or very few words over a long time (often a hallucination)";
-        QualityReportOverlap = "Overlapping";
         QualityReportOverlapHint = "Ends after the next line starts";
         QualityReportNonSpeech = "Non-speech";
         QualityReportNonSpeechHint = "Only a sound or music description, like \"[Music]\"";
@@ -152,7 +227,6 @@ public class LanguageAudioToText
         QualityReportRemoved = "Removed";
         QualityReportAll = "All";
         QualityReportIssue = "Issue";
-        QualityReportDetail = "Detail";
         QualityReportTip = "Lines are listed with their numbers in the new subtitle. Use \"Fix common errors\" or the post-processing settings to fix more automatically, or try another model/engine if many lines are affected.";
         QualityReportDoNotShowAgain = "Do not show this report again";
 

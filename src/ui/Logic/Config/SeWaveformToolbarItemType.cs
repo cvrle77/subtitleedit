@@ -64,7 +64,12 @@ public enum SeWaveformToolbarItemType
     // only renders for a multi-track video.
     TimelineTrackGrouping = 31,
 
+    // Compact rule-profile picker (#16236): an icon and a slim drop-down of the profiles from
+    // Options > Settings > Rules, the same switch as the Choose profile shortcut, without the dialog.
+    RuleProfile = 32,
+
     // The added "smooth" variant of the Center toggle: eases the view to the centre instead of
     // snapping. Separate from Center so the original instant toggle stays as it always was.
-    CenterSmooth = 32
+    // 33, not 32: upstream took 32 for RuleProfile.
+    CenterSmooth = 33
 }

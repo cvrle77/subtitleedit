@@ -28,6 +28,18 @@ public class DrawShape
     public bool Expanded { get; set; }
 
     /// <summary>
+    /// Editor-only group (0 = none): a click selects every shape with the same id. Not part of
+    /// the ASSA output; an .assadraw file keeps it in the Effect field.
+    /// </summary>
+    public int GroupId { get; set; }
+
+    /// <summary>
+    /// The in/out effect of the shape's line (a line is a layer, so every shape of a layer has the
+    /// same one); null = not animated.
+    /// </summary>
+    public DrawAnimation? Animation { get; set; }
+
+    /// <summary>
     /// A text-only object: its rectangle is where the text goes, nothing is drawn for it.
     /// </summary>
     public bool IsTextBox { get; set; }
@@ -67,6 +79,8 @@ public class DrawShape
         IsEraser = other.IsEraser;
         Hidden = other.Hidden;
         Expanded = other.Expanded;
+        GroupId = other.GroupId;
+        Animation = other.Animation?.Clone();
         IsTextBox = other.IsTextBox;
         Text = other.Text;
         FontName = other.FontName;
@@ -90,9 +104,10 @@ public class DrawShape
     }
 
     /// <summary>
-    /// Converts the shape to ASSA drawing commands.
+    /// Converts the shape to ASSA drawing commands, optionally relative to an anchor (an animated
+    /// line is positioned at its anchor with \pos or \move).
     /// </summary>
-    public string ToAssa()
+    public string ToAssa(float originX = 0, float originY = 0)
     {
         if (Points.Count == 0)
         {
@@ -103,7 +118,7 @@ public class DrawShape
         var first = Points[0];
 
         // Start with move command using the first point
-        sb.Append(CultureInfo.InvariantCulture, $"m {first.X:0.##} {first.Y:0.##} ");
+        sb.Append(CultureInfo.InvariantCulture, $"m {first.X - originX:0.##} {first.Y - originY:0.##} ");
 
         // A shape can mix line and bezier segments (the importer appends "l" and "b" runs to
         // the same shape, and switching tools mid-shape does too). Emit each point under the
@@ -123,7 +138,7 @@ public class DrawShape
                 currentCommand = command;
             }
 
-            sb.Append(CultureInfo.InvariantCulture, $"{point.X:0.##} {point.Y:0.##} ");
+            sb.Append(CultureInfo.InvariantCulture, $"{point.X - originX:0.##} {point.Y - originY:0.##} ");
         }
 
         return sb.ToString().Trim();
@@ -239,6 +254,28 @@ public class DrawShape
     }
 
     /// <summary>
+    /// Bounding box around several shapes (shapes without points are skipped).
+    /// </summary>
+    public static (float Left, float Top, float Right, float Bottom) GetBounds(IEnumerable<DrawShape> shapes)
+    {
+        (float Left, float Top, float Right, float Bottom)? bounds = null;
+        foreach (var shape in shapes)
+        {
+            if (shape.Points.Count == 0)
+            {
+                continue;
+            }
+
+            var b = shape.GetBounds();
+            bounds = bounds is { } u
+                ? (Math.Min(u.Left, b.Left), Math.Min(u.Top, b.Top), Math.Max(u.Right, b.Right), Math.Max(u.Bottom, b.Bottom))
+                : b;
+        }
+
+        return bounds ?? (0, 0, 0, 0);
+    }
+
+    /// <summary>
     /// The text area: the one set, or else the middle 80% of the bounds.
     /// </summary>
     public DrawTextFrame GetTextFrame()
@@ -337,8 +374,14 @@ public class DrawShape
     public void Rotate(float degrees)
     {
         var (left, top, right, bottom) = GetBounds();
-        var centerX = (left + right) / 2f;
-        var centerY = (top + bottom) / 2f;
+        Rotate(degrees, (left + right) / 2f, (top + bottom) / 2f);
+    }
+
+    /// <summary>
+    /// Rotates around a given center, e.g. the middle of a multi-selection.
+    /// </summary>
+    public void Rotate(float degrees, float centerX, float centerY)
+    {
         var radians = degrees * MathF.PI / 180f;
         var cos = MathF.Cos(radians);
         var sin = MathF.Sin(radians);
@@ -360,6 +403,14 @@ public class DrawShape
     public void FlipHorizontal()
     {
         var (left, _, right, _) = GetBounds();
+        FlipHorizontal(left, right);
+    }
+
+    /// <summary>
+    /// Mirrors inside the given horizontal range, e.g. the bounds of a multi-selection.
+    /// </summary>
+    public void FlipHorizontal(float left, float right)
+    {
         foreach (var point in Points)
         {
             point.X = left + right - point.X;
@@ -372,6 +423,14 @@ public class DrawShape
     public void FlipVertical()
     {
         var (_, top, _, bottom) = GetBounds();
+        FlipVertical(top, bottom);
+    }
+
+    /// <summary>
+    /// Mirrors inside the given vertical range, e.g. the bounds of a multi-selection.
+    /// </summary>
+    public void FlipVertical(float top, float bottom)
+    {
         foreach (var point in Points)
         {
             point.Y = top + bottom - point.Y;

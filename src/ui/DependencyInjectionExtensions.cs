@@ -8,7 +8,6 @@ using Nikse.SubtitleEdit.Features.Assa.AssaProgressBar;
 using Nikse.SubtitleEdit.Features.Assa.AssaSetBackground;
 using Nikse.SubtitleEdit.Features.Assa.AssaSetPosition;
 using Nikse.SubtitleEdit.Features.Assa.ResolutionResampler;
-using Nikse.SubtitleEdit.Features.Edit.AlignmentPicker;
 using Nikse.SubtitleEdit.Features.Edit.Find;
 using Nikse.SubtitleEdit.Features.Edit.ModifySelection;
 using Nikse.SubtitleEdit.Features.Edit.MultipleReplace;
@@ -21,6 +20,9 @@ using Nikse.SubtitleEdit.Features.Files.ExportDvbTeletext;
 using Nikse.SubtitleEdit.Features.Files.ExportCustomTextFormat;
 using Nikse.SubtitleEdit.Features.Files.ExportImageBased;
 using Nikse.SubtitleEdit.Features.Files.ExportPac;
+using Nikse.SubtitleEdit.Features.Files.ExportDialogueList;
+using Nikse.SubtitleEdit.Features.Video.SyncAudioTrack;
+using Nikse.SubtitleEdit.Features.Video.SyncToAudio;
 using Nikse.SubtitleEdit.Features.Files.ExportPlainText;
 using Nikse.SubtitleEdit.Features.Files.FormatProperties.DCinemaInteropProperties;
 using Nikse.SubtitleEdit.Features.Files.FormatProperties.DCinemaSmpteProperties;
@@ -29,6 +31,7 @@ using Nikse.SubtitleEdit.Features.Files.FormatProperties.TimedText10Properties;
 using Nikse.SubtitleEdit.Features.Files.FormatProperties.TimedTextImsc11Properties;
 using Nikse.SubtitleEdit.Features.Files.FormatProperties.WebVttProperties;
 using Nikse.SubtitleEdit.Features.WebVtt;
+using Nikse.SubtitleEdit.Features.Ytt;
 using Nikse.SubtitleEdit.Features.Files.ImportDvd;
 using Nikse.SubtitleEdit.Features.Files.ImportImages;
 using Nikse.SubtitleEdit.Features.Files.ImportCsvXlsxCustomColumns;
@@ -50,9 +53,9 @@ using Nikse.SubtitleEdit.Features.Main.MainHelpers;
 using Nikse.SubtitleEdit.Features.Ocr;
 using Nikse.SubtitleEdit.Features.Ocr.BinaryOcr;
 using Nikse.SubtitleEdit.Features.Ocr.Download;
-using Nikse.SubtitleEdit.Features.Ocr.FixEngine;
 using Nikse.SubtitleEdit.Features.Ocr.NOcr;
 using Nikse.SubtitleEdit.Features.Ocr.VobSubColorChooser;
+using Nikse.SubtitleEdit.Features.Options.CustomErrorRules;
 using Nikse.SubtitleEdit.Features.Options.DoNotBreakAfterList;
 using Nikse.SubtitleEdit.Features.Options.Language;
 using Nikse.SubtitleEdit.Features.Options.Plugins;
@@ -311,6 +314,7 @@ public static class DependencyInjectionExtensions
         collection.AddHttpClientWithProxy<IWhisperDownloadService, WhisperDownloadService>();
         collection.AddHttpClientWithProxy<IYtDlpDownloadService, YtDlpDownloadService>();
         collection.AddHttpClientWithProxy<IUpdateCheckService, UpdateCheckService>();
+        collection.AddHttpClientWithProxy<IAutoUpdateService, AutoUpdateService>();
         collection.AddHttpClientWithProxy<ILlamaCppDownloadService, LlamaCppDownloadService>();
         collection.AddHttpClientWithProxy<IQwen3AsrCppDownloadService, Qwen3AsrCppDownloadService>();
         collection.AddHttpClientWithProxy<IQwen3TtsCppDownloadService, Qwen3TtsCppDownloadService>();
@@ -327,6 +331,7 @@ public static class DependencyInjectionExtensions
         collection.AddHttpClientWithProxy<IFishTtsAudioCppDownloadService, FishTtsAudioCppDownloadService>();
         collection.AddHttpClientWithProxy<IFireRedTts3AudioCppDownloadService, FireRedTts3AudioCppDownloadService>();
         collection.AddHttpClientWithProxy<IKugelAudioAudioCppDownloadService, KugelAudioAudioCppDownloadService>();
+        collection.AddHttpClientWithProxy<IVoxtralTtsAudioCppDownloadService, VoxtralTtsAudioCppDownloadService>();
         collection.AddHttpClientWithProxy<IBreezeTtsAudioCppDownloadService, BreezeTtsAudioCppDownloadService>();
         collection.AddHttpClientWithProxy<IAceStepAudioCppDownloadService, AceStepAudioCppDownloadService>();
         collection.AddHttpClientWithProxy<ISidonAudioCppDownloadService, SidonAudioCppDownloadService>();
@@ -349,7 +354,6 @@ public static class DependencyInjectionExtensions
         collection.AddTransient<AboutViewModel>();
         collection.AddTransient<AdjustAllTimesViewModel>();
         collection.AddTransient<AdjustDurationViewModel>();
-        collection.AddTransient<AlignmentPickerViewModel>();
         collection.AddTransient<ApplyDurationLimitsViewModel>();
         collection.AddTransient<ApplyMinGapViewModel>();
         collection.AddTransient<AssSetBackgroundViewModel>();
@@ -363,7 +367,6 @@ public static class DependencyInjectionExtensions
         collection.AddTransient<Features.Assa.FontCollector.FontCollectorViewModel>();
         collection.AddTransient<AssaResolutionResamplerViewModel>();
         collection.AddTransient<AssaSetPositionViewModel>();
-        collection.AddTransient<AssaSingleStyleViewModel>();
         collection.AddTransient<AssaStylePickerViewModel>();
         collection.AddTransient<AssaStylesViewModel>();
         collection.AddTransient<SsaStylesViewModel>();
@@ -420,6 +423,7 @@ public static class DependencyInjectionExtensions
         collection.AddTransient<ChangeFrameRateViewModel>();
         collection.AddTransient<ChangeSpeedViewModel>();
         collection.AddTransient<CheckForUpdatesViewModel>();
+        collection.AddTransient<CheckForUpdatesSettingsViewModel>();
         collection.AddTransient<ColorPickerViewModel>();
         collection.AddTransient<ColumnPasteViewModel>();
         collection.AddTransient<CompareViewModel>();
@@ -451,6 +455,7 @@ public static class DependencyInjectionExtensions
         collection.AddTransient<EditCustomTextFormatViewModel>();
         collection.AddTransient<EditEmbeddedTrackViewModel>();
         collection.AddTransient<EditRuleViewModel>();
+        collection.AddTransient<AddRulesViewModel>();
         collection.AddTransient<EditWholeTextViewModel>();
         collection.AddTransient<UseAlwaysListViewModel>();
         collection.AddTransient<ElevenLabsSettingsViewModel>();
@@ -468,6 +473,9 @@ public static class DependencyInjectionExtensions
         collection.AddTransient<TextEffectViewModel>();
         collection.AddTransient<ExportPacViewModel>();
         collection.AddTransient<ExportPlainTextViewModel>();
+        collection.AddTransient<ExportDialogueListViewModel>();
+        collection.AddTransient<SyncAudioTrackViewModel>();
+        collection.AddTransient<SyncToAudioViewModel>();
         collection.AddTransient<FindDoubleLinesViewModel>();
         collection.AddTransient<FindDoubleWordsViewModel>();
         collection.AddTransient<FindRuleViewModel>();
@@ -627,6 +635,7 @@ public static class DependencyInjectionExtensions
         collection.AddTransient<CustomShortcutStepViewModel>();
         collection.AddTransient<CustomSearchViewModel>();
         collection.AddTransient<SyntaxColorTooWideSettingsViewModel>();
+        collection.AddTransient<CustomErrorRulesViewModel>();
         collection.AddTransient<MinGapCalculateViewModel>();
         collection.AddTransient<TextToSpeechViewModel>();
         collection.AddTransient<SpeakFromLineViewModel>();
@@ -655,11 +664,13 @@ public static class DependencyInjectionExtensions
         collection.AddTransient<WaveformToolbarItemsViewModel>();
         collection.AddTransient<WebVttPropertiesViewModel>();
         collection.AddTransient<WebVttStylesViewModel>();
+        collection.AddTransient<YttStylesViewModel>();
         collection.AddTransient<WebVttStylePickerViewModel>();
         collection.AddTransient<SpeechToTextAdvancedViewModel>();
         collection.AddTransient<SpeechToTextPostProcessingViewModel>();
         collection.AddTransient<SpeechToTextQualityReportViewModel>();
         collection.AddTransient<WordListsViewModel>();
+        collection.AddTransient<RegexRulesViewModel>();
     }
 
     /// <summary>

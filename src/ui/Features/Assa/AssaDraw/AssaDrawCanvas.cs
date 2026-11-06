@@ -7,6 +7,8 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Immutable;
 
+using Nikse.SubtitleEdit.Logic;
+
 namespace Nikse.SubtitleEdit.Features.Assa.AssaDraw;
 
 /// <summary>
@@ -27,13 +29,25 @@ public class AssaDrawCanvas : Control
     private (float X, float Y) _insertEnd;
     private bool _insertConstrain;
     private DrawShape? _pressedShape;
+    private bool _pressedClickPending;
     private bool _dragShapeMoved;
+
+    // Rubber-band selection (select tool, drag on empty canvas), in canvas coordinates
+    private (float X, float Y)? _marqueeStart;
+    private (float X, float Y) _marqueeEnd;
+    private bool _marqueeAdditive;
+    private bool _marqueeParts;
     private bool _pointDragStarted;
 
     // Scale/rotate handles: 0-7 scale (TL, T, TR, R, BR, B, BL, L), 8 rotate
     private const int RotateHandle = 8;
     private const double HandlePadding = 8;
     private const double RotateHandleDistance = 26;
+
+    /// <summary>
+    /// Screen pixels the pointer must move before pressing a shape starts dragging it.
+    /// </summary>
+    private const double DragSlop = 3;
     private int _transformHandle = -1;
     private List<DrawShape>? _transformShapes;
     private List<(float X, float Y)[]>? _transformOriginal;
@@ -52,11 +66,29 @@ public class AssaDrawCanvas : Control
     ];
     private static readonly Cursor MoveCursor = new(StandardCursorType.SizeAll);
 
-    private static readonly ImmutableSolidColorBrush WorkspaceBrush = new(Color.FromRgb(22, 23, 27));
-    private static readonly ImmutableSolidColorBrush CheckerBrush = new(Color.FromArgb(10, 255, 255, 255));
-    private static readonly Color AccentColor = Color.FromRgb(76, 110, 245);
+    // Workspace colors follow the app theme; the light frame is a mid gray so white shapes (the ASSA default) still show
+    private static readonly ImmutableSolidColorBrush DarkWorkspaceBrush = new(Color.FromRgb(22, 23, 27));
+    private static readonly ImmutableSolidColorBrush LightWorkspaceBrush = new(Color.FromRgb(226, 228, 233));
+    private static readonly ImmutableSolidColorBrush DarkCheckerBrush = new(Color.FromArgb(10, 255, 255, 255));
+    private static readonly ImmutableSolidColorBrush LightCheckerBrush = new(Color.FromArgb(14, 0, 0, 0));
+    private static readonly Color LightCanvasColor = Color.FromRgb(196, 200, 208);
+    private static readonly Color LightGridColor = Color.FromArgb(40, 0, 0, 0);
+    private static readonly Color LightShapeLineColor = Color.FromRgb(70, 76, 90);
+    private static readonly Color DarkGuideColor = Color.FromArgb(150, 160, 170, 190);
+    private static readonly Color LightGuideColor = Color.FromArgb(170, 80, 88, 106);
+    private static readonly Color DarkTextFrameColor = Color.FromArgb(150, 200, 200, 200);
+    private static readonly Color LightTextFrameColor = Color.FromArgb(170, 70, 76, 90);
+    private static Color AccentColor => EditorChrome.AccentColorValue;
     private static readonly Color HandleFillColor = Colors.White;
-    private static readonly Color GuideColor = Color.FromArgb(150, 160, 170, 190);
+
+    private static bool IsLight => EditorChrome.IsLightTheme;
+    private static IBrush WorkspaceBrush => IsLight ? LightWorkspaceBrush : DarkWorkspaceBrush;
+    private static IBrush CheckerBrush => IsLight ? LightCheckerBrush : DarkCheckerBrush;
+    private static Color CanvasColor => IsLight ? LightCanvasColor : DrawSettings.BackgroundColor;
+    private static Color GridColor => IsLight ? LightGridColor : DrawSettings.GridColor;
+    private static Color ShapeLineColor => IsLight ? LightShapeLineColor : DrawSettings.ShapeLineColor;
+    private static Color GuideColor => IsLight ? LightGuideColor : DarkGuideColor;
+    private static Color TextFrameColor => IsLight ? LightTextFrameColor : DarkTextFrameColor;
 
     private readonly Dictionary<Color, IBrush> _brushCache = new();
     private readonly Dictionary<(Color Color, double Thickness, PenLineCap LineCap, PenLineJoin LineJoin, bool Dashed), IPen> _penCache = new();
@@ -185,6 +217,17 @@ public class AssaDrawCanvas : Control
         set => SetValue(CurrentYProperty, value);
     }
 
+    /// <summary>
+    /// While the animation plays: the time into the line (ms). The canvas then shows just the
+    /// layers, each moved, scaled, turned and faded like libass shows it at that time.
+    /// </summary>
+    public double? AnimationTime { get; set; }
+
+    /// <summary>
+    /// The animation state and anchor of a layer (given its first drawing shape) at a time.
+    /// </summary>
+    public Func<DrawShape, double, (DrawAnimationState State, float AnchorX, float AnchorY)>? GetAnimationTransform { get; set; }
+
     public bool ShowPreview
     {
         get => GetValue(ShowPreviewProperty);
@@ -248,9 +291,20 @@ public class AssaDrawCanvas : Control
     public event EventHandler<float>? ZoomChanged;
 
     /// <summary>
-    /// Select tool click: the shape under the pointer, or null for empty canvas.
+    /// Select tool click: the shape under the pointer, or null for empty canvas. With Alt or a
+    /// double-click <see cref="ShapeClickEventArgs.SelectPart"/> asks for the part, not its group.
     /// </summary>
-    public event EventHandler<DrawShape?>? ShapeClicked;
+    public event EventHandler<ShapeClickEventArgs>? ShapeClicked;
+
+    /// <summary>
+    /// Select tool Ctrl/Cmd+click on a shape: add it to the selection or take it out.
+    /// </summary>
+    public event EventHandler<ShapeClickEventArgs>? ShapeToggled;
+
+    /// <summary>
+    /// Select tool drag on empty canvas: select what the rectangle touches.
+    /// </summary>
+    public event EventHandler<CanvasMarqueeEventArgs>? MarqueeSelected;
 
     /// <summary>
     /// A shape was dragged to a new position with the select tool.
@@ -304,6 +358,33 @@ public class AssaDrawCanvas : Control
         ClipToBounds = true;
         Focusable = true;
     }
+
+    // The workspace colors are picked at render time from the app theme, so repaint when it
+    // changes while the window is open.
+    private Application? _themeApplication;
+
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _themeApplication = Application.Current;
+        if (_themeApplication != null)
+        {
+            _themeApplication.ActualThemeVariantChanged += OnThemeChanged;
+        }
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        if (_themeApplication != null)
+        {
+            _themeApplication.ActualThemeVariantChanged -= OnThemeChanged;
+            _themeApplication = null;
+        }
+
+        base.OnDetachedFromVisualTree(e);
+    }
+
+    private void OnThemeChanged(object? sender, EventArgs e) => InvalidateVisual();
 
     /// <summary>
     /// Zooms so the whole frame fits the visible area and centers it.
@@ -389,6 +470,13 @@ public class AssaDrawCanvas : Control
 
         // Draw resolution border
         DrawResolutionBorder(context);
+
+        // Playing the animation: only the animated result, no outlines or handles
+        if (AnimationTime is { } animationTime && GetAnimationTransform != null)
+        {
+            DrawLayerFills(context, Shapes, animationTime);
+            return;
+        }
 
         // Shapes are filled with their layer color, unless the libass render already shows them
         var fillShapes = !ShowPreview || PreviewImage == null;
@@ -504,6 +592,18 @@ public class AssaDrawCanvas : Control
             }
         }
 
+        // Select tool: the rubber-band selection rectangle
+        if (_marqueeStart is { } marqueeStart)
+        {
+            var marquee = new Rect(
+                new Point(ToZoomFactorX(marqueeStart.X), ToZoomFactorY(marqueeStart.Y)),
+                new Point(ToZoomFactorX(_marqueeEnd.X), ToZoomFactorY(_marqueeEnd.Y)));
+            if (marquee.Width >= 1 || marquee.Height >= 1)
+            {
+                context.DrawRectangle(GetBrush(Color.FromArgb(40, AccentColor.R, AccentColor.G, AccentColor.B)), GetPen(AccentColor, 1, dashed: true), marquee);
+            }
+        }
+
         // Text tool: the dragged text box
         if (_insertStart != null && CurrentTool == DrawingTool.Text && GetInsertRect() is { IsClick: false } textInsert)
         {
@@ -578,14 +678,14 @@ public class AssaDrawCanvas : Control
 
     private void DrawCanvasArea(DrawingContext context)
     {
-        var brush = GetBrush(DrawSettings.BackgroundColor);
+        var brush = GetBrush(CanvasColor);
         var rect = new Rect(_panX, _panY, CanvasWidth * _zoomFactor, CanvasHeight * _zoomFactor);
         context.FillRectangle(brush, rect);
     }
 
     private void DrawGrid(DrawingContext context)
     {
-        var pen = GetPen(DrawSettings.GridColor, 1);
+        var pen = GetPen(GridColor, 1);
         var gridSize = DrawSettings.GridSize * _zoomFactor;
         while (gridSize < 8)
         {
@@ -624,7 +724,7 @@ public class AssaDrawCanvas : Control
         if (shape.IsTextBox)
         {
             // Nothing is drawn for a text box - just a dashed frame to grab it by
-            var framePen = GetPen(isActive || isSelected ? AccentColor : Color.FromArgb(150, 200, 200, 200), isActive || isSelected ? 1.5 : 1, dashed: true);
+            var framePen = GetPen(isActive || isSelected ? AccentColor : TextFrameColor, isActive || isSelected ? 1.5 : 1, dashed: true);
             context.DrawGeometry(null, framePen, BuildGeometry(shape, true));
             return;
         }
@@ -654,7 +754,7 @@ public class AssaDrawCanvas : Control
         }
         else
         {
-            color = isActive || isSelected ? AccentColor : DrawSettings.ShapeLineColor;
+            color = isActive || isSelected ? AccentColor : ShapeLineColor;
         }
 
         var pen = GetPen(color, isActive || isSelected ? 2 : 1.5, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round, dashed: shape.IsEraser);
@@ -682,10 +782,11 @@ public class AssaDrawCanvas : Control
     /// shapes (\iclip) are cut out of it. The layer's outline goes under the fill (libass draws
     /// \bord outside the shape), and the layer's text on top of it.
     /// </summary>
-    private void DrawLayerFills(DrawingContext context, List<DrawShape> shapes)
+    private void DrawLayerFills(DrawingContext context, List<DrawShape> shapes, double? animationTime = null)
     {
         foreach (var layer in shapes.Where(s => !s.Hidden && s.Points.Count > 2).GroupBy(s => s.Layer).OrderBy(g => g.Key))
         {
+            using var animation = animationTime is { } time ? PushAnimation(context, layer, time) : null;
             var drawShapes = layer.Where(s => !s.IsEraser && !s.IsTextBox).ToList();
             if (drawShapes.Count > 0)
             {
@@ -693,7 +794,15 @@ public class AssaDrawCanvas : Control
                 var eraserShapes = layer.Where(s => s.IsEraser).ToList();
                 if (eraserShapes.Count > 0)
                 {
-                    geometry = new CombinedGeometry(GeometryCombineMode.Exclude, geometry, BuildLayerGeometry(eraserShapes));
+                    // The \iclip doesn't follow the animation in libass, so the erasers stand still
+                    // here too: undo the layer's animation transform for them
+                    Geometry eraserGeometry = BuildLayerGeometry(eraserShapes);
+                    if (animation != null && animation.Matrix.TryInvert(out var inverse))
+                    {
+                        eraserGeometry.Transform = new MatrixTransform(inverse);
+                    }
+
+                    geometry = new CombinedGeometry(GeometryCombineMode.Exclude, geometry, eraserGeometry);
                 }
 
                 var styleShape = drawShapes[0];
@@ -714,6 +823,48 @@ public class AssaDrawCanvas : Control
             {
                 DrawShapeText(context, shape);
             }
+        }
+    }
+
+    /// <summary>
+    /// Moves, scales and turns what is drawn next around the layer's anchor, and fades it, as its
+    /// animation has it at <paramref name="timeMs"/>.
+    /// </summary>
+    private AnimationScope? PushAnimation(DrawingContext context, IEnumerable<DrawShape> layer, double timeMs)
+    {
+        // The shape the output takes the layer's anchor from: its first draw shape
+        var styleShape = layer.FirstOrDefault(s => !s.IsEraser && !s.IsTextBox) ?? layer.FirstOrDefault(s => !s.IsEraser);
+        if (styleShape == null || GetAnimationTransform == null)
+        {
+            return null;
+        }
+
+        var (state, anchorX, anchorY) = GetAnimationTransform(styleShape, timeMs);
+        if (state == DrawAnimationState.Rest)
+        {
+            return null;
+        }
+
+        var centerX = ToZoomFactorX(anchorX);
+        var centerY = ToZoomFactorY(anchorY);
+        var matrix =
+            Matrix.CreateTranslation(-centerX, -centerY) *
+            Matrix.CreateScale(Math.Max(0.001, state.Scale), Math.Max(0.001, state.Scale)) *
+            Matrix.CreateRotation(state.Rotation * Math.PI / 180) *
+            Matrix.CreateTranslation(centerX + state.Dx * _zoomFactor, centerY + state.Dy * _zoomFactor);
+        var transform = context.PushTransform(matrix);
+        var opacity = context.PushOpacity(state.Opacity);
+        return new AnimationScope(matrix, transform, opacity);
+    }
+
+    private sealed class AnimationScope(Matrix matrix, DrawingContext.PushedState transform, DrawingContext.PushedState opacity) : IDisposable
+    {
+        public Matrix Matrix => matrix;
+
+        public void Dispose()
+        {
+            opacity.Dispose();
+            transform.Dispose();
         }
     }
 
@@ -1071,22 +1222,29 @@ public class AssaDrawCanvas : Control
     }
 
     /// <summary>
-    /// The topmost visible shape under (x, y) in canvas coordinates.
+    /// The topmost visible shape under (x, y) in canvas coordinates: highest layer first (libass
+    /// draws higher layers on top), then the later shape of a layer.
     /// </summary>
     public DrawShape? HitTestShape(float x, float y)
     {
         var shapes = Shapes;
-        for (var i = shapes.Count - 1; i >= 0; i--)
+        DrawShape? best = null;
+        for (var i = 0; i < shapes.Count; i++)
         {
             var shape = shapes[i];
-            if (!shape.Hidden && shape.HitTest(x, y, 5f / _zoomFactor))
+            if ((best == null || shape.Layer >= best.Layer) && !shape.Hidden && shape.HitTest(x, y, 5f / _zoomFactor))
             {
-                return shape;
+                best = shape;
             }
         }
 
-        return null;
+        return best;
     }
+
+    /// <summary>
+    /// Select tool: a grouped shape's points can be grabbed only once the part itself is selected.
+    /// </summary>
+    private bool CanPickPointsOf(DrawShape shape) => shape.GroupId == 0 || shape == SelectedShape;
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
@@ -1100,7 +1258,7 @@ public class AssaDrawCanvas : Control
 
         if (properties.IsRightButtonPressed)
         {
-            var targetPoint = GetClosePoint(x, y);
+            var targetPoint = GetClosePoint(x, y, CurrentTool == DrawingTool.Select && !e.KeyModifiers.HasFlag(KeyModifiers.Alt) ? CanPickPointsOf : null);
             var targetShape = targetPoint == null ? HitTestShape(x, y) : FindShape(targetPoint);
             ContextMenuRequested?.Invoke(this, new CanvasContextEventArgs(point, x, y, targetPoint, targetShape));
             e.Handled = true;
@@ -1158,8 +1316,13 @@ public class AssaDrawCanvas : Control
             return;
         }
 
-        // Check if clicking near an existing point
-        var closePoint = GetClosePoint(x, y);
+        var isSelectTool = CurrentTool == DrawingTool.Select;
+        var selectPart = e.KeyModifiers.HasFlag(KeyModifiers.Alt) || e.ClickCount >= 2;
+        var toggle = isSelectTool && (e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta));
+
+        // Check if clicking near an existing point (not on Ctrl+click, which toggles shapes; a
+        // grouped shape's points only once the part itself is picked - Alt+click or double-click)
+        var closePoint = toggle ? null : GetClosePoint(x, y, isSelectTool && !selectPart ? CanPickPointsOf : null);
         if (closePoint != null)
         {
             ActivePoint = closePoint;
@@ -1170,26 +1333,50 @@ public class AssaDrawCanvas : Control
             return;
         }
 
-        if (CurrentTool == DrawingTool.Select)
+        if (isSelectTool)
         {
             // Select tool: pick the shape under the pointer, and drag it to move it
             var shape = HitTestShape(x, y);
-            if (shape != null)
+            if (shape == null)
             {
-                // Dragging a shape of a multi-selection moves the whole selection
-                _dragShapes = SelectedShapes.Count > 1 && SelectedShapes.Contains(shape) ? SelectedShapes.ToList() : [shape];
-                _pressedShape = shape;
-                _dragShapeMoved = false;
-                _lastMousePosition = point;
-                if (_dragShapes.Count > 1)
-                {
-                    InvalidateVisual();
-                    e.Handled = true;
-                    return;
-                }
+                // Empty canvas: drag a selection rectangle (a click clears the selection)
+                _marqueeStart = (x, y);
+                _marqueeEnd = (x, y);
+                _marqueeAdditive = toggle;
+                _marqueeParts = e.KeyModifiers.HasFlag(KeyModifiers.Alt);
+                e.Handled = true;
+                return;
             }
 
-            ShapeClicked?.Invoke(this, shape);
+            if (toggle)
+            {
+                ShapeToggled?.Invoke(this, new ShapeClickEventArgs(shape, selectPart));
+                InvalidateVisual();
+                e.Handled = true;
+                return;
+            }
+
+            var selected = SelectedShapes;
+            if (selected.Count > 1 && selected.Contains(shape) && !selectPart)
+            {
+                // Dragging a shape of a multi-selection (or group) moves the whole selection;
+                // a click without dragging is handled on release
+                _dragShapes = selected.ToList();
+                _pressedClickPending = true;
+            }
+            else
+            {
+                ShapeClicked?.Invoke(this, new ShapeClickEventArgs(shape, selectPart));
+
+                // The click may have picked the shape's whole group
+                var nowSelected = SelectedShapes;
+                _dragShapes = nowSelected.Count > 1 && nowSelected.Contains(shape) ? nowSelected.ToList() : [shape];
+                _pressedClickPending = false;
+            }
+
+            _pressedShape = shape;
+            _dragShapeMoved = false;
+            _lastMousePosition = point;
             InvalidateVisual();
             e.Handled = true;
             return;
@@ -1226,6 +1413,14 @@ public class AssaDrawCanvas : Control
             return;
         }
 
+        if (_marqueeStart != null)
+        {
+            _marqueeEnd = (x, y);
+            InvalidateVisual();
+            CanvasMouseMoved?.Invoke(this, new CanvasMouseEventArgs(x, y));
+            return;
+        }
+
         if (_transformShapes != null && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
             if (!_transformStarted)
@@ -1248,6 +1443,17 @@ public class AssaDrawCanvas : Control
         // Dragging a whole shape
         if (_dragShapes != null && _lastMousePosition.HasValue && e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
+            // A small slop before a click becomes a move, so a click that jitters a pixel doesn't
+            // nudge the shape (and add an undo step). The press point is kept until then, so the
+            // shape still follows the pointer exactly once it moves.
+            if (!_dragShapeMoved &&
+                Math.Abs(point.X - _lastMousePosition.Value.X) < DragSlop &&
+                Math.Abs(point.Y - _lastMousePosition.Value.Y) < DragSlop)
+            {
+                CanvasMouseMoved?.Invoke(this, new CanvasMouseEventArgs(x, y));
+                return;
+            }
+
             var dx = (float)(point.X - _lastMousePosition.Value.X) / _zoomFactor;
             var dy = (float)(point.Y - _lastMousePosition.Value.Y) / _zoomFactor;
             if (dx != 0 || dy != 0)
@@ -1311,7 +1517,7 @@ public class AssaDrawCanvas : Control
             {
                 cursor = HandleCursors[handle];
             }
-            else if (GetClosePoint(x, y) == null && HitTestShape(x, y) != null)
+            else if (GetClosePoint(x, y, CanPickPointsOf) == null && HitTestShape(x, y) != null)
             {
                 cursor = MoveCursor;
             }
@@ -1343,6 +1549,30 @@ public class AssaDrawCanvas : Control
             return;
         }
 
+        if (_marqueeStart is { } marqueeStart)
+        {
+            var end = _marqueeEnd;
+            _marqueeStart = null;
+            InvalidateVisual();
+            if (Math.Abs(end.X - marqueeStart.X) * _zoomFactor < 4 && Math.Abs(end.Y - marqueeStart.Y) * _zoomFactor < 4)
+            {
+                // A click on empty canvas clears the selection (Ctrl+click keeps it)
+                if (!_marqueeAdditive)
+                {
+                    ShapeClicked?.Invoke(this, new ShapeClickEventArgs(null, false));
+                }
+            }
+            else
+            {
+                MarqueeSelected?.Invoke(this, new CanvasMarqueeEventArgs(
+                    Math.Min(marqueeStart.X, end.X), Math.Min(marqueeStart.Y, end.Y),
+                    Math.Max(marqueeStart.X, end.X), Math.Max(marqueeStart.Y, end.Y),
+                    _marqueeAdditive, _marqueeParts));
+            }
+
+            return;
+        }
+
         var dragShapes = _dragShapes;
         var moved = _dragShapeMoved;
         _dragShapes = null;
@@ -1351,13 +1581,14 @@ public class AssaDrawCanvas : Control
         {
             ShapeMoved?.Invoke(this, dragShapes[0]);
         }
-        else if (dragShapes is { Count: > 1 } && _pressedShape != null)
+        else if (_pressedClickPending && _pressedShape != null)
         {
-            // A click (no drag) on a shape of a multi-selection selects just that shape
-            ShapeClicked?.Invoke(this, _pressedShape);
+            // A click (no drag) on a shape of a multi-selection selects just that shape (or its group)
+            ShapeClicked?.Invoke(this, new ShapeClickEventArgs(_pressedShape, false));
         }
 
         _pressedShape = null;
+        _pressedClickPending = false;
 
         var transformShapes = _transformShapes;
         var transformed = _transformStarted;
@@ -1442,14 +1673,21 @@ public class AssaDrawCanvas : Control
     /// </summary>
     public Color? SampleColor(float x, float y)
     {
+        // Topmost first, as drawn: highest layer, then the later shape of a layer
         var shapes = Shapes;
-        for (var i = shapes.Count - 1; i >= 0; i--)
+        DrawShape? top = null;
+        for (var i = 0; i < shapes.Count; i++)
         {
             var shape = shapes[i];
-            if (!shape.Hidden && !shape.IsEraser && !shape.IsTextBox && shape.Points.Count > 2 && shape.HitTest(x, y, 0))
+            if ((top == null || shape.Layer >= top.Layer) && !shape.Hidden && !shape.IsEraser && !shape.IsTextBox && shape.Points.Count > 2 && shape.HitTest(x, y, 0))
             {
-                return shape.ForeColor;
+                top = shape;
             }
+        }
+
+        if (top != null)
+        {
+            return top.ForeColor;
         }
 
         var canvasRect = new Rect(_panX, _panY, CanvasWidth * _zoomFactor, CanvasHeight * _zoomFactor);
@@ -1522,13 +1760,13 @@ public class AssaDrawCanvas : Control
         }
     }
 
-    private DrawCoordinate? GetClosePoint(float x, float y)
+    private DrawCoordinate? GetClosePoint(float x, float y, Func<DrawShape, bool>? canPick = null)
     {
         const float maxDistance = 10f;
         DrawCoordinate? closest = null;
         var minDist = float.MaxValue;
 
-        foreach (var shape in Shapes.Where(s => !s.Hidden && !s.IsTextBox))
+        foreach (var shape in Shapes.Where(s => !s.Hidden && !s.IsTextBox && (canPick == null || canPick(s))))
         {
             foreach (var point in shape.Points)
             {
@@ -1542,6 +1780,56 @@ public class AssaDrawCanvas : Control
         }
 
         return closest;
+    }
+}
+
+public class ShapeClickEventArgs : EventArgs
+{
+    /// <summary>
+    /// The shape under the pointer, null for empty canvas.
+    /// </summary>
+    public DrawShape? Shape { get; }
+
+    /// <summary>
+    /// Alt+click or double-click: the part itself, not its whole group.
+    /// </summary>
+    public bool SelectPart { get; }
+
+    public ShapeClickEventArgs(DrawShape? shape, bool selectPart)
+    {
+        Shape = shape;
+        SelectPart = selectPart;
+    }
+}
+
+/// <summary>
+/// A rubber-band selection rectangle in canvas coordinates.
+/// </summary>
+public class CanvasMarqueeEventArgs : EventArgs
+{
+    public float Left { get; }
+    public float Top { get; }
+    public float Right { get; }
+    public float Bottom { get; }
+
+    /// <summary>
+    /// Ctrl/Cmd held: add to the selection instead of replacing it.
+    /// </summary>
+    public bool Additive { get; }
+
+    /// <summary>
+    /// Alt held: just the touched shapes, not the rest of their groups.
+    /// </summary>
+    public bool SelectParts { get; }
+
+    public CanvasMarqueeEventArgs(float left, float top, float right, float bottom, bool additive, bool selectParts)
+    {
+        Left = left;
+        Top = top;
+        Right = right;
+        Bottom = bottom;
+        Additive = additive;
+        SelectParts = selectParts;
     }
 }
 

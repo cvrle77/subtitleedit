@@ -1,15 +1,10 @@
 ﻿using Nikse.SubtitleEdit.Core.Common;
 using Nikse.SubtitleEdit.UiLogic.Http;
 using Nikse.SubtitleEdit.UiLogic.Translate;
-using System;
-using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Nikse.SubtitleEdit.UiLogic.AutoTranslate
 {
@@ -201,7 +196,7 @@ namespace Nikse.SubtitleEdit.UiLogic.AutoTranslate
                 new TranslationPair("PERSIAN", "fa"),
                 new TranslationPair("POLISH", "pl"),
                 new TranslationPair("PORTUGUESE", "pt-PT"),
-                new TranslationPair("PORTUGUESE (BRAZIL)", "pt"),
+                new TranslationPair("PORTUGUESE (BRAZIL)", "pt-BR"),
                 new TranslationPair("PUNJABI", "pa"),
                 new TranslationPair("PUNJABI (Shahmukhi)", "pa-Arab"),
                 new TranslationPair("QUECHUABI", "qu"),

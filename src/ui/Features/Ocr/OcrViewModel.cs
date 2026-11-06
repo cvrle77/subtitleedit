@@ -15,14 +15,12 @@ using Nikse.SubtitleEdit.Core.ContainerFormats.TransportStream;
 using Nikse.SubtitleEdit.Core.Interfaces;
 using Nikse.SubtitleEdit.Core.SubtitleFormats;
 using Nikse.SubtitleEdit.Core.VobSub;
-using Nikse.SubtitleEdit.UiLogic.Ocr.Service;
 using Nikse.SubtitleEdit.Features.Files.ImportImages;
 using Nikse.SubtitleEdit.Features.Main;
 using Nikse.SubtitleEdit.Features.Ocr.BinaryOcr;
 using Nikse.SubtitleEdit.Features.Ocr.Download;
 using Nikse.SubtitleEdit.Features.Ocr.Engines;
 using Nikse.SubtitleEdit.Features.Ocr.FallbackDatabase;
-using Nikse.SubtitleEdit.Features.Ocr.FixEngine;
 using Nikse.SubtitleEdit.Features.Ocr.NOcr;
 using Nikse.SubtitleEdit.Features.Ocr.OcrSubtitle;
 using Nikse.SubtitleEdit.Features.Shared;
@@ -42,11 +40,14 @@ using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Dictionaries;
 using Nikse.SubtitleEdit.Logic.Download;
-using Nikse.SubtitleEdit.Logic.LlamaCpp;
 using Nikse.SubtitleEdit.Logic.Media;
 using Nikse.SubtitleEdit.Logic.Ocr;
 using Nikse.SubtitleEdit.Logic.Ocr.GoogleLens;
+using Nikse.SubtitleEdit.UiLogic.LlamaCpp;
 using Nikse.SubtitleEdit.UiLogic.Ocr;
+using Nikse.SubtitleEdit.UiLogic.Ocr.FixEngine;
+using Nikse.SubtitleEdit.UiLogic.Ocr.Service;
+using Nikse.SubtitleEdit.UiLogic.SpellCheck;
 using SkiaSharp;
 using System;
 using System.Collections.Generic;
@@ -54,14 +55,9 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
-using Nikse.SubtitleEdit.UiLogic.LlamaCpp;
-using Nikse.SubtitleEdit.UiLogic.Ocr.FixEngine;
-using Nikse.SubtitleEdit.UiLogic.SpellCheck;
-using Nikse.SubtitleEdit.UiLogic.Common;
 
 namespace Nikse.SubtitleEdit.Features.Ocr;
 
@@ -104,6 +100,52 @@ public partial class OcrViewModel : ObservableObject
     [ObservableProperty] private string _selectionStatus;
     [ObservableProperty] private Bitmap? _currentImageSource;
     [ObservableProperty] private string _currentBitmapInfo;
+    [ObservableProperty] private bool _showVideoPreview;
+    [ObservableProperty] private Bitmap? _videoPreviewBitmap;
+    [ObservableProperty] private double _videoPreviewScreenWidth = 1920;
+    [ObservableProperty] private double _videoPreviewScreenHeight = 1080;
+    [ObservableProperty] private double _videoPreviewLeft;
+    [ObservableProperty] private double _videoPreviewTop;
+    [ObservableProperty] private double _videoPreviewImageWidth;
+    [ObservableProperty] private double _videoPreviewImageHeight;
+
+    partial void OnSelectedOcrSubtitleItemChanged(OcrSubtitleItem? value)
+    {
+        UpdateVideoPreview();
+    }
+
+    partial void OnShowVideoPreviewChanged(bool value)
+    {
+        UpdateVideoPreview();
+    }
+
+    private void UpdateVideoPreview()
+    {
+        var item = SelectedOcrSubtitleItem;
+        if (!ShowVideoPreview || item == null)
+        {
+            VideoPreviewBitmap = null;
+            return;
+        }
+
+        try
+        {
+            using var skBitmap = item.GetSkBitmapClean();
+            var position = item.GetPosition();
+            var screen = item.GetScreenSize();
+            VideoPreviewImageWidth = skBitmap.Width;
+            VideoPreviewImageHeight = skBitmap.Height;
+            VideoPreviewLeft = position.X;
+            VideoPreviewTop = position.Y;
+            VideoPreviewScreenWidth = screen.Width > 0 ? screen.Width : Math.Max(1920, position.X + skBitmap.Width);
+            VideoPreviewScreenHeight = screen.Height > 0 ? screen.Height : Math.Max(1080, position.Y + skBitmap.Height);
+            VideoPreviewBitmap = skBitmap.ToAvaloniaBitmap();
+        }
+        catch (Exception)
+        {
+            VideoPreviewBitmap = null;
+        }
+    }
     [ObservableProperty] private string _currentText;
     [ObservableProperty] private bool _isOcrRunning;
     [ObservableProperty] private bool _hasForcedSubtitles;
@@ -158,8 +200,10 @@ public partial class OcrViewModel : ObservableObject
     [ObservableProperty] private bool _isFallbackDatabaseVisible;
     [ObservableProperty] private string _nOcrBinaryOcrFallbackDatabase;
     [ObservableProperty] private string _binaryOcrNOcrFallbackDatabase;
-    [ObservableProperty] private double _imageMaxHeight = 100;
-    [ObservableProperty] private double _imageMaxWidth = 200;
+    private const double DefaultImageMaxHeight = 100;
+    private const double DefaultImageMaxWidth = 200;
+    [ObservableProperty] private double _imageMaxHeight = DefaultImageMaxHeight;
+    [ObservableProperty] private double _imageMaxWidth = DefaultImageMaxWidth;
     [ObservableProperty] private FontFamily _textBoxFontFamily;
     [ObservableProperty] private decimal _textBoxFontSize;
     [ObservableProperty] private FontWeight _textBoxFontWeight;
@@ -197,7 +241,6 @@ public partial class OcrViewModel : ObservableObject
     private readonly IBinaryOcrMatcher _binaryOcrMatcher;
     private readonly IOcrImageSourceHolder _ocrImageSourceHolder;
     private PreProcessingSettings? _preProcessingSettings;
-    private bool _isCtrlDown;
     private bool _textBoxFontIsCustom;
     // Saved font name kept so a custom font that is temporarily unresolvable
     // (e.g. user uninstalled the font; FontFamily ctor throws on load) still
@@ -725,8 +768,6 @@ public partial class OcrViewModel : ObservableObject
             vm.IsFontBold = TextBoxFontWeight == FontWeight.Bold;
         });
 
-        _isCtrlDown = false;
-
         if (!result.OkPressed || result.SelectedFontName == null)
         {
             return;
@@ -748,7 +789,6 @@ public partial class OcrViewModel : ObservableObject
         }
 
         var result = await _windowService.ShowDialogAsync<GetDictionariesWindow, GetDictionariesViewModel>(Window!);
-        _isCtrlDown = false;
         if (result.OkPressed && result.SelectedDictionary != null)
         {
             LoadDictionaries();
@@ -768,6 +808,13 @@ public partial class OcrViewModel : ObservableObject
                     d.Name.Contains(result.SelectedDictionary.EnglishName, StringComparison.OrdinalIgnoreCase) ||
                     d.Name.Contains(result.SelectedDictionary.NativeName, StringComparison.OrdinalIgnoreCase))
                 ?? Dictionaries.FirstOrDefault();
+        }
+        else if (result.DictionariesChanged)
+        {
+            // Keep the current dictionary unless it was the one uninstalled.
+            var currentFileName = SelectedDictionary?.DictionaryFileName;
+            LoadDictionaries();
+            SelectedDictionary = Dictionaries.FirstOrDefault(d => d.DictionaryFileName == currentFileName) ?? Dictionaries.FirstOrDefault();
         }
     }
 
@@ -814,7 +861,7 @@ public partial class OcrViewModel : ObservableObject
         var clampedItemNumber = Math.Clamp(currentItemNumber, 0, totalItems);
         OcrUiUpdates.EnqueueProgress(
             clampedItemNumber * 100.0 / totalItems,
-            string.Format(Se.Language.Ocr.RunningOcrDotDotDotXY, clampedItemNumber, totalItems));
+            string.Format(Se.Language.General.RunningOcrXY, clampedItemNumber, totalItems));
     }
 
     [RelayCommand]
@@ -839,8 +886,6 @@ public partial class OcrViewModel : ObservableObject
         {
             _ocrFixEngine.ReloadNames();
         }
-
-        _isCtrlDown = false;
     }
 
     [RelayCommand]
@@ -859,8 +904,6 @@ public partial class OcrViewModel : ObservableObject
         {
             _ocrFixEngine.ReloadNames();
         }
-
-        _isCtrlDown = false;
     }
 
     [RelayCommand]
@@ -879,8 +922,6 @@ public partial class OcrViewModel : ObservableObject
         {
             _ocrFixEngine.ReloadNames();
         }
-
-        _isCtrlDown = false;
     }
 
     [RelayCommand]
@@ -912,7 +953,6 @@ public partial class OcrViewModel : ObservableObject
         {
             await _windowService.ShowDialogAsync<BinaryEditWindow, BinaryEditViewModel>(Window, vm => { vm.Initialize(_sourceFileName, _ocrSubtitle); });
         }
-        _isCtrlDown = false;
     }
 
     [RelayCommand]
@@ -925,7 +965,6 @@ public partial class OcrViewModel : ObservableObject
 
         var items = OcrSubtitleItems.ToList();
         await _windowService.ShowDialogAsync<BinaryEditWindow, BinaryEditViewModel>(Window, vm => { vm.Initialize(items); });
-        _isCtrlDown = false;
     }
 
     /// <summary>
@@ -942,7 +981,6 @@ public partial class OcrViewModel : ObservableObject
         }
 
         var folder = await _folderHelper.PickFolderAsync(Window, Se.Language.Ocr.SaveAllImagesWithHtmlIndexPickFolder);
-        _isCtrlDown = false;
         if (string.IsNullOrEmpty(folder))
         {
             return;
@@ -976,7 +1014,7 @@ public partial class OcrViewModel : ObservableObject
 
         if (result == null)
         {
-            await MessageBox.Show(Window, Se.Language.General.Error, string.IsNullOrEmpty(errorMessage) ? Se.Language.General.UnknownError : errorMessage);
+            await MessageBox.Show(Window, Se.Language.General.Error, string.IsNullOrEmpty(errorMessage) ? Se.Language.General.UnknownError : errorMessage, MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 
@@ -1000,7 +1038,6 @@ public partial class OcrViewModel : ObservableObject
         }
 
         var fileName = await _fileHelper.PickOpenSubtitleFile(Window, Se.Language.General.OpenSubtitleFileTitle);
-        _isCtrlDown = false;
         if (string.IsNullOrEmpty(fileName))
         {
             return;
@@ -1023,7 +1060,7 @@ public partial class OcrViewModel : ObservableObject
 
         if (subtitle == null || subtitle.Paragraphs.Count == 0)
         {
-            await MessageBox.Show(Window, Se.Language.General.Error, Se.Language.General.UnknownSubtitleFormat);
+            await MessageBox.Show(Window, Se.Language.General.Error, Se.Language.General.UnknownSubtitleFormat, MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 
@@ -1115,7 +1152,6 @@ public partial class OcrViewModel : ObservableObject
             "OcrText" + format.Extension,
             Se.Language.Ocr.ExportTextAsSubtitleDotDotDot);
 
-        _isCtrlDown = false;
         if (saveAsResult == null || string.IsNullOrEmpty(saveAsResult.FileName))
         {
             return;
@@ -1220,7 +1256,6 @@ public partial class OcrViewModel : ObservableObject
                 vm.Initialize(nBmp.GetBitmap(), nBmp, item, _nOcrDb, SelectedNOcrMaxWrongPixels, letters,
                     matches, _nOcrAddHistoryManager);
             });
-        _isCtrlDown = false;
     }
 
     private async Task InspectLineBinaryImageCompareOcr(OcrSubtitleItem item)
@@ -1260,8 +1295,6 @@ public partial class OcrViewModel : ObservableObject
                 vm.Initialize(nBmp.GetBitmap(), nBmp, SelectedOcrSubtitleItem, db, BinaryOcrMaxErrorPercent,
                     SelectedNOcrMaxWrongPixels, _binaryOcrAddHistoryManager, letters, matches);
             });
-
-        _isCtrlDown = false;
     }
 
     [RelayCommand]
@@ -1278,8 +1311,6 @@ public partial class OcrViewModel : ObservableObject
         {
             await _windowService.ShowDialogAsync<NOcrCharacterHistoryWindow, NOcrCharacterHistoryViewModel>(Window!,
                 vm => { vm.Initialize(_nOcrDb!, _nOcrAddHistoryManager); });
-
-            _isCtrlDown = false;
         }
 
         if (engine.EngineType == OcrEngineType.BinaryImageCompare)
@@ -1292,8 +1323,6 @@ public partial class OcrViewModel : ObservableObject
 
             await _windowService.ShowDialogAsync<BinaryOcrCharacterHistoryWindow, BinaryOcrCharacterHistoryViewModel>(Window!,
                 vm => { vm.Initialize(db, _binaryOcrAddHistoryManager); });
-
-            _isCtrlDown = false;
         }
     }
 
@@ -1306,29 +1335,22 @@ public partial class OcrViewModel : ObservableObject
             return;
         }
 
-        var result = await _windowService.ShowDialogAsync<ShowImageWindow, ShowImageViewModel>(Window!, vm => { vm.Initialize(Se.Language.Ocr.OcrImage, item.GetBitmapCropped(), item.Text); });
-        _isCtrlDown = false;
+        await _windowService.ShowDialogAsync<ShowImageWindow, ShowImageViewModel>(Window!, vm =>
+        {
+            vm.Initialize(Se.Language.Ocr.OcrImage, item.GetBitmapCropped(), item.Text);
+            vm.Navigate = direction =>
+            {
+                var idx = OcrSubtitleItems.IndexOf(item) + direction;
+                if (idx < 0 || idx >= OcrSubtitleItems.Count)
+                {
+                    return null;
+                }
 
-        if (result.LeftPressed)
-        {
-            var idx = OcrSubtitleItems.IndexOf(item);
-            var prevIdx = idx - 1;
-            if (prevIdx >= 0)
-            {
-                SelectedOcrSubtitleItem = OcrSubtitleItems[prevIdx];
-                await ViewSelectedImage();
-            }
-        }
-        else if (result.RightPressed)
-        {
-            var idx = OcrSubtitleItems.IndexOf(item);
-            var nextIdx = idx + 1;
-            if (nextIdx < OcrSubtitleItems.Count)
-            {
-                SelectedOcrSubtitleItem = OcrSubtitleItems[nextIdx];
-                await ViewSelectedImage();
-            }
-        }
+                item = OcrSubtitleItems[idx];
+                SelectedOcrSubtitleItem = item;
+                return new ShowImageItem(Se.Language.Ocr.OcrImage, item.GetBitmapCropped(), item.Text);
+            };
+        });
     }
 
     [RelayCommand]
@@ -1342,7 +1364,6 @@ public partial class OcrViewModel : ObservableObject
 
         var imageIndex = OcrSubtitleItems.IndexOf(item) + 1;
         var fileName = await _fileHelper.PickSaveSubtitleFile(Window!, ".png", $"image{imageIndex}", Se.Language.General.SaveImageAs);
-        _isCtrlDown = false;
         if (string.IsNullOrEmpty(fileName))
         {
             return;
@@ -1369,8 +1390,6 @@ public partial class OcrViewModel : ObservableObject
     {
         var result = await _windowService.ShowDialogAsync<PickOllamaModelWindow, PickOllamaModelViewModel>(Window!,
             vm => { vm.Initialize(Se.Language.General.PickOllamaModel, OllamaModel, OllamaUrl, visionOnly: true); });
-
-        _isCtrlDown = false;
 
         if (result.OkPressed && result.SelectedModel != null)
         {
@@ -1462,7 +1481,6 @@ public partial class OcrViewModel : ObservableObject
             Window, _windowService,
             onEngineDownloadClosed: () =>
             {
-                _isCtrlDown = false;
                 RefreshEngineCombo?.Invoke();
             });
     }
@@ -1483,12 +1501,10 @@ public partial class OcrViewModel : ObservableObject
             Window, _windowService, backend, model.Model, forceModelDownload,
             onEngineDownloadClosed: () =>
             {
-                _isCtrlDown = false;
                 RefreshEngineCombo?.Invoke();
             },
             onModelDownloadClosed: () =>
             {
-                _isCtrlDown = false;
                 RefreshCrispEmbedModelCombo?.Invoke();
             });
     }
@@ -1529,15 +1545,9 @@ public partial class OcrViewModel : ObservableObject
         LlamaCppServerManager.StopServer();
         UpdateLlamaCppOcrServerButtonText();
 
-        // Re-download the same backend that is installed (CPU/Vulkan/CUDA all unpack into one
-        // folder); when nothing is installed yet, DownloadAsync falls back to asking the user.
-        var folder = LlamaCppServerManager.GetAndCreateFolder();
-        var variant = LlamaCppServerManager.IsEngineInstalled() && OperatingSystem.IsWindows()
-            ? DownloadHashManager.DetectLlamaCppWindowsVariant(folder)
-            : null;
-
+        // No forced variant: the user picks CPU/Vulkan/CUDA, which is how to change the installed build.
         var model = SelectedLlamaCppOcrModel?.Model;
-        var downloaded = await LlamaCppDownloadHelper.DownloadAsync(Window, _windowService, model, variant, forceEngineDownload: true);
+        var downloaded = await LlamaCppDownloadHelper.DownloadAsync(Window, _windowService, model, forceEngineDownload: true);
         if (downloaded != null)
         {
             var selectName = string.IsNullOrEmpty(downloaded) ? model?.FileName : downloaded;
@@ -1650,7 +1660,7 @@ public partial class OcrViewModel : ObservableObject
             }
             else if (!engineInstalled)
             {
-                message = Se.Language.Ocr.LlamaCppDownloadEnginePrompt;
+                message = Se.Language.General.LlamaCppDownloadEnginePrompt;
             }
             else
             {
@@ -1706,14 +1716,10 @@ public partial class OcrViewModel : ObservableObject
             await _windowService.ShowDialogAsync<NOcrSettingsWindow, NOcrSettingsViewModel>(Window!,
                 vm => { vm.Initialize(_nOcrDb!); });
 
-        _isCtrlDown = false;
-
         if (result.EditPressed)
         {
             await _windowService.ShowDialogAsync<NOcrDbEditWindow, NOcrDbEditViewModel>(Window!,
                 vm => { vm.Initialize(_nOcrDb!); });
-
-            _isCtrlDown = false;
 
             return;
         }
@@ -1738,8 +1744,8 @@ public partial class OcrViewModel : ObservableObject
             {
                 await MessageBox.Show(
                     Window!,
-                    "Error deleting file",
-                    $"Could not delete the file {_nOcrDb!.FileName}.",
+                    Se.Language.General.ErrorDeletingFile,
+                    string.Format(Se.Language.General.CouldNotDeleteFileX, _nOcrDb!.FileName),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
@@ -1751,7 +1757,6 @@ public partial class OcrViewModel : ObservableObject
         {
             var newResult = await _windowService.ShowDialogAsync<NOcrDbNewWindow, NOcrDbNewViewModel>(Window!,
                 vm => { vm.Initialize(Se.Language.Ocr.NewNOcrDatabase, string.Empty); });
-            _isCtrlDown = false;
             if (newResult.OkPressed)
             {
                 if (!Directory.Exists(Se.OcrFolder))
@@ -1786,7 +1791,6 @@ public partial class OcrViewModel : ObservableObject
         if (result.TrainPressed)
         {
             var trainResult = await _windowService.ShowDialogAsync<NOcrTrainWindow, NOcrTrainViewModel>(Window!, _ => { });
-            _isCtrlDown = false;
             if (trainResult.TrainedDatabaseName != null)
             {
                 NOcrDatabases.Clear();
@@ -1815,7 +1819,6 @@ public partial class OcrViewModel : ObservableObject
                     vm.Initialize(Se.Language.Ocr.RenameNOcrDatabase,
                         Path.GetFileNameWithoutExtension(_nOcrDb!.FileName));
                 });
-            _isCtrlDown = false;
             if (newResult.OkPressed)
             {
                 if (!Directory.Exists(Se.OcrFolder))
@@ -1860,14 +1863,10 @@ public partial class OcrViewModel : ObservableObject
             await _windowService.ShowDialogAsync<BinaryOcrSettingsWindow, BinaryOcrSettingsViewModel>(Window!,
                 vm => { vm.Initialize(dbName); });
 
-        _isCtrlDown = false;
-
         if (result.EditPressed)
         {
             await _windowService.ShowDialogAsync<BinaryOcrDbEditWindow, BinaryOcrDbEditViewModel>(Window!,
                 vm => { vm.Initialize(SelectedImageCompareDatabase!); });
-
-            _isCtrlDown = false;
 
             return;
         }
@@ -1897,8 +1896,8 @@ public partial class OcrViewModel : ObservableObject
             {
                 await MessageBox.Show(
                     Window!,
-                    "Error deleting file",
-                    $"Could not delete the file {Path.Combine(Se.OcrFolder, dbName + BinaryOcrDb.Extension)}.",
+                    Se.Language.General.ErrorDeletingFile,
+                    string.Format(Se.Language.General.CouldNotDeleteFileX, Path.Combine(Se.OcrFolder, dbName + BinaryOcrDb.Extension)),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
             }
@@ -1948,8 +1947,6 @@ public partial class OcrViewModel : ObservableObject
             {
                 vm.Initialize(Se.Language.Ocr.RenameBinaryImageCompareDatabase, result.BinaryOcrDatabaseName);
             });
-
-            _isCtrlDown = false;
 
             if (newResult.OkPressed)
             {
@@ -2143,8 +2140,6 @@ public partial class OcrViewModel : ObservableObject
         var result = await _windowService
             .ShowDialogAsync<PreProcessingWindow, PreProcessingViewModel>(Window, vm => { vm.Initialize(_preProcessingSettings ?? LoadPreProcessingSettings(), selectedItem.GetSkBitmapClean()); });
 
-        _isCtrlDown = false;
-
         if (result.OkPressed)
         {
             _preProcessingSettings = result.PreProcessingSettings;
@@ -2225,8 +2220,6 @@ public partial class OcrViewModel : ObservableObject
         var result = await _windowService.ShowDialogAsync<VobSubColorChooser.VobSubColorChooserWindow, VobSubColorChooser.VobSubColorChooserViewModel>(
             Window,
             vm => vm.Initialize(previewSubPicture, vobSub.GetPalette(), vobSub.Background, vobSub.Pattern, vobSub.Emphasis1, vobSub.Emphasis2));
-
-        _isCtrlDown = false;
 
         if (!result.OkPressed)
         {
@@ -2412,7 +2405,7 @@ public partial class OcrViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void DeleteSelectedLines()
+    private async Task DeleteSelectedLines()
     {
         if (IsOcrRunning)
         {
@@ -2423,6 +2416,27 @@ public partial class OcrViewModel : ObservableObject
         if (selectedItems == null || selectedItems.Count == 0)
         {
             return;
+        }
+
+        if (Se.Settings.General.PromptBeforeDelete && Window != null)
+        {
+            var selectedLines = selectedItems.OfType<OcrSubtitleItem>().ToList();
+            var message = selectedLines.Count == 1
+                ? string.Format(Se.Language.General.DeleteLineXPrompt, selectedLines[0].Number)
+                : string.Format(Se.Language.General.DeleteXLinesPrompt, selectedLines.Count);
+            var answer = await MessageBox.Show(
+                Window,
+                Se.Language.General.Delete,
+                message,
+                MessageBoxButtons.YesNoCancel,
+                MessageBoxIcon.Question);
+
+            // OCR may have been started, or the selection changed, while the prompt was up
+            selectedItems = SubtitleGrid.SelectedItems;
+            if (answer != MessageBoxResult.Yes || IsOcrRunning || selectedItems == null || selectedItems.Count == 0)
+            {
+                return;
+            }
         }
 
         // Row -> index once: a Contains here plus a Remove per row below searched the whole
@@ -2696,8 +2710,12 @@ public partial class OcrViewModel : ObservableObject
 
             _ocrFixEngine.Initialize(_fixEngineSubtitle, threeLetterCode, SelectedDictionary);
 
-            // nOCR and binary image compare write "*" for a glyph they could not match.
-            _ocrFixEngine.FillUnknownCharacters = ocrEngine.EngineType is OcrEngineType.nOcr or OcrEngineType.BinaryImageCompare;
+            // nOCR and binary image compare write "*" for a glyph they could not match, and can
+            // fit a slanted "l"/"i"/"I" to "/" or an apostrophe to "#"; text engines never do,
+            // so their "/" and "#" are real (#16031: "PILOTEN / OMGEKOMEN" became "PILOTEN I OMGEKOMEN").
+            var isImageMatcher = ocrEngine.EngineType is OcrEngineType.nOcr or OcrEngineType.BinaryImageCompare;
+            _ocrFixEngine.FillUnknownCharacters = isImageMatcher;
+            _ocrFixEngine.FixImageMatcherMisreads = isImageMatcher;
         }
         else
         {
@@ -2740,8 +2758,8 @@ public partial class OcrViewModel : ObservableObject
             {
                 var answer = await MessageBox.Show(
                     Window!,
-                    "Download Paddle OCR?",
-                    $"{Environment.NewLine}\"Paddle OCR\" requires downloading Paddle OCR.{Environment.NewLine}{Environment.NewLine}Download and use Paddle OCR?",
+                    string.Format(Se.Language.General.DownloadXQuestion, "Paddle OCR"),
+                    Environment.NewLine + string.Format(Se.Language.General.XRequiresDownloadingYUseZ, "Paddle OCR", "Paddle OCR", "Paddle OCR"),
                     MessageBoxButtons.Cancel,
                     MessageBoxIcon.Question,
                     "CPU",
@@ -2774,8 +2792,6 @@ public partial class OcrViewModel : ObservableObject
                         vm.Initialize(engine);
                     });
 
-                _isCtrlDown = false;
-
                 if (!result.OkPressed)
                 {
                     PauseOcr();
@@ -2786,8 +2802,8 @@ public partial class OcrViewModel : ObservableObject
             {
                 var answer = await MessageBox.Show(
                     Window!,
-                    "Download Paddle OCR?",
-                    $"{Environment.NewLine}\"Paddle OCR\" requires downloading Paddle OCR.{Environment.NewLine}{Environment.NewLine}Download and use Paddle OCR?",
+                    string.Format(Se.Language.General.DownloadXQuestion, "Paddle OCR"),
+                    Environment.NewLine + string.Format(Se.Language.General.XRequiresDownloadingYUseZ, "Paddle OCR", "Paddle OCR", "Paddle OCR"),
                     MessageBoxButtons.Cancel,
                     MessageBoxIcon.Question,
                     "CPU",
@@ -2816,8 +2832,6 @@ public partial class OcrViewModel : ObservableObject
                         vm.Initialize(engine);
                     });
 
-                _isCtrlDown = false;
-
                 if (!result.OkPressed)
                 {
                     PauseOcr();
@@ -2830,8 +2844,6 @@ public partial class OcrViewModel : ObservableObject
             {
                 var result = await _windowService.ShowDialogAsync<DownloadPaddleOcrWindow, DownloadPaddleOcrViewModel>(Window!,
                     vm => { vm.Initialize(PaddleOcrDownloadType.Models); });
-
-                _isCtrlDown = false;
 
                 if (!result.OkPressed)
                 {
@@ -2849,8 +2861,6 @@ public partial class OcrViewModel : ObservableObject
             {
                 var result = await _windowService.ShowDialogAsync<DownloadPaddleOcrWindow, DownloadPaddleOcrViewModel>(Window!,
                     vm => { vm.Initialize(PaddleOcrDownloadType.Models); });
-
-                _isCtrlDown = false;
 
                 if (!result.OkPressed)
                 {
@@ -2886,8 +2896,8 @@ public partial class OcrViewModel : ObservableObject
             {
                 await MessageBox.Show(
                     Window!,
-                    "Mistral API key missing",
-                    $"You must enter a valid Mistral API key.{Environment.NewLine}{Environment.NewLine}Get your API key from https://mistral.ai/",
+                    Se.Language.Ocr.MistralApiKeyMissing,
+                    Se.Language.Ocr.MistralApiKeyMessage,
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
                 IsOcrRunning = false;
@@ -2910,8 +2920,8 @@ public partial class OcrViewModel : ObservableObject
             {
                 var answer = await MessageBox.Show(
                     Window!,
-                    "Download Google Lens OCR?",
-                    $"{Environment.NewLine}\"Google Lens OCR\" requires downloading Google Lens OCR standalone.{Environment.NewLine}{Environment.NewLine}Download and use Google Lens OCR?",
+                    string.Format(Se.Language.General.DownloadXQuestion, "Google Lens OCR"),
+                    Environment.NewLine + string.Format(Se.Language.General.XRequiresDownloadingYUseZ, "Google Lens OCR", "Google Lens OCR standalone", "Google Lens OCR"),
                     MessageBoxButtons.YesNoCancel,
                     MessageBoxIcon.Question);
 
@@ -2922,7 +2932,6 @@ public partial class OcrViewModel : ObservableObject
                 }
 
                 var result = await _windowService.ShowDialogAsync<DownloadGoogleLensOcrWindow, DownloadGoogleLensOcrViewModel>(Window);
-                _isCtrlDown = false;
                 if (!result.OkPressed)
                 {
                     PauseOcr();
@@ -2954,7 +2963,7 @@ public partial class OcrViewModel : ObservableObject
 
         var batchImages = new List<PaddleOcrBatchInput>(numberOfImages);
         var count = 0;
-        ProgressText = $"Initializing Paddle OCR...";
+        ProgressText = string.Format(Se.Language.Ocr.InitializingX, "Paddle OCR");
         foreach (var i in selectedIndices)
         {
             count++;
@@ -3088,7 +3097,7 @@ public partial class OcrViewModel : ObservableObject
 
         var batchImages = new List<PaddleOcrBatchInput>(numberOfImages);
         var count = 0;
-        ProgressText = $"Initializing Google Lens OCR...";
+        ProgressText = string.Format(Se.Language.Ocr.InitializingX, "Google Lens OCR");
         foreach (var i in selectedIndices)
         {
             count++;
@@ -3180,7 +3189,7 @@ public partial class OcrViewModel : ObservableObject
 
         var batchImages = new List<PaddleOcrBatchInput>(numberOfImages);
         var count = 0;
-        ProgressText = $"Initializing Google Lens OCR...";
+        ProgressText = string.Format(Se.Language.Ocr.InitializingX, "Google Lens OCR");
         foreach (var i in selectedIndices)
         {
             count++;
@@ -3452,8 +3461,6 @@ public partial class OcrViewModel : ObservableObject
                                             SelectedNOcrMaxWrongPixels, _nOcrAddHistoryManager, true, true);
                                     });
 
-                            _isCtrlDown = false;
-
                             if (result.OkPressed)
                             {
                                 var previewBitmap = result.PreviewBitmap ?? letters[letterIndex].NikseBitmap;
@@ -3488,8 +3495,6 @@ public partial class OcrViewModel : ObservableObject
                                 await _windowService
                                     .ShowDialogAsync<NOcrCharacterHistoryWindow, NOcrCharacterHistoryViewModel>(Window!,
                                         vm => { vm.Initialize(_nOcrDb!, _nOcrAddHistoryManager); });
-
-                                _isCtrlDown = false;
                             }
                         });
 
@@ -3526,7 +3531,7 @@ public partial class OcrViewModel : ObservableObject
                 return;
             }
 
-            matches = RemoveSpacesAfter1(matches, pixelsAreSpace);
+            matches = NOcrSpaceDetector.RemoveFalseSpacesInNumbers(matches, pixelsAreSpace);
 
             item.Text = ItalicTextMerger.MergeWithItalicTags(matches).Trim();
             var ocrFixResultTemp = OcrFixLine(i, item);
@@ -3562,13 +3567,11 @@ public partial class OcrViewModel : ObservableObject
                 var keepRunning = await PromptForUnknownWordsAsync(i, item);
                 if (!keepRunning)
                 {
-                    _isCtrlDown = false;
                     return;
                 }
             }
         }
 
-        _isCtrlDown = false;
         IsOcrRunning = false;
     }
 
@@ -3592,37 +3595,6 @@ public partial class OcrViewModel : ObservableObject
         return letters;
     }
 
-    private static List<NOcrChar> RemoveSpacesAfter1(List<NOcrChar> matches, int pixelsAreSpace)
-    {
-        var deleteItems = new List<NOcrChar>();
-        for (var i = 0; i < matches.Count - 1; i++)
-        {
-            var match = matches[i];
-            if (match.Text.EndsWith('1') && !match.Italic)
-            {
-                var pixelsLess = 0;
-                if (pixelsAreSpace > 7)
-                {
-                    pixelsLess = (int)Math.Round(pixelsAreSpace * 0.3m, MidpointRounding.AwayFromZero);
-                }
-
-                var nextMatch = matches[i + 1];
-                if (nextMatch.ImageSplitterItem != null &&
-                    nextMatch.ImageSplitterItem.SpecialCharacter == " " &&
-                    nextMatch.ImageSplitterItem.SpacePixels - pixelsLess < pixelsAreSpace)
-                {
-                    deleteItems.Add(nextMatch);
-                }
-            }
-        }
-
-        foreach (var deleteItem in deleteItems)
-        {
-            matches.Remove(deleteItem);
-        }
-
-        return matches;
-    }
 
 
     private void RunBinaryImageCompareOcr(List<int> selectedIndices, CancellationToken cancellationToken)
@@ -4110,15 +4082,39 @@ public partial class OcrViewModel : ObservableObject
         return _autoBreakLanguage;
     }
 
+    private void AutoBreakIfNeeded(OcrSubtitleItem item)
+    {
+        // The checkbox promises "auto-break if more than X lines", so leave shorter results alone.
+        if (DoAutoBreak && Utilities.GetNumberOfLines(item.Text) > Se.Settings.General.MaxNumberOfLines && !HasSeparatedBlocks(item))
+        {
+            item.Text = Utilities.AutoBreakLine(item.Text, GetAutoBreakLanguage());
+        }
+    }
+
+    private bool HasSeparatedBlocks(OcrSubtitleItem item)
+    {
+        if (!HasCaptureAlignment)
+        {
+            return false;
+        }
+
+        try
+        {
+            var screenSize = item.GetScreenSize();
+            using var bitmap = item.GetSkBitmapClean(); // fresh bitmap each call; dispose to avoid a native leak
+            return OcrAssaAlignment.HasSeparatedBlocks(bitmap, screenSize.Width, screenSize.Height);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private OcrFixLineResultTemp OcrFixLine(int i, OcrSubtitleItem item)
     {
         var result = new OcrFixLineResultTemp();
 
-        // The checkbox promises "auto-break if more than X lines", so leave shorter results alone.
-        if (DoAutoBreak && Utilities.GetNumberOfLines(item.Text) > Se.Settings.General.MaxNumberOfLines)
-        {
-            item.Text = Utilities.AutoBreakLine(item.Text, GetAutoBreakLanguage());
-        }
+        AutoBreakIfNeeded(item);
 
         if (SelectedDictionary != null &&
             SelectedDictionary.Name != GetDictionaryNameNone() &&
@@ -4215,11 +4211,7 @@ public partial class OcrViewModel : ObservableObject
 
     private List<UnknownWordItem> OcrFixLineAndSetText(int i, OcrSubtitleItem item)
     {
-        // The checkbox promises "auto-break if more than X lines", so leave shorter results alone.
-        if (DoAutoBreak && Utilities.GetNumberOfLines(item.Text) > Se.Settings.General.MaxNumberOfLines)
-        {
-            item.Text = Utilities.AutoBreakLine(item.Text, GetAutoBreakLanguage());
-        }
+        AutoBreakIfNeeded(item);
 
         var unknownWords = new List<UnknownWordItem>();
         if (SelectedDictionary != null &&
@@ -4583,7 +4575,7 @@ public partial class OcrViewModel : ObservableObject
             await MessageBox.Show(
                 Window!,
                 Se.Language.General.Error,
-                "Tesseract OCR failed:" + Environment.NewLine + Environment.NewLine + error,
+                string.Format(Se.Language.Ocr.TesseractOcrFailedX, error),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error));
     }
@@ -4686,7 +4678,7 @@ public partial class OcrViewModel : ObservableObject
             await MessageBox.Show(
                 Window!,
                 Se.Language.General.Error,
-                "Ollama OCR failed (model \"" + model + "\" at " + url + "):" + Environment.NewLine + Environment.NewLine + error,
+                string.Format(Se.Language.Ocr.OllamaOcrFailedXYZ, model, url, error),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error));
     }
@@ -4793,7 +4785,7 @@ public partial class OcrViewModel : ObservableObject
             await MessageBox.Show(
                 Window!,
                 Se.Language.General.Error,
-                "llama.cpp OCR failed (model \"" + model + "\" at " + url + "):" + Environment.NewLine + Environment.NewLine + error,
+                string.Format(Se.Language.Ocr.LlamaCppOcrFailedXYZ, model, url, error),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error));
     }
@@ -4812,7 +4804,7 @@ public partial class OcrViewModel : ObservableObject
         {
             try
             {
-                ProgressText = "Loading CrispEmbed model...";
+                ProgressText = string.Format(Se.Language.Ocr.LoadingXModel, "CrispEmbed");
 
                 // PP-OCRv6 is a detector+recognizer pair driven through the CLI; the VLM backends
                 // load once into crispembed-server.
@@ -4834,8 +4826,8 @@ public partial class OcrViewModel : ObservableObject
                     {
                         await MessageBox.Show(
                             Window!,
-                            "CrispEmbed error",
-                            $"CrispEmbed could not be started:{Environment.NewLine}{Environment.NewLine}{error}",
+                            Se.Language.Ocr.CrispEmbedError,
+                            string.Format(Se.Language.Ocr.CrispEmbedCouldNotStartX, error),
                             MessageBoxButtons.OK,
                             MessageBoxIcon.Error);
                     });
@@ -5049,10 +5041,10 @@ public partial class OcrViewModel : ObservableObject
 
             var answer = await MessageBox.Show(
                 Window!,
-                isOutdated ? "Update Tesseract OCR?" : "Download Tesseract OCR?",
+                isOutdated ? string.Format(Se.Language.General.UpdateXQuestion, "Tesseract OCR") : string.Format(Se.Language.General.DownloadXQuestion, "Tesseract OCR"),
                 isOutdated
-                    ? $"{Environment.NewLine}A newer Tesseract OCR ({TesseractDownloadService.WindowsVersion}) is available.{Environment.NewLine}{Environment.NewLine}Download and use it? Your downloaded languages are kept."
-                    : $"{Environment.NewLine}\"Tesseract\" requires downloading Tesseract OCR.{Environment.NewLine}{Environment.NewLine}Download and use Tesseract OCR?",
+                    ? Environment.NewLine + string.Format(Se.Language.Ocr.NewerTesseractXAvailable, TesseractDownloadService.WindowsVersion)
+                    : Environment.NewLine + string.Format(Se.Language.General.XRequiresDownloadingYUseZ, "Tesseract", "Tesseract OCR", "Tesseract OCR"),
                 MessageBoxButtons.YesNoCancel,
                 MessageBoxIcon.Question);
 
@@ -5106,10 +5098,8 @@ public partial class OcrViewModel : ObservableObject
         {
             await MessageBox.Show(
                 Window!,
-                "Please install Tesseract",
-                $"{Environment.NewLine}\"Tesseract\" was not detected. Please install Tesseract." +
-                Environment.NewLine + "" +
-                "E.g. ´brew install tesseract´.",
+                Se.Language.Ocr.PleaseInstallTesseract,
+                Environment.NewLine + string.Format(Se.Language.Ocr.TesseractNotDetectedExampleX, "´brew install tesseract´"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
@@ -5118,10 +5108,8 @@ public partial class OcrViewModel : ObservableObject
         {
             await MessageBox.Show(
                 Window!,
-                "Please install Tesseract",
-                $"{Environment.NewLine}\"Tesseract\" was not detected. Please install Tesseract." +
-                Environment.NewLine +
-                $"E.g. ´sudo apt install tesseract-ocr´ or ´sudo pacman -S tesseract´.",
+                Se.Language.Ocr.PleaseInstallTesseract,
+                Environment.NewLine + string.Format(Se.Language.Ocr.TesseractNotDetectedExampleX, "´sudo apt install tesseract-ocr´ / ´sudo pacman -S tesseract´"),
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Information);
         }
@@ -5185,10 +5173,11 @@ public partial class OcrViewModel : ObservableObject
             e.Handled = true; // prevent further handling if needed
             Dispatcher.UIThread.Post(async void () => { await ViewSelectedImage(); });
         }
-        else if (e.Key == Key.Delete)
+        else if ((e.Key == Key.Delete && e.KeyModifiers == KeyModifiers.None) ||
+                 (OperatingSystem.IsMacOS() && e.Key == Key.Back && e.KeyModifiers == KeyModifiers.Meta)) // Mac keyboards have no forward Delete - same keys as the main grid
         {
             e.Handled = true; // prevent further handling if needed
-            DeleteSelectedLines();
+            _ = DeleteSelectedLines();
         }
         else if (e.Key == Key.I && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift))
         {
@@ -5203,6 +5192,37 @@ public partial class OcrViewModel : ObservableObject
         {
             e.Handled = true;
             TextBoxTagToggler.ToggleTag(new TextBoxWrapper(textBox), "i", isAssa: false);
+        }
+    }
+
+    /// <summary>
+    /// Ctrl+mouse wheel over the grid zooms the image thumbnails, like Ctrl+plus/minus.
+    /// Attached as a tunnel handler so the grid's ScrollViewer doesn't scroll as well.
+    /// </summary>
+    internal void SubtitleGridPointerWheelChanged(object? sender, PointerWheelEventArgs e)
+    {
+        if (e.Delta.Y == 0 || !(e.KeyModifiers.HasFlag(KeyModifiers.Control) || e.KeyModifiers.HasFlag(KeyModifiers.Meta)))
+        {
+            return;
+        }
+
+        e.Handled = true;
+        ZoomImages(e.Delta.Y > 0);
+    }
+
+    private void ZoomImages(bool zoomIn)
+    {
+        // TableView rows auto-size to their content, so changing the bound
+        // Image Max sizes re-measures the rows - no explicit RowHeight needed.
+        if (zoomIn && ImageMaxHeight < 300)
+        {
+            ImageMaxHeight *= 1.1;
+            ImageMaxWidth *= 1.1;
+        }
+        else if (!zoomIn && ImageMaxHeight > 50)
+        {
+            ImageMaxHeight *= 0.9;
+            ImageMaxWidth *= 0.9;
         }
     }
 
@@ -5229,8 +5249,6 @@ public partial class OcrViewModel : ObservableObject
 
     internal void OnKeyDown(KeyEventArgs e)
     {
-        _isCtrlDown = e.KeyModifiers.HasFlag(KeyModifiers.Control);
-
         if (HandleFindReplaceKeys(e))
         {
             return;
@@ -5249,22 +5267,18 @@ public partial class OcrViewModel : ObservableObject
         else if ((e.Key == Key.Add || e.Key == Key.OemPlus) && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             e.Handled = true;
-            if (ImageMaxHeight < 300)
-            {
-                // TableView rows auto-size to their content, so changing the bound
-                // Image Max sizes re-measures the rows - no explicit RowHeight needed.
-                ImageMaxHeight *= 1.1;
-                ImageMaxWidth *= 1.1;
-            }
+            ZoomImages(true);
         }
         else if ((e.Key == Key.Subtract || e.Key == Key.OemMinus) && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             e.Handled = true;
-            if (ImageMaxHeight > 50)
-            {
-                ImageMaxHeight *= 0.9;
-                ImageMaxWidth *= 0.9;
-            }
+            ZoomImages(false);
+        }
+        else if ((e.Key == Key.D0 || e.Key == Key.NumPad0) && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            e.Handled = true;
+            ImageMaxHeight = DefaultImageMaxHeight;
+            ImageMaxWidth = DefaultImageMaxWidth;
         }
         else if (e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control) && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
         {
@@ -5281,27 +5295,9 @@ public partial class OcrViewModel : ObservableObject
         }
     }
 
-    internal void DataGridTracksSelectionChanged(object? sender, SelectionChangedEventArgs e)
-    {
-        var flowControl = TrackChanged();
-        if (!flowControl)
-        {
-            return;
-        }
-    }
-
     private bool TrackChanged()
     {
         return true;
-    }
-
-    public static Bitmap ConvertSkBitmapToAvaloniaBitmap(SKBitmap skBitmap)
-    {
-        using var image = SKImage.FromBitmap(skBitmap);
-        using var data = image.Encode(SKEncodedImageFormat.Png, 100);
-        using var stream = new MemoryStream(data.ToArray());
-
-        return new Bitmap(stream);
     }
 
     // Coalesced per-line UI feedback during OCR (#13885) - see CoalescedUiUpdateQueue. Data
@@ -5505,15 +5501,6 @@ public partial class OcrViewModel : ObservableObject
         _sourceFileName = fileName;
         Title = UiUtil.FormatTitleWithFileName(Se.Language.Ocr.OcrX, fileName);
         _ocrSubtitle = new OcrSubtitleIBinaryParagraph(list);
-        SetOcrSubtitleItems();
-        AutoDetectSourceLanguage();
-    }
-
-    public void InitializeBinaryParagraphList(IBinaryParagraphList binaryParagraphList, Subtitle subtitle, string fileName)
-    {
-        _sourceFileName = fileName;
-        Title = UiUtil.FormatTitleWithFileName(Se.Language.Ocr.OcrX, fileName);
-        _ocrSubtitle = new OcrSubtitleBinaryParagraphList(binaryParagraphList, subtitle);
         SetOcrSubtitleItems();
         AutoDetectSourceLanguage();
     }
@@ -5733,8 +5720,8 @@ public partial class OcrViewModel : ObservableObject
 
         var answer = await MessageBox.Show(
             Window,
-            "Update CrispEmbed?",
-            $"A newer version of CrispEmbed is available.{Environment.NewLine}{Environment.NewLine}Download it now?",
+            Se.Language.Ocr.UpdateCrispEmbedQuestion,
+            Se.Language.Ocr.UpdateCrispEmbedDetailsQuestion,
             MessageBoxButtons.YesNoCancel,
             MessageBoxIcon.Question);
 
@@ -5749,7 +5736,6 @@ public partial class OcrViewModel : ObservableObject
         await _windowService.ShowDialogAsync<DownloadCrispEmbedWindow, DownloadCrispEmbedViewModel>(Window,
             vm => vm.InitializeEngine(variant));
 
-        _isCtrlDown = false;
         RefreshEngineCombo?.Invoke();
     }
 
@@ -5777,8 +5763,8 @@ public partial class OcrViewModel : ObservableObject
             {
                 var result = await MessageBox.Show(
                     Window!,
-                    "Discard OCR result?",
-                    "Some items have OCR text. Close and discard the OCR result?",
+                    Se.Language.Ocr.DiscardOcrResultQuestion,
+                    Se.Language.Ocr.DiscardOcrResultDetaulsQuestion,
                     MessageBoxButtons.YesNo,
                     MessageBoxIcon.Question);
 
@@ -6007,11 +5993,6 @@ public partial class OcrViewModel : ObservableObject
         }
     }
 
-    public void OnWindowKeyUp(KeyEventArgs e)
-    {
-        _isCtrlDown = e.KeyModifiers.HasFlag(KeyModifiers.Control);
-    }
-
     private bool _subtitleGridIsLeftClick = false;
     private bool _subtitleGridIsControlPressed = false;
 
@@ -6030,12 +6011,6 @@ public partial class OcrViewModel : ObservableObject
             var props = e.GetCurrentPoint(control).Properties;
             _subtitleGridIsLeftClick = props.IsLeftButtonPressed;
             _subtitleGridIsControlPressed = e.KeyModifiers.HasFlag(KeyModifiers.Control);
-
-            // Block the DataGrid's default Ctrl+Click deselect behavior on Mac
-            if (_subtitleGridIsLeftClick && _subtitleGridIsControlPressed)
-            {
-                e.Handled = true;
-            }
         }
     }
 
@@ -6092,84 +6067,5 @@ public partial class OcrViewModel : ObservableObject
     internal static string GetAssaPositionFromScreen(double relativeX, double relativeY)
     {
         return OcrAssaAlignment.GetAssaPositionFromScreen(relativeX, relativeY);
-    }
-
-    private List<OcrSubtitleItem> SplitImageToLines(OcrSubtitleItem item)
-    {
-        // (GetSkBitmapClean never returns null - it substitutes a 1x1 - so the old "== null"
-        //  check only allocated and leaked a native bitmap.)
-        if (!HasCaptureAlignment)
-        {
-            return new List<OcrSubtitleItem> { item };
-        }
-
-        try
-        {
-            using var bitmap = item.GetSkBitmapClean(); // fresh bitmap each call; dispose to avoid a native leak
-            var lines = new List<OcrSubtitleItem>();
-
-            // Simple line detection: split image horizontally based on text regions
-            // This is a basic implementation - could be enhanced with more sophisticated line detection
-
-            var height = bitmap.Height;
-            var width = bitmap.Width;
-            var lineHeight = height / 3; // Assume max 3 lines for now
-
-            for (int i = 0; i < 3; i++)
-            {
-                var startY = i * lineHeight;
-                var endY = Math.Min(startY + lineHeight, height);
-
-                if (startY >= height)
-                {
-                    break;
-                }
-
-                // Check if this region has text content (simplified detection)
-                if (HasTextInRegion(bitmap, 0, startY, width, endY - startY))
-                {
-                    // For now, just return the original item since creating new items
-                    // requires complex constructor parameters. The multi-line logic
-                    // should be handled in ProcessMultiLineText instead.
-                    lines.Add(item);
-                    break; // Just detect if there are multiple regions, return original for now
-                }
-            }
-
-            return lines.Count > 0 ? lines : new List<OcrSubtitleItem> { item };
-        }
-        catch
-        {
-            return new List<OcrSubtitleItem> { item };
-        }
-    }
-
-    private bool HasTextInRegion(SKBitmap bitmap, int x, int y, int width, int height)
-    {
-        // Simple heuristic: check for non-white pixels that might indicate text
-        // This is a basic implementation
-        var samplePoints = 10;
-        var nonWhitePixels = 0;
-
-        for (int i = 0; i < samplePoints; i++)
-        {
-            for (int j = 0; j < samplePoints; j++)
-            {
-                var sampleX = x + (i * width / samplePoints);
-                var sampleY = y + (j * height / samplePoints);
-
-                if (sampleX < bitmap.Width && sampleY < bitmap.Height)
-                {
-                    var pixel = bitmap.GetPixel(sampleX, sampleY);
-                    if (pixel.Red < 200 || pixel.Green < 200 || pixel.Blue < 200) // Not white-ish
-                    {
-                        nonWhitePixels++;
-                    }
-                }
-            }
-        }
-
-        // If we find enough non-white pixels, assume there's text
-        return nonWhitePixels > (samplePoints * samplePoints * 0.1); // 10% threshold
     }
 }

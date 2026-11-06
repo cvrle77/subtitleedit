@@ -22,7 +22,6 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Timers;
-using Nikse.SubtitleEdit.UiLogic.Media;
 
 namespace Nikse.SubtitleEdit.Features.Video.EmbeddedSubtitlesEdit;
 
@@ -42,12 +41,14 @@ public partial class EmbeddedSubtitlesEditViewModel : ObservableObject
     [ObservableProperty] private string _progressText;
     [ObservableProperty] private double _progressValue;
     [ObservableProperty] private bool _isGenerating;
+    // Hold off system sleep while the job runs (#16183); the display may still turn off.
+    private readonly SleepInhibitorScope _sleepInhibitor = new(Se.Language.Video.AddRemoveEmbeddedSubtitlesTitle);
+
 
     public Window? Window { get; set; }
     public bool OkPressed { get; private set; }
     public TableView TracksGrid { get; internal set; }
 
-    private Subtitle _subtitle = new();
     private readonly StringBuilder _log;
     private long _startTicks;
     private long _processedFrames;
@@ -66,12 +67,10 @@ public partial class EmbeddedSubtitlesEditViewModel : ObservableObject
     private static readonly Regex FrameFinderRegex = new(@"[Ff]rame=\s*\d+", RegexOptions.Compiled);
 
     private readonly IWindowService _windowService;
-    private readonly IFolderHelper _folderHelper;
     private readonly IFileHelper _fileHelper;
 
-    public EmbeddedSubtitlesEditViewModel(IFolderHelper folderHelper, IFileHelper fileHelper, IWindowService windowService)
+    public EmbeddedSubtitlesEditViewModel(IFileHelper fileHelper, IWindowService windowService)
     {
-        _folderHelper = folderHelper;
         _fileHelper = fileHelper;
         _windowService = windowService;
 
@@ -121,6 +120,7 @@ public partial class EmbeddedSubtitlesEditViewModel : ObservableObject
 
     partial void OnIsGeneratingChanged(bool value)
     {
+        _sleepInhibitor.SetActive(value);
         OnPropertyChanged(nameof(CanGenerate));
         OnPropertyChanged(nameof(CanEditTracks));
 
@@ -221,9 +221,8 @@ public partial class EmbeddedSubtitlesEditViewModel : ObservableObject
             Dispatcher.UIThread.Invoke(async () =>
             {
                 await MessageBox.Show(Window!,
-                    "Unable to generate video",
-                    "Output video file not generated: " + _outputFileName + Environment.NewLine +
-                    "Parameters: " + _ffmpegProcess.StartInfo.Arguments,
+                    Se.Language.General.UnableToGenerateVideo,
+                    string.Format(Se.Language.General.OutputVideoFileNotGeneratedX, _outputFileName) + Environment.NewLine + string.Format(Se.Language.General.ParametersX, _ffmpegProcess.StartInfo.Arguments),
                     MessageBoxButtons.OK,
                     MessageBoxIcon.Error);
 
@@ -373,8 +372,8 @@ public partial class EmbeddedSubtitlesEditViewModel : ObservableObject
         {
             await MessageBox.Show(
                 Window,
-                "No subtitles found",
-                "The selected subtitle file does not contain any subtitles.",
+                Se.Language.General.NoSubtitlesFound,
+                Se.Language.General.SelectedSubtitleFileHasNoSubtitles,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return;
@@ -676,8 +675,8 @@ public partial class EmbeddedSubtitlesEditViewModel : ObservableObject
         {
             await MessageBox.Show(
                 Window!,
-                "Unable to get media info",
-                $"Cannot generate video without valid media info",
+                Se.Language.General.UnableToGetMediaInfo,
+                Se.Language.General.CannotGenerateWithoutMediaInfo,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
             return;
@@ -687,8 +686,8 @@ public partial class EmbeddedSubtitlesEditViewModel : ObservableObject
         {
             await MessageBox.Show(
                 Window!,
-                "No tracks added",
-                $"Add one or more tracks",
+                Se.Language.General.NoTracksAdded,
+                Se.Language.General.AddOneOrMoreTracks,
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Error);
 
@@ -750,6 +749,7 @@ public partial class EmbeddedSubtitlesEditViewModel : ObservableObject
     internal void OnClosing()
     {
         UiUtil.SaveWindowPosition(Window);
+        _sleepInhibitor.Dispose();
 
         // Stop the poll timer and any still-running encode - closing the window used to
         // leave the ffmpeg process muxing to completion in the background.

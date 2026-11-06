@@ -1,7 +1,6 @@
-using System;
-using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Linq;
+using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.LogicalTree;
@@ -69,11 +68,11 @@ public class ExportImageBasedFullFrameTests : IDisposable
         return window;
     }
 
-    private static CheckBox FindFullFrameCheckBox(ExportImageBasedWindow window)
+    private static ToggleSwitch FindFullFrameSwitch(ExportImageBasedWindow window)
     {
         var checkBox = window.GetLogicalDescendants()
-            .OfType<CheckBox>()
-            .FirstOrDefault(c => Equals(c.Content, Se.Language.File.Export.FullFrameImage));
+            .OfType<ToggleSwitch>()
+            .FirstOrDefault(c => AutomationProperties.GetName(c) == Se.Language.File.Export.FullFrameImage);
         Assert.NotNull(checkBox);
         return checkBox;
     }
@@ -84,7 +83,7 @@ public class ExportImageBasedFullFrameTests : IDisposable
         var window = BuildWindow(new ExportHandlerFcp());
         window.Show();
 
-        var checkBox = FindFullFrameCheckBox(window);
+        var checkBox = FindFullFrameSwitch(window);
         Assert.True(checkBox.IsEffectivelyVisible);
     }
 
@@ -94,7 +93,7 @@ public class ExportImageBasedFullFrameTests : IDisposable
         var window = BuildWindow(new ExportHandlerBluRaySup());
         window.Show();
 
-        var checkBox = FindFullFrameCheckBox(window);
+        var checkBox = FindFullFrameSwitch(window);
         Assert.True(checkBox.IsEffectivelyVisible);
     }
 
@@ -104,8 +103,48 @@ public class ExportImageBasedFullFrameTests : IDisposable
         var window = BuildWindow(new ExportHandlerVobSub());
         window.Show();
 
-        var checkBox = FindFullFrameCheckBox(window);
+        var checkBox = FindFullFrameSwitch(window);
         Assert.False(checkBox.IsEffectivelyVisible);
+    }
+
+    /// <summary>
+    /// Only a Blu-ray sup has an HDR palette (issue #16550), and a profile is shared by every
+    /// image export.
+    /// </summary>
+    [AvaloniaFact]
+    public void HdrPalette_IsOnlyAppliedToBluRaySup()
+    {
+        var bluRay = BuildViewModel(new ExportHandlerBluRaySup());
+        Assert.True(bluRay.IsHdrPaletteVisible);
+        Assert.Equal(0, bluRay.GetImageParameter(0).HdrWhiteNits);
+
+        bluRay.IsHdrPalette = true;
+        Assert.Equal(203, bluRay.GetImageParameter(0).HdrWhiteNits);
+
+        var vobSub = BuildViewModel(new ExportHandlerVobSub());
+        vobSub.IsHdrPalette = true;
+        Assert.False(vobSub.IsHdrPaletteVisible);
+        Assert.Equal(0, vobSub.GetImageParameter(0).HdrWhiteNits);
+    }
+
+    [AvaloniaFact]
+    public void HdrPalette_SwitchRowFitsTheSettingsColumn()
+    {
+        var vm = BuildViewModel(new ExportHandlerBluRaySup());
+        vm.IsHdrPalette = true;
+        var window = new ExportImageBasedWindow(vm);
+        _windows.Add(window);
+        window.Show();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        var combo = window.GetLogicalDescendants().OfType<ComboBox>()
+            .First(c => AutomationProperties.GetName(c) == "nits");
+        Assert.True(combo.IsEffectivelyVisible);
+        var right = combo.TranslatePoint(new Point(combo.Bounds.Width, 0), window)!.Value.X;
+        Assert.True(right < 370, $"combo ends at {right}");
+
+        // Closing the window saves this into the profile the other tests load.
+        vm.IsHdrPalette = false;
     }
 
     /// <summary>

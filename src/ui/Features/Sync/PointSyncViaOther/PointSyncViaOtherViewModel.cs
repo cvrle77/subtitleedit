@@ -210,7 +210,7 @@ public partial class PointSyncViaOtherViewModel : ObservableObject
         catch (Exception exception)
         {
             Se.LogError(exception);
-            await MessageBox.Show(Window, Se.Language.General.Error, exception.Message);
+            await MessageBox.Show(Window, Se.Language.General.Error, exception.Message, MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 
@@ -218,7 +218,7 @@ public partial class PointSyncViaOtherViewModel : ObservableObject
         {
             if (!string.IsNullOrEmpty(containerResult.Error))
             {
-                await MessageBox.Show(Window, Se.Language.General.Error, containerResult.Error);
+                await MessageBox.Show(Window, Se.Language.General.Error, containerResult.Error, MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
@@ -249,7 +249,7 @@ public partial class PointSyncViaOtherViewModel : ObservableObject
 
             if (subtitle == null)
             {
-                await MessageBox.Show(Window, Se.Language.General.Error, Se.Language.General.UnknownSubtitleFormat);
+                await MessageBox.Show(Window, Se.Language.General.Error, Se.Language.General.UnknownSubtitleFormat, MessageBoxButtons.OK, MessageBoxIcon.Error);
                 return;
             }
 
@@ -460,20 +460,26 @@ public partial class PointSyncViaOtherViewModel : ObservableObject
             return;
         }
 
-        var title = $"{Se.Language.Ocr.ShowImage} - #{line.Number} {new TimeCode(line.StartTime).ToDisplayString()}";
-        var result = await _windowService.ShowDialogAsync<ShowImageWindow, ShowImageViewModel>(Window, vm =>
-        {
-            vm.Initialize(title, line.ImageItem.GetBitmapCroppedUncached());
-        });
+        static string MakeTitle(PointSyncOtherImageLine l) => $"{Se.Language.Ocr.ShowImage} - #{l.Number} {new TimeCode(l.StartTime).ToDisplayString()}";
 
-        var index = Othersubtitles.IndexOf(line);
-        var nextIndex = result.LeftPressed ? index - 1 : result.RightPressed ? index + 1 : -1;
-        if (index >= 0 && nextIndex >= 0 && nextIndex < Othersubtitles.Count)
+        await _windowService.ShowDialogAsync<ShowImageWindow, ShowImageViewModel>(Window, vm =>
         {
-            SelectedOtherSubtitle = Othersubtitles[nextIndex];
-            ScrollOtherToLine?.Invoke(Othersubtitles[nextIndex]);
-            await ViewSelectedOtherImage();
-        }
+            vm.Initialize(MakeTitle(line), line.ImageItem.GetBitmapCroppedUncached());
+            vm.Navigate = direction =>
+            {
+                var index = Othersubtitles.IndexOf(line);
+                var nextIndex = index + direction;
+                if (index < 0 || nextIndex < 0 || nextIndex >= Othersubtitles.Count || Othersubtitles[nextIndex] is not PointSyncOtherImageLine next)
+                {
+                    return null;
+                }
+
+                line = next;
+                SelectedOtherSubtitle = next;
+                ScrollOtherToLine?.Invoke(next);
+                return new ShowImageItem(MakeTitle(next), next.ImageItem.GetBitmapCroppedUncached());
+            };
+        });
     }
 
     /// <summary>Ctrl+G, like the OCR window - in the grid used last.</summary>
