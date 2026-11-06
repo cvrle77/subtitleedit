@@ -882,7 +882,9 @@ public class ReviewSpeechWindow : Window
         // fork switch off there is no video at all and the review plays clips the upstream way.
         if (Fork.ReviewVideoPlayer)
         {
-            var videoPlayer = InitVideoPlayer.MakeVideoPlayer();
+            // Muted on purpose (the sound comes from the clip player) - must not write 0 into the
+            // saved volume.
+            var videoPlayer = InitVideoPlayer.MakeVideoPlayer(persistVolume: false);
             videoPlayer.Margin = new Thickness(2);
             videoPlayer.FullScreenIsVisible = false;
             videoPlayer.ClickToTogglePlay = true;

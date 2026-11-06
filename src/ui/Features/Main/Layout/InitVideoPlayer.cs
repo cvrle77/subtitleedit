@@ -139,7 +139,12 @@ public static class InitVideoPlayer
         return mainGrid;
     }
 
-    public static VideoPlayerControl MakeVideoPlayer()
+    /// <param name="persistVolume">
+    /// Only the main window's player may write the saved volume. Dialogs mute their own video (the
+    /// TTS review mutes it on purpose); through the shared handler that mute was saved as the
+    /// user's volume, so every video opened afterwards was silent.
+    /// </param>
+    public static VideoPlayerControl MakeVideoPlayer(bool persistVolume = true)
     {
         try
         {
@@ -149,7 +154,7 @@ public static class InitVideoPlayer
                 if (player.CanLoad())
                 {
                     var view = new LibVlcDynamicNativeControl(player);
-                    return MakeVideoPlayerControl(player, view);
+                    return MakeVideoPlayerControl(player, view, persistVolume);
                 }
             }
 
@@ -159,7 +164,7 @@ public static class InitVideoPlayer
                 if (player.CanLoad())
                 {
                     var view = new FfmpegSoftwareControl(player);
-                    return MakeVideoPlayerControl(player, view);
+                    return MakeVideoPlayerControl(player, view, persistVolume);
                 }
             }
 
@@ -169,7 +174,7 @@ public static class InitVideoPlayer
                 if (player.CanLoad())
                 {
                     var view = new LibMpvDynamicNativeControl(player);
-                    return MakeVideoPlayerControl(player, view);
+                    return MakeVideoPlayerControl(player, view, persistVolume);
                 }
             }
 
@@ -179,7 +184,7 @@ public static class InitVideoPlayer
                 if (player.CanLoad())
                 {
                     var view = new LibMpvDynamicSoftwareControl(player);
-                    return MakeVideoPlayerControl(player, view);
+                    return MakeVideoPlayerControl(player, view, persistVolume);
                 }
             }
 
@@ -189,7 +194,7 @@ public static class InitVideoPlayer
                 if (player.CanLoad())
                 {
                     var view = new LibMpvDynamicIoSurfaceControl(player);
-                    return MakeVideoPlayerControl(player, view);
+                    return MakeVideoPlayerControl(player, view, persistVolume);
                 }
             }
 
@@ -199,15 +204,15 @@ public static class InitVideoPlayer
                 if (player.CanLoad())
                 {
                     var view = new LibMpvDynamicOpenGlControl(player);
-                    return MakeVideoPlayerControl(player, view);
+                    return MakeVideoPlayerControl(player, view, persistVolume);
                 }
             }
 
-            return MakeVideoPlayerControl(new EmptyVideoPlayer(), new Label());
+            return MakeVideoPlayerControl(new EmptyVideoPlayer(), new Label(), persistVolume);
         }
         catch
         {
-            return MakeVideoPlayerControl(new EmptyVideoPlayer(), new Label());
+            return MakeVideoPlayerControl(new EmptyVideoPlayer(), new Label(), persistVolume);
         }
 
         throw new InvalidOperationException("Failed to create video player control.");
@@ -220,7 +225,7 @@ public static class InitVideoPlayer
     /// making logo/overlay previews invisible. Using software rendering avoids this.
     /// On non-Windows or when mpv is unavailable, falls back to the default player.
     /// </summary>
-    public static VideoPlayerControl MakeVideoPlayerPreferNonNative()
+    public static VideoPlayerControl MakeVideoPlayerPreferNonNative(bool persistVolume = true)
     {
         if (OperatingSystem.IsWindows() && Se.Settings.Video.VideoPlayer != VideoPlayerName.MpvOpenGl && Se.Settings.Video.VideoPlayer != VideoPlayerName.Ffmpeg)
         {
@@ -228,14 +233,14 @@ public static class InitVideoPlayer
             if (player.CanLoad())
             {
                 var view = new LibMpvDynamicSoftwareControl(player);
-                return MakeVideoPlayerControl(player, view);
+                return MakeVideoPlayerControl(player, view, persistVolume);
             }
         }
 
-        return MakeVideoPlayer();
+        return MakeVideoPlayer(persistVolume);
     }
 
-    private static VideoPlayerControl MakeVideoPlayerControl(IVideoPlayer videoPlayer, Control view)
+    private static VideoPlayerControl MakeVideoPlayerControl(IVideoPlayer videoPlayer, Control view, bool persistVolume)
     {
         var control = new VideoPlayerControl(videoPlayer)
         {
@@ -249,11 +254,14 @@ public static class InitVideoPlayer
             Volume = Se.Settings.Video.Volume,
         };
         Se.WriteToolsLog($"VIDEO volume: main player created, setting={Se.Settings.Video.Volume:0.#}, control={control.Volume:0.#}");
-        control.VolumeChanged += v =>
+        if (persistVolume)
         {
-            Se.Settings.Video.Volume = v;
-            Se.WriteToolsLog($"VIDEO volume: changed by user to {v:0.#}");
-        };
+            control.VolumeChanged += v =>
+            {
+                Se.Settings.Video.Volume = v;
+                Se.WriteToolsLog($"VIDEO volume: changed by user to {v:0.#}");
+            };
+        }
         return control;
     }
 }
