@@ -674,6 +674,14 @@ public static class SmartBreak
                 var bestPause = -1.0;
                 for (var k = i + 1; k <= j && k < n; k++)
                 {
+                    // A cut here would start the next cue with a clitic ("se.", "li", "ga") - the
+                    // forbidden-break rule must hold for cue boundaries too, not only for line
+                    // wraps, or the pause search happily orphans the clitic.
+                    if (Forbidden(block, k))
+                    {
+                        continue;
+                    }
+
                     var pause = block[k].Start - EffEnd(runs, block[k - 1]);
                     if (pause > bestPause)
                     {
@@ -692,6 +700,14 @@ public static class SmartBreak
                     var take = lines.Take(MaxLines).Sum(l => l.Count);
                     end = Math.Min(n, i + Math.Max(1, take));
                 }
+            }
+
+            // Never end a cue right before a clitic or conjunction: the next cue would start with
+            // "se.", "li", "ga"..., which nobody can read and which no OCR fix can match across the
+            // cue boundary. Pull that word into this cue instead of cutting in front of it.
+            while (end < n && Forbidden(block, end))
+            {
+                end++;
             }
 
             // Two-line limit is absolute: if the chosen group still needs more lines, step back to
