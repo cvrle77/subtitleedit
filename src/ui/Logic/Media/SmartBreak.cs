@@ -1064,6 +1064,15 @@ public static class SmartBreak
                 continue;
             }
 
+            // A word that closes the sentence is not dangling: "Evo je, isteklo se." used to lose
+            // its "se." to the next cue, which then started with "se." - unreadable, and no OCR fix
+            // can match a phrase across a cue boundary (it happens whenever the last word of a
+            // sentence is a clitic: "se.", "ga.", "li?").
+            if (LastChar(lastWord) is '.' or '!' or '?' or '…')
+            {
+                continue;
+            }
+
             var head = lastLine[..space].TrimEnd();
             if (head.Length > 0 && LastChar(head) is not (',' or ';' or ':' or '.' or '!' or '?' or '…'))
             {
