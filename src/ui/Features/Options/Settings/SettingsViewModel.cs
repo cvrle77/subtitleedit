@@ -167,6 +167,9 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _splitTrimUseVoiceDetection;
     [ObservableProperty] private bool _capitalizeAfterSplit;
     [ObservableProperty] private bool _showVideoEndLine;
+
+    // Fork: merging drops a trailing period and lowercases the next line.
+    [ObservableProperty] private bool _mergeStartsLowercaseAfterPeriod;
     [ObservableProperty] private decimal _vadThreshold;
     [ObservableProperty] private decimal _vadMinSpeechSeconds;
     [ObservableProperty] private decimal _vadMinSilenceSeconds;
@@ -977,6 +980,7 @@ public partial class SettingsViewModel : ObservableObject
         SplitTrimUseVoiceDetection = general.SplitTrimUseVoiceDetection;
         CapitalizeAfterSplit = general.CapitalizeAfterSplit;
         ShowVideoEndLine = general.ShowVideoEndLine;
+        MergeStartsLowercaseAfterPeriod = general.MergeStartsLowercaseAfterPeriod;
         VadThreshold = (decimal)general.VadThreshold;
         VadMinSpeechSeconds = (decimal)general.VadMinSpeechSeconds;
         VadMinSilenceSeconds = (decimal)general.VadMinSilenceSeconds;
@@ -1951,6 +1955,7 @@ public partial class SettingsViewModel : ObservableObject
         general.SplitTrimUseVoiceDetection = SplitTrimUseVoiceDetection;
         general.CapitalizeAfterSplit = CapitalizeAfterSplit;
         general.ShowVideoEndLine = ShowVideoEndLine;
+        general.MergeStartsLowercaseAfterPeriod = MergeStartsLowercaseAfterPeriod;
         general.VadThreshold = (double)VadThreshold;
         general.VadMinSpeechSeconds = (double)VadMinSpeechSeconds;
         general.VadMinSilenceSeconds = (double)VadMinSilenceSeconds;

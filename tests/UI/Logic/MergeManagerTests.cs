@@ -378,4 +378,56 @@ public class MergeManagerTests
             Se.Settings.Tools.MergeAutoBreak = original;
         }
     }
+
+    // Fork: "This is the end." + "Next line here." is one sentence after merging - the period goes
+    // and the next line starts in lowercase.
+    [Fact]
+    public void MergeSelectedLines_DropsTrailingPeriodAndLowercasesNextLine()
+    {
+        var mergeManager = new MergeManager();
+        var subtitles = new ObservableCollection<SubtitleLineViewModel>
+        {
+            new() { Number = 1, Text = "This is the end.", StartTime = TimeSpan.FromSeconds(1), EndTime = TimeSpan.FromSeconds(2) },
+            new() { Number = 2, Text = "Next line here.", StartTime = TimeSpan.FromSeconds(2), EndTime = TimeSpan.FromSeconds(3) },
+            new() { Number = 3, Text = "Third line.", StartTime = TimeSpan.FromSeconds(3), EndTime = TimeSpan.FromSeconds(4) },
+        };
+
+        mergeManager.MergeSelectedLines(subtitles, [subtitles[0], subtitles[1], subtitles[2]], MergeManager.BreakMode.KeepBreaks);
+
+        Assert.Single(subtitles);
+        Assert.Equal(
+            "This is the end" + Environment.NewLine + "next line here" + Environment.NewLine + "third line.",
+            subtitles[0].Text);
+    }
+
+    // Fork: only a plain period is touched - "?" still ends a sentence.
+    [Fact]
+    public void MergeSelectedLines_KeepsQuestionMarkAndCapital()
+    {
+        var mergeManager = new MergeManager();
+        var subtitles = new ObservableCollection<SubtitleLineViewModel>
+        {
+            new() { Number = 1, Text = "Is it the end?", StartTime = TimeSpan.FromSeconds(1), EndTime = TimeSpan.FromSeconds(2) },
+            new() { Number = 2, Text = "Next line here.", StartTime = TimeSpan.FromSeconds(2), EndTime = TimeSpan.FromSeconds(3) },
+        };
+
+        mergeManager.MergeSelectedLines(subtitles, [subtitles[0], subtitles[1]], MergeManager.BreakMode.KeepBreaks);
+
+        Assert.Single(subtitles);
+        Assert.Equal("Is it the end?" + Environment.NewLine + "Next line here.", subtitles[0].Text);
+    }
+
+    // Fork: same rule in the paragraph-based overload (seconv, batch tools).
+    [Fact]
+    public void MergeSelectedLines_Subtitle_DropsTrailingPeriodAndLowercasesNextLine()
+    {
+        var subtitle = new Subtitle();
+        subtitle.Paragraphs.Add(new Paragraph("This is the end.", 1000, 2000));
+        subtitle.Paragraphs.Add(new Paragraph("Next line here.", 2000, 3000));
+
+        var result = new MergeManager().MergeSelectedLines(subtitle, [0, 1], MergeManager.BreakMode.Unbreak);
+
+        Assert.Single(result.Paragraphs);
+        Assert.Equal("This is the end next line here.", result.Paragraphs[0].Text);
+    }
 }

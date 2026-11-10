@@ -1317,6 +1317,7 @@ public class SettingsPage : UserControl
                 0, 10, 120, _vm, nameof(_vm.VadMinSilenceSeconds), defaultValue: 0.1m)),
             MakeCheckboxSetting(Se.Language.Options.Settings.CapitalizeAfterSplit, nameof(_vm.CapitalizeAfterSplit)),
             MakeCheckboxSetting(Se.Language.Options.Settings.ShowVideoEndLine, nameof(_vm.ShowVideoEndLine)),
+            MakeCheckboxSetting("Merge lines: drop the period and start the next line in lowercase", nameof(_vm.MergeStartsLowercaseAfterPeriod)),
 
             MakeSeparator(),
             MakeGroupHeader("Waveform centering"),

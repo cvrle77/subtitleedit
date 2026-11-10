@@ -66,7 +66,10 @@ namespace Nikse.SubtitleEdit.Logic
                 }
             }
 
-            var sb = new StringBuilder();
+            // The merged lines' text, in order. Collected instead of appended straight into a
+            // StringBuilder so the fork's "drop the period, lowercase the next line" rule still
+            // sees each line's boundaries.
+            var lines = new List<string>();
             var textCount = 0; // merged lines with text - one line with text keeps its own line breaks (issue #15441)
             var deleteIndices = new List<int>();
             var first = true;
@@ -122,20 +125,43 @@ namespace Nikse.SubtitleEdit.Logic
                 if (!string.IsNullOrWhiteSpace(addText))
                 {
                     textCount++;
-                    if (breakMode == BreakMode.UnbreakNoSpace)
-                    {
-                        sb.Append(addText);
-                    }
-                    else
-                    {
-                        sb.AppendLine(addText);
-                    }
+                    lines.Add(addText);
                 }
 
                 // Max, not last: with "keep end time" the merged line must span every merged
                 // line, and selected lines are not necessarily ordered by end time (e.g. an
                 // ASSA sign event that outlives the dialog line merged into it).
                 endMilliseconds = Math.Max(endMilliseconds, subtitle.Paragraphs[index].EndTime.TotalMilliseconds);
+            }
+
+            // Fork: merging "Kraj." + "Sledeći..." gives one sentence - drop the period and start
+            // the second line with a lowercase letter ("Kraj sledeći..."). Only a plain period is
+            // touched: "?!", "..." and abbreviations keep their punctuation.
+            if (Fork.MergeStartsLowercaseAfterPeriod)
+            {
+                for (var li = 1; li < lines.Count; li++)
+                {
+                    var previousLine = lines[li - 1].TrimEnd();
+                    var currentLine = lines[li].TrimStart();
+                    if (previousLine.EndsWith('.') && currentLine.Length > 0 && char.IsUpper(currentLine[0]))
+                    {
+                        lines[li - 1] = previousLine[..^1];
+                        lines[li] = char.ToLowerInvariant(currentLine[0]) + currentLine[1..];
+                    }
+                }
+            }
+
+            var sb = new StringBuilder();
+            foreach (var mergedLine in lines)
+            {
+                if (breakMode == BreakMode.UnbreakNoSpace)
+                {
+                    sb.Append(mergedLine);
+                }
+                else
+                {
+                    sb.AppendLine(mergedLine);
+                }
             }
 
             var currentParagraph = subtitle.Paragraphs[firstIndex];
@@ -208,7 +234,8 @@ namespace Nikse.SubtitleEdit.Logic
                 }
             }
 
-            var sb = new StringBuilder();
+            // See the Subtitle overload: collected so the fork's merge rule sees line boundaries.
+            var lines = new List<string>();
             var sbOriginal = new StringBuilder();
             var textCount = 0; // merged lines with text - one line with text keeps its own line breaks (issue #15441)
             var originalTextCount = 0;
@@ -268,14 +295,7 @@ namespace Nikse.SubtitleEdit.Logic
                 if (!string.IsNullOrWhiteSpace(addText))
                 {
                     textCount++;
-                    if (breakMode == BreakMode.UnbreakNoSpace)
-                    {
-                        sb.Append(addText);
-                    }
-                    else
-                    {
-                        sb.AppendLine(addText);
-                    }
+                    lines.Add(addText);
                 }
 
                 if (!string.IsNullOrWhiteSpace(addOriginalText))
@@ -295,6 +315,36 @@ namespace Nikse.SubtitleEdit.Logic
                 // line, and selected lines are not necessarily ordered by end time (e.g. an
                 // ASSA sign event that outlives the dialog line merged into it).
                 endMilliseconds = Math.Max(endMilliseconds, inputSubtitle[index].EndTime.TotalMilliseconds);
+            }
+
+            // Fork: merging "Kraj." + "Sledeći..." gives one sentence - drop the period and start
+            // the second line with a lowercase letter ("Kraj sledeći..."). Only a plain period is
+            // touched: "?!", "..." and abbreviations keep their punctuation.
+            if (Fork.MergeStartsLowercaseAfterPeriod)
+            {
+                for (var li = 1; li < lines.Count; li++)
+                {
+                    var previousLine = lines[li - 1].TrimEnd();
+                    var currentLine = lines[li].TrimStart();
+                    if (previousLine.EndsWith('.') && currentLine.Length > 0 && char.IsUpper(currentLine[0]))
+                    {
+                        lines[li - 1] = previousLine[..^1];
+                        lines[li] = char.ToLowerInvariant(currentLine[0]) + currentLine[1..];
+                    }
+                }
+            }
+
+            var sb = new StringBuilder();
+            foreach (var mergedLine in lines)
+            {
+                if (breakMode == BreakMode.UnbreakNoSpace)
+                {
+                    sb.Append(mergedLine);
+                }
+                else
+                {
+                    sb.AppendLine(mergedLine);
+                }
             }
 
             var currentParagraph = inputSubtitle[firstIndex];
