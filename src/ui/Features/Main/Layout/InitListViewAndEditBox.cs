@@ -849,7 +849,7 @@ public static partial class InitListViewAndEditBox
 
         var showStartTimeMenuItem = new MenuItem
         {
-            Header = Se.Language.General.ShowStartColumn,
+            Header = string.Format(Se.Language.General.ShowXColumn, Se.Language.General.Show),
             Command = vm.ToggleShowColumnStartTimeCommand,
             DataContext = vm,
             Icon = new Icon
@@ -864,7 +864,7 @@ public static partial class InitListViewAndEditBox
         
         var showEndTimeMenuItem = new MenuItem
         {
-            Header = Se.Language.General.ShowHideColumn,
+            Header = string.Format(Se.Language.General.ShowXColumn, Se.Language.General.Hide),
             Command = vm.ToggleShowColumnEndTimeCommand,
             DataContext = vm,
             Icon = new Icon
@@ -1750,6 +1750,7 @@ public static partial class InitListViewAndEditBox
         var upDownLayer = UiUtil.MakeNumericUpDownInt(int.MinValue, int.MaxValue, 0, double.NaN, vm, $"{nameof(vm.SelectedSubtitle)}.{nameof(SubtitleLineViewModel.Layer)}");
         AutomationProperties.SetName(upDownLayer, Se.Language.General.Layer);
         upDownLayer.HorizontalAlignment = HorizontalAlignment.Stretch;
+        CompactSpinner.Attach(upDownLayer);
         if (!vm.ShowUpDownLabels && Se.Settings.Appearance.ShowHints)
         {
             ToolTip.SetTip(upDownLayer, Se.Language.General.Layer);

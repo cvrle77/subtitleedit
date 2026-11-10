@@ -68,8 +68,12 @@ public enum SeWaveformToolbarItemType
     // Options > Settings > Rules, the same switch as the Choose profile shortcut, without the dialog.
     RuleProfile = 32,
 
+    // The A/B switch (#16354): toggles whether the waveform edits the working subtitle's timing
+    // or the original's. Only rendered while an original is open.
+    EditOriginalTiming = 33,
+
     // The added "smooth" variant of the Center toggle: eases the view to the centre instead of
     // snapping. Separate from Center so the original instant toggle stays as it always was.
-    // 33, not 32: upstream took 32 for RuleProfile.
-    CenterSmooth = 33
+    // 34, not 33: upstream took 33 for EditOriginalTiming (and 32 for RuleProfile).
+    CenterSmooth = 34
 }

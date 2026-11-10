@@ -64,6 +64,7 @@ public partial class ToolbarItemDisplay : ObservableObject
             SeWaveformToolbarItemType.InitialText => w.InitialText,
             SeWaveformToolbarItemType.TimelineTrackGrouping => Se.Language.Waveform.TimelineGroupTracksBy,
             SeWaveformToolbarItemType.RuleProfile => Format(w.RuleProfileHint),
+            SeWaveformToolbarItemType.EditOriginalTiming => Se.Language.Waveform.EditOriginalTiming,
             _ => type.ToString(),
         };
     }

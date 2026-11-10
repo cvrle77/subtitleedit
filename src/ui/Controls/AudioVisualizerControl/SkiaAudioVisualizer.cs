@@ -107,7 +107,7 @@ public class SkiaAudioVisualizer : AudioVisualizer
 
         f.Width = (float)width;
         f.Height = (float)height;
-        f.Peaks = peaks;
+        f.Peaks = peaks is { IsPlaceholder: true } ? null : peaks; // a placeholder only sets the time scale
         // Fall back to the owner-supplied rate so a control whose peaks are not loaded yet still
         // has a time axis (review window's generated-speech track) - otherwise its zoom and the
         // shared playhead would collapse onto x=0.
@@ -143,15 +143,19 @@ public class SkiaAudioVisualizer : AudioVisualizer
         f.FontBold = settings.Waveform.WaveformTextFontBold;
         f.UnwrapText = settings.Waveform.WaveformUnwrapText;
         f.BlurText = BlurText;
+        f.EditOriginal = EditOriginalTimeCodes;
 
         f.DrawGridLines = DrawGridLines;
         f.FrameMode = settings.General.UseFrameMode;
         f.FrameRate = settings.General.CurrentFrameRate;
 
         f.IsFocused = IsFocused;
-        f.HintText = peaks == null && ShowClickToGenerateHint && !string.IsNullOrEmpty(ClickToGenerateText)
-            ? ClickToGenerateText
-            : null;
+        f.HintButtons.Clear();
+        foreach (var button in GetHintButtons())
+        {
+            var r = button.Rect;
+            f.HintButtons.Add(new SkiaHintButton(button.Text, new SKRect((float)r.Left, (float)r.Top, (float)r.Right, (float)r.Bottom), button.IsHovered));
+        }
 
         // The cursor is set before the early-out below: with no peaks of its own the control still
         // has to draw the shared playhead, and that is the whole point of FallbackSampleRate.
@@ -501,6 +505,8 @@ public class SkiaAudioVisualizer : AudioVisualizer
 /// </summary>
 internal sealed class SkiaWaveformFrame
 {
+    /// <summary>The original is the layer being edited (AudioVisualizer.EditOriginalTimeCodes).</summary>
+    public bool EditOriginal;
     public float Width;
     public float Height;
     public WavePeakData2? Peaks;
@@ -539,7 +545,7 @@ internal sealed class SkiaWaveformFrame
     public bool FrameMode;
     public double FrameRate;
     public bool IsFocused;
-    public string? HintText;
+    public readonly List<SkiaHintButton> HintButtons = new(2);
 
     public double CursorSeconds = -1;
     public bool CursorOnShotChange;
@@ -593,7 +599,7 @@ internal sealed class SkiaWaveformFrame
     {
         Peaks = null;
         SampleRate = 0;
-        HintText = null;
+        HintButtons.Clear();
         CursorSeconds = -1;
         CursorOnShotChange = false;
         HasNewSelection = false;
@@ -695,3 +701,6 @@ internal sealed class SkiaWaveformDrawOperation : ICustomDrawOperation
         }
     }
 }
+
+/// <summary>A "Generate waveform" / "Use empty waveform" button on a timeline without a waveform.</summary>
+public readonly record struct SkiaHintButton(string Text, SKRect Rect, bool IsHovered);

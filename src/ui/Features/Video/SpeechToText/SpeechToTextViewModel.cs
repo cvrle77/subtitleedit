@@ -10,6 +10,7 @@ using Nikse.SubtitleEdit.Core.ContainerFormats.Matroska;
 using Nikse.SubtitleEdit.Core.SubtitleFormats;
 using Nikse.SubtitleEdit.Features.Shared;
 using Nikse.SubtitleEdit.Features.Shared.GetAudioClips;
+using Nikse.SubtitleEdit.Features.Shared.PromptFilesSaved;
 using Nikse.SubtitleEdit.Features.Video.SpeechToText.Engines;
 using Nikse.SubtitleEdit.Features.Video.SpeechToText.EngineSettings;
 using Nikse.SubtitleEdit.Features.Video.SpeechToText.OpenRouter;
@@ -182,6 +183,7 @@ public partial class SpeechToTextViewModel : ObservableObject
     private string? _sttTempFolder;
     private readonly ConcurrentQueue<string> _outputText = new();
     private long _startTicks = 0;
+    private long _runStartTicks;
     private double _endSeconds;
     private double _showProgressPct = -1;
     private readonly VideoInfo _videoInfo = new();
@@ -2067,6 +2069,36 @@ public partial class SpeechToTextViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Batch "done" dialog: one card per generated subtitle with show in folder / copy path
+    /// (failed media keep their status), instead of a plain "Videos converted: N" message box -
+    /// which was also wrong for audio files (#16673).
+    /// </summary>
+    private async Task ShowBatchResultAsync()
+    {
+        var runTime = TimeSpan.FromTicks(DateTime.UtcNow.Ticks - _runStartTicks);
+        var elapsed = runTime.TotalHours >= 1
+            ? $"{(int)runTime.TotalHours}:{runTime.Minutes:00}:{runTime.Seconds:00}"
+            : $"{runTime.Minutes}:{runTime.Seconds:00}";
+
+        var files = _jobItems
+            .Select(p =>
+            {
+                var isSuccess = p.Status == Se.Language.General.Converted && File.Exists(p.OutputSubtitleFileName);
+                return new SavedFileItem(isSuccess ? p.OutputSubtitleFileName : p.InputVideoFileName, isSuccess, p.Status);
+            })
+            .ToList();
+        var doneCount = files.Count(p => p.IsSuccess);
+        var headline = doneCount == files.Count
+            ? string.Format(Se.Language.Video.AudioToText.SubtitleFilesGeneratedX, doneCount)
+            : string.Format(Se.Language.Video.AudioToText.SubtitleFilesGeneratedXOfY, doneCount, files.Count);
+
+        await _windowService.ShowDialogAsync<PromptFilesSavedWindow, PromptFilesSavedViewModel>(Window!, vm =>
+        {
+            vm.Initialize(Se.Language.Video.AudioToText.SubtitleFilesGenerated, headline, files, elapsed);
+        });
+    }
+
+    /// <summary>
     /// Sets a batch row's status from its transcription result. A row with no text must be
     /// marked Error here, not left alone: the batch list is reused between runs, so a row
     /// left untouched keeps the Converted of an earlier run and is counted as converted
@@ -2088,6 +2120,7 @@ public partial class SpeechToTextViewModel : ObservableObject
         foreach (var item in items)
         {
             item.Status = string.Empty;
+            item.OutputSubtitleFileName = string.Empty;
         }
     }
 
@@ -2103,6 +2136,7 @@ public partial class SpeechToTextViewModel : ObservableObject
             var text = format.ToText(transcribedSubtitle, string.Empty);
             File.WriteAllText(subtitleFileName, text);
             LastBatchSubtitleFileName = subtitleFileName;
+            currentItem.OutputSubtitleFileName = subtitleFileName;
         }
 
         // Delete temp files from the just-finished item so disk usage doesn't grow across long batches
@@ -2157,18 +2191,10 @@ public partial class SpeechToTextViewModel : ObservableObject
             return;
         }
 
-        var convertedJobs = _jobItems.Count(p => p.Status == Se.Language.General.Converted);
         var failed = _jobItems.Count(p => p.Status != Se.Language.General.Converted);
 
         Dispatcher.UIThread.Invoke<Task>(async () =>
         {
-            var msg = $"Videos converted: " + convertedJobs;
-            if (failed > 0)
-            {
-                msg += Environment.NewLine + $"Videos failed: " + failed +
-                       Environment.NewLine + "Please check the tools log for details.";
-            }
-
             _timerWhisper.Stop();
             await Task.Delay(250);
             HideProgressBar();
@@ -2182,12 +2208,7 @@ public partial class SpeechToTextViewModel : ObservableObject
                 return;
             }
 
-            await MessageBox.Show(
-                Window!,
-                Se.Language.Video.AudioToText.Title,
-                msg,
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Information);
+            await ShowBatchResultAsync();
 
             IsTranscribeEnabled = true;
 
@@ -2608,8 +2629,12 @@ public partial class SpeechToTextViewModel : ObservableObject
                 using var waveFile = new WavePeakGenerator2(targetFile);
                 if (!string.IsNullOrEmpty(_videoFileName) && File.Exists(_videoFileName))
                 {
-                    return waveFile.GeneratePeaks(delayInMilliseconds,
-                        WavePeakGenerator2.GetPeakWaveFileName(_videoFileName));
+                    // A clip of selected lines is a temp file, deleted after the run - caching its
+                    // peaks left one never-read file in the Waveforms folder per line (#16760).
+                    var peakFileName = _audioClips != null
+                        ? string.Empty
+                        : WavePeakGenerator2.GetPeakWaveFileName(_videoFileName);
+                    return waveFile.GeneratePeaks(delayInMilliseconds, peakFileName);
                 }
             }
         }
@@ -2694,6 +2719,13 @@ public partial class SpeechToTextViewModel : ObservableObject
             End = (decimal)p.EndTime.TotalSeconds,
             Text = engine is CrispAsrIndexEcho ? CrispAsrIndexEcho.GetTranslation(p.Text) : p.Text
         }).ToList();
+
+        if (engine is ICrispAsrEngine && CrispAsrHighlightWords.IsActive(engine.CommandLineParameter))
+        {
+            // "Highlight word" only gets one word per cue out of crispasr; build the lines with
+            // the active word underlined here (merging would otherwise glue the words back).
+            resultTexts = CrispAsrHighlightWords.Build(resultTexts, SpeechToTextPostProcessor.GetParagraphMaxChars());
+        }
 
         if (Se.Settings.Tools.AudioToText.SmartBreak)
         {
@@ -3959,11 +3991,6 @@ public partial class SpeechToTextViewModel : ObservableObject
     [RelayCommand]
     private async Task DownloadModel()
     {
-        if (GetEffectiveSelectedEngine().DownloadsOwnModels)
-        {
-            return;
-        }
-
         var vm = await _windowService.ShowDialogAsync<DownloadSpeechToTextModelsWindow, DownloadSpeechToTextModelsViewModel>(
             Window!, viewModel => { viewModel.SetModels(Models, GetEffectiveSelectedEngine(), SelectedModel); });
 
@@ -4252,10 +4279,7 @@ public partial class SpeechToTextViewModel : ObservableObject
                 return;
             }
 
-            // Engines that download their own models (WhisperX) are never routed through SE's
-            // downloader: it would fill a folder the engine does not read and re-prompt on
-            // every run. Their IsModelInstalled only drives the model dot.
-            if (!engine.DownloadsOwnModels && !engine.IsModelInstalled(model.Model))
+            if (!engine.IsModelInstalled(model.Model))
             {
                 var answer = await MessageBox.Show(
                     Window!,
@@ -4418,6 +4442,7 @@ public partial class SpeechToTextViewModel : ObservableObject
         }
 
         _batchIndex = 0;
+        _runStartTicks = DateTime.UtcNow.Ticks;
 
         if (_jobItems.Count == 0)
         {
@@ -4761,7 +4786,8 @@ public partial class SpeechToTextViewModel : ObservableObject
     /// </summary>
     private bool CanSendSourceFileToEngine(string videoFileName)
     {
-        if (_useCenterChannelOnly || string.IsNullOrEmpty(videoFileName) || !File.Exists(videoFileName))
+        if (_useCenterChannelOnly || string.IsNullOrEmpty(videoFileName) || !File.Exists(videoFileName) ||
+            !IsDirectDecodeContainer(videoFileName))
         {
             return false;
         }
@@ -4778,6 +4804,24 @@ public partial class SpeechToTextViewModel : ObservableObject
             SeLogger.Error(exception, $"Unable to read audio tracks from: {videoFileName}");
             return false;
         }
+    }
+
+    private static readonly HashSet<string> DirectDecodeExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp4", ".m4v", ".mkv", ".webm", ".mov",
+        ".m4a", ".mp3", ".flac", ".ogg", ".opus", ".wav",
+    };
+
+    /// <summary>
+    /// Containers the engines' own decoder reads reliably. Anything else goes through SE's WAV,
+    /// which ffmpeg always extracts first anyway. AVI is the case that made this an allowlist: AVI
+    /// often carries VBR MP3 that the engines' decoder rejects ("Header missing"), so XXL decoded
+    /// 0 seconds of audio and the file failed, while the ffmpeg command line extracts the same
+    /// audio fine (#16772). SE 4 only ever sent .mkv/.mp4 directly.
+    /// </summary>
+    internal static bool IsDirectDecodeContainer(string fileName)
+    {
+        return DirectDecodeExtensions.Contains(Path.GetExtension(fileName));
     }
 
     private Process GetWhisperProcess(
@@ -4804,7 +4848,7 @@ public partial class SpeechToTextViewModel : ObservableObject
             // still writes the SRT the normal result loader reads.
             var outputFormat = Se.Settings.Tools.AudioToText.SmartBreak ? "all" : "srt";
             var parametersX =
-                $"{languageArgX}--model \"{model}\" --output_format {outputFormat} --output_dir \"{outputDir}\" " +
+                $"{languageArgX}--model \"{whisperX.GetModelForCmdLine(model)}\" --output_format {outputFormat} --output_dir \"{outputDir}\" " +
                 $"{taskArg}{whisperXArgs} \"{waveFileName}\"";
 
             // The generic launch path is bypassed here, so repeat the piece of its setup a
@@ -5774,9 +5818,7 @@ public partial class SpeechToTextViewModel : ObservableObject
             SelectedModel = null;
         }
 
-        // SE's downloader saves into a folder an engine that downloads its own models never
-        // reads (WhisperX: the Hugging Face hub cache), so offering it only wastes gigabytes.
-        IsModelDownloadVisible = IsModelSelectionVisible && !engine.DownloadsOwnModels;
+        IsModelDownloadVisible = IsModelSelectionVisible;
 
         IsLanguageSelectionVisible = !isOnlineSttEngine;
         if (!IsLanguageSelectionVisible)

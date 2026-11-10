@@ -3562,8 +3562,35 @@ public partial class TextToSpeechViewModel : ObservableObject
         return duration.TotalHours >= 1 ? duration.ToString(@"h\:mm\:ss") : duration.ToString(@"m\:ss");
     }
 
+    // Merged track format: what the old ffmpeg amix chain produced - 44.1 kHz (its anullsrc
+    // base) and mono (its aevalsrc pad), stereo only with the custom-encoding stereo setting.
+    private const int MergeSampleRate = 44100;
+
     private async Task<string?> MergeAudioParagraphs(TtsStepResult[] previousStepResult, CancellationToken cancellationToken)
     {
+        // No engine/voice needed here - each step result carries its own audio file. An
+        // engine/voice null-guard used to silently abort the merge for imported sessions
+        // whose selected engine had no loadable voice list ("OK does nothing", #12093).
+        if (cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+
+        var forceStereo = Se.Settings.Video.TextToSpeech.CustomAudioStereo &&
+                          !string.IsNullOrEmpty(Se.Settings.Video.TextToSpeech.CustomAudioEncoding);
+        var channels = forceStereo ? 2 : 1;
+
+        ProgressText = Se.Language.Video.TextToSpeech.PreparingMergeDotDotDot;
+        ProgressValue = 0;
+
+        var mergedFileName = GetUniqueWaveFolderFileName("merged", ".wav");
+        var rawFileName = GetUniqueWaveFolderFileName("merge_segment", ".raw");
+
+        // One silent base track, and each segment added into just its own region (#16767). The
+        // old chain re-read and re-wrote the whole full-length track per line through ffmpeg
+        // amix, so a 2-hour, 1,500-line project wrote terabytes to temp and took hours.
+        var mixer = new PcmWaveMixer(mergedFileName, MergeSampleRate, channels, GetMergeDurationSeconds(previousStepResult));
+        var completed = false;
         try
         {
             // No engine/voice needed here - each step result carries its own audio file. An
@@ -3574,28 +3601,6 @@ public partial class TextToSpeechViewModel : ObservableObject
                 return null;
             }
 
-            // Stereo unless the user explicitly turned it off. The merged track is what gets dropped
-            // into a video editor, so it must be stereo by default - the old code only made it
-            // stereo when a custom audio encoding string was also set, which left the common
-            // "CustomAudioStereo on, custom encoding empty" case producing a mono file.
-            var forceStereo = Se.Settings.Video.TextToSpeech.CustomAudioStereo;
-
-            // Fast merge: place every clip on the timeline in ONE ffmpeg pass (adelay + amix)
-            // instead of the running concat+amix chain that re-encodes the whole growing track once
-            // per line. Same output format and the same clip start times; one pass over the audio.
-            if (Se.Settings.Video.TextToSpeech.FastMerge)
-            {
-                var fastResult = await MergeAudioParagraphsFast(previousStepResult, forceStereo, cancellationToken);
-                if (fastResult != null)
-                {
-                    return fastResult;
-                }
-                // Fall through to the linear chain if the fast merge produced nothing.
-            }
-
-            var silenceFileName = await GenerateSilenceWaveFile(previousStepResult, cancellationToken);
-
-            var inputFileName = silenceFileName;
             ProgressValue = 0;
             for (var index = 0; index < previousStepResult.Length; index++)
             {
@@ -3612,19 +3617,15 @@ public partial class TextToSpeechViewModel : ObservableObject
                     continue;
                 }
 
-                var outputFileName = Path.Combine(_waveFolder, $"silence{index}.wav");
-                if (File.Exists(outputFileName))
-                {
-                    outputFileName = Path.Combine(_waveFolder, $"silence_{Guid.NewGuid()}.wav");
-                }
+                // ffmpeg still does the decoding, resampling and channel mapping, so every
+                // engine's output format works - but only over this segment's few seconds.
+                DeleteFileNoError(rawFileName);
+                var decodeProcess = FfmpegGenerator.DecodeToRawPcm(item.CurrentFileName, rawFileName, MergeSampleRate, channels);
+                await decodeProcess.StartAndWaitAsync(cancellationToken);
 
-                var mergeProcess = FfmpegGenerator.MergeAudioTracks(inputFileName, item.CurrentFileName, outputFileName, (float)item.Paragraph.StartTime.TotalSeconds, forceStereo);
-                await mergeProcess.StartAndWaitAsync(cancellationToken);
-
-                // A failed merge used to go unnoticed: the loop advanced to the (missing) output
-                // and deleted the last good intermediate, so every later merge failed too and the
-                // wreck only surfaced far downstream. Stop with an error instead.
-                if (!TtsAudioFile.HasAudio(outputFileName))
+                // A failed segment stops the merge with an error instead of silently leaving a
+                // hole that only surfaces far downstream.
+                if (!File.Exists(rawFileName) || new FileInfo(rawFileName).Length == 0)
                 {
                     SeLogger.Error($"TextToSpeech: merging segment {index + 1} produced no output (input=\"{item.CurrentFileName}\")");
                     Se.WriteToolsLog($"TTS merge: segment {index + 1} failed - ffmpeg produced no output for \"{item.CurrentFileName}\"", true);
@@ -3644,23 +3645,43 @@ public partial class TextToSpeechViewModel : ObservableObject
                     return null;
                 }
 
-                DeleteFileNoError(inputFileName);
-                inputFileName = outputFileName;
+                var pcm = await File.ReadAllBytesAsync(rawFileName, cancellationToken);
+                mixer.Mix(item.Paragraph.StartTime.TotalSeconds, pcm);
 
                 ProgressValue = (double)(index + 1) / previousStepResult.Length * 100.0;
             }
+
+            mixer.Complete();
+            completed = true;
             ProgressValue = 100;
 
-            // The chain head is the fully merged track (or the bare silence track if every
-            // segment was skipped - still a valid, if empty, result the user gets told about
-            // via the forced tools-log entries above). Pinned to the video's length when known.
-            return await TrimMergedAudioToVideoAsync(inputFileName, cancellationToken);
+            // The fully merged track (or the bare silence track if every segment was skipped -
+            // still a valid, if empty, result the user gets told about via the forced tools-log
+            // entries above). Pinned to the video's length when known (fork).
+            return await TrimMergedAudioToVideoAsync(mergedFileName, cancellationToken);
         }
         catch (OperationCanceledException)
         {
-            ProgressText = Se.Language.General.Cancelled; ;
+            ProgressText = Se.Language.General.Cancelled;
             return null;
         }
+        finally
+        {
+            mixer.Dispose();
+            DeleteFileNoError(rawFileName);
+            if (!completed)
+            {
+                DeleteFileNoError(mergedFileName);
+            }
+        }
+    }
+
+    private string GetUniqueWaveFolderFileName(string baseName, string extension)
+    {
+        var fileName = Path.Combine(_waveFolder, baseName + extension);
+        return File.Exists(fileName)
+            ? Path.Combine(_waveFolder, $"{baseName}_{Guid.NewGuid()}{extension}")
+            : fileName;
     }
 
     // Fast merge: one ffmpeg pass (adelay per clip + amix) over a silence base of the session's
@@ -3849,40 +3870,27 @@ public partial class TextToSpeechViewModel : ObservableObject
         }
     }
 
-    private async Task<string> GenerateSilenceWaveFile(TtsStepResult[] stepResults, CancellationToken cancellationToken)
+    private double GetMergeDurationSeconds(TtsStepResult[] stepResults)
     {
-        ProgressText = Se.Language.Video.TextToSpeech.PreparingMergeDotDotDot;
-        ProgressValue = 0;
-        var silenceFileName = Path.Combine(_waveFolder, "silence.wav");
-        var silenceIdx = 0;
-        while (File.Exists(silenceFileName))
-        {
-            silenceIdx++;
-            silenceFileName = Path.Combine(_waveFolder, $"silence_{silenceIdx}.wav");
-        }
-
-        var durationInSeconds = 10f;
+        var durationInSeconds = 10d;
         if (_mediaInfo != null)
         {
-            durationInSeconds = (float)_mediaInfo.Duration.TotalSeconds;
+            durationInSeconds = _mediaInfo.Duration.TotalSeconds;
         }
         else if (_subtitle.Paragraphs.Count > 0)
         {
-            durationInSeconds = (float)_subtitle.Paragraphs.Max(p => p.EndTime.TotalSeconds);
+            durationInSeconds = _subtitle.Paragraphs.Max(p => p.EndTime.TotalSeconds);
         }
 
         // An imported session can outlast the subtitle currently open in the main window (or
         // there may be no video at all) - the silence base track must cover every segment being
-        // merged, or the tail would be dropped.
+        // merged. (A segment running past it still extends the track rather than being cut.)
         if (stepResults.Length > 0)
         {
-            var maxEndSeconds = (float)stepResults.Max(r => r.Paragraph.EndTime.TotalSeconds);
-            durationInSeconds = Math.Max(durationInSeconds, maxEndSeconds);
+            durationInSeconds = Math.Max(durationInSeconds, stepResults.Max(r => r.Paragraph.EndTime.TotalSeconds));
         }
 
-        var silenceProcess = FfmpegGenerator.GenerateEmptyAudio(silenceFileName, durationInSeconds);
-        await silenceProcess.StartAndWaitAsync(cancellationToken);
-        return silenceFileName;
+        return durationInSeconds;
     }
 
     /// <summary>

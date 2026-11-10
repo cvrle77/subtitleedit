@@ -8,6 +8,7 @@ using Nikse.SubtitleEdit.UiLogic.AutoTranslate;
 using Nikse.SubtitleEdit.Core.Common;
 using Nikse.SubtitleEdit.Core.SubtitleFormats;
 using Nikse.SubtitleEdit.UiLogic.Translate;
+using Nikse.SubtitleEdit.UiLogic.Translate.LlamaCppAdvanced;
 using Nikse.SubtitleEdit.Features.Ocr;
 using Nikse.SubtitleEdit.Features.Shared;
 using Nikse.SubtitleEdit.Features.Tools.AiReview;
@@ -1191,10 +1192,14 @@ public partial class AutoTranslateViewModel : ObservableObject
             // keep the code
         }
 
-        using var client = new AiReviewClient();
+        // The advanced server runs with the user's context size (2048-262144), so the parts and the
+        // answer must fit it - a fixed 3000-token part plus an uncapped reply overflowed 4096 (#16701).
+        var contextSize = Math.Clamp(Se.Settings.AutoTranslate.LlamaCppAdvanced.ContextSize, 2048, 262144);
+        using var client = new AiReviewClient { Log = s => Se.WriteToolsLog(s, true) };
+        Se.WriteToolsLog($"llama.cpp advanced - Generate with AI: model {SelectedLlamaCppModel?.Model?.FileName}, server context size {contextSize}");
         return await AiReviewContextGenerator.GenerateAsync(lines, languageName,
-            (systemPrompt, userContent, jsonObject, ct) => client.ChatAsync(LlamaCppServerManager.ApiUrl, string.Empty, systemPrompt, userContent, ct, null, jsonObject),
-            progress, cancellationToken, s => Se.WriteToolsLog(s));
+            (systemPrompt, userContent, jsonObject, ct) => client.ChatAsync(LlamaCppServerManager.ApiUrl, string.Empty, systemPrompt, userContent, ct, null, jsonObject, AiReviewContextGenerator.MaxAnswerTokens),
+            progress, cancellationToken, (s, force) => Se.WriteToolsLog(s, force), AiReviewContextGenerator.TokensPerPartForContextSize(contextSize));
     }
 
     [RelayCommand]
@@ -1807,7 +1812,7 @@ public partial class AutoTranslateViewModel : ObservableObject
                     break;
                 }
 
-                var translatedCount = await advancedTranslator.TranslateBatchAsync(rows, index, sourceLanguage.Code, targetLanguage.Code, cancellationToken);
+                var translatedCount = await advancedTranslator.TranslateBatchAsync(rows, index, sourceLanguage.Code, targetLanguage.Code, ApplyRowUpdateOnUiThread, cancellationToken);
                 index += translatedCount;
 
                 reportProgress(index);

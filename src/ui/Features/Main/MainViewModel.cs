@@ -363,6 +363,7 @@ public partial class MainViewModel :
     [ObservableProperty] private bool _showUpDownEndTime;
     [ObservableProperty] private bool _showUpDownDuration;
     [ObservableProperty] private bool _showUpDownLabels;
+    [ObservableProperty] private bool _showTimeCodeModeInStatusBar;
     [ObservableProperty] private bool _isColumnLayerVisible;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AreTimeCodesEditable))]
@@ -760,6 +761,17 @@ public partial class MainViewModel :
     private bool _mpvPreviewRefreshBusy; // a refresh is in flight; skip ticks until it lands
     private string? _subtitleFileName;
     private string? _subtitleFileNameOriginal;
+
+    /// <summary>
+    /// The answer to the "original does not line up" question, and the original it was given for.
+    /// Stored with the recent file so reopening the pair does not ask again (#16752). Paired with
+    /// the file name rather than cleared on every path that swaps the original: a choice only
+    /// counts while that same original is open.
+    /// </summary>
+    private OriginalMismatchChoice? _originalMismatchChoice;
+    private string? _originalMismatchChoiceFileName;
+
+    private readonly record struct OriginalMismatchChoice(bool ShowAllLines, bool AllowEdit);
     private bool _converted;
 
     // A file name the app derived on the user's behalf (auto-translate picking a target
@@ -993,6 +1005,11 @@ public partial class MainViewModel :
     public MenuItem MenuItemExtendToLineAfter { get; internal set; }
     public MenuItem MenuItemMerge { get; internal set; }
     public MenuItem MenuItemAudioVisualizerInsertNewSelection { get; set; }
+    public MenuItem MenuItemAudioVisualizerGenerateWaveform { get; set; }
+    public Separator MenuItemAudioVisualizerGenerateWaveformSeparator { get; set; }
+    public MenuItem MenuItemAudioVisualizerGuessTimeCodes { get; set; }
+    public MenuItem MenuItemAudioVisualizerSeekSilence { get; set; }
+    public MenuItem MenuItemAudioVisualizerShowSpeechOnly { get; set; }
     public MenuItem MenuItemAudioVisualizerPasteNewSelection { get; set; }
     public MenuItem MenuIteminsertSubtitleFileAtPositionMenuItem { get; set; }
     public MenuItem MenuItemAudioVisualizerDelete { get; set; }
@@ -1131,6 +1148,11 @@ public partial class MainViewModel :
         MenuItemExtendToLineAfter = new MenuItem();
         MenuItemMerge = new MenuItem();
         MenuItemAudioVisualizerInsertNewSelection = new MenuItem();
+        MenuItemAudioVisualizerGenerateWaveform = new MenuItem();
+        MenuItemAudioVisualizerGenerateWaveformSeparator = new Separator();
+        MenuItemAudioVisualizerGuessTimeCodes = new MenuItem();
+        MenuItemAudioVisualizerSeekSilence = new MenuItem();
+        MenuItemAudioVisualizerShowSpeechOnly = new MenuItem();
         MenuItemAudioVisualizerPasteNewSelection = new MenuItem();
         MenuIteminsertSubtitleFileAtPositionMenuItem = new MenuItem();
         MenuItemAudioVisualizerDelete = new MenuItem();
@@ -1228,6 +1250,7 @@ public partial class MainViewModel :
         ShowUpDownEndTime = Se.Settings.Appearance.ShowUpDownEndTime;
         ShowUpDownDuration = Se.Settings.Appearance.ShowUpDownDuration;
         ShowUpDownLabels = Se.Settings.Appearance.ShowUpDownLabels;
+        ShowTimeCodeModeInStatusBar = Se.Settings.Appearance.ShowTimeCodeModeInStatusBar;
         SelectCurrentSubtitleWhilePlaying = Se.Settings.General.SelectCurrentSubtitleWhilePlaying;
         WaveformCenter = Se.Settings.Waveform.CenterVideoPosition;
         WaveformCenterSmooth = Se.Settings.Waveform.CenterVideoPositionSmooth;
@@ -1621,6 +1644,32 @@ public partial class MainViewModel :
                 AutoFitColumns();
             });
         }
+    }
+
+    /// <summary>
+    /// Switches layout 14's track rows above the waveform on or off for the other layouts
+    /// (#16354) and rebuilds the layout to show it. Posted, as the menu item that calls this
+    /// lives in the waveform the rebuild replaces.
+    /// </summary>
+    [RelayCommand]
+    internal void ToggleWaveformTimelineTracks()
+    {
+        _shortcutManager.ClearKeys();
+        Se.Settings.Waveform.ShowTimelineTracks = !Se.Settings.Waveform.ShowTimelineTracks;
+        if (Se.Settings.General.LayoutNumber == 14)
+        {
+            return; // the editor-style layout always has them
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (AreVideoControlsUndocked)
+            {
+                VideoRedockControls();
+            }
+
+            SetLayout(Se.Settings.General.LayoutNumber);
+        });
     }
 
     private void SetLayout(int layoutNumber)
@@ -3566,20 +3615,31 @@ public partial class MainViewModel :
     /// as a step after "Subtitle loaded", a freshly opened pair had an undo step waiting, and the
     /// first Ctrl+Z took the original away (#14634).
     /// </summary>
-    private async Task RestoreRememberedOriginal(int selectedIndex, string? originalFileName, string subtitleFileName)
+    private async Task RestoreRememberedOriginal(int selectedIndex, RecentFile recentFile)
     {
+        var originalFileName = recentFile.SubtitleFileNameOriginal;
         if (string.IsNullOrEmpty(originalFileName) || !File.Exists(originalFileName))
         {
             return;
         }
 
-        await SubtitleOpenOriginal(selectedIndex, originalFileName);
+        // The pair was opened before: a mismatch was already answered for it, so apply that
+        // answer again instead of asking on every reopen (#16752).
+        OriginalMismatchChoice? rememberedChoice = recentFile is { OriginalShowAllLines: { } showAll, OriginalAllowEdit: { } allowEdit }
+            ? new OriginalMismatchChoice(showAll, allowEdit)
+            : null;
+
+        await SubtitleOpenOriginal(selectedIndex, originalFileName, rememberedChoice);
 
         _undoRedoManager.Reset();
-        _undoRedoManager.Do(MakeUndoRedoObject(string.Format(Se.Language.General.SubtitleLoadedX, subtitleFileName)));
+        _undoRedoManager.Do(MakeUndoRedoObject(string.Format(Se.Language.General.SubtitleLoadedX, recentFile.SubtitleFileName)));
     }
 
-    private async Task<bool> SubtitleOpenOriginal(int selectedIndex, string fileName)
+    /// <param name="rememberedChoice">
+    /// The answer given last time this pair was open (see <see cref="RestoreRememberedOriginal"/>).
+    /// When set, a mismatching original opens that way without asking.
+    /// </param>
+    private async Task<bool> SubtitleOpenOriginal(int selectedIndex, string fileName, OriginalMismatchChoice? rememberedChoice = null)
     {
         // Replacing an editable original discards it - settle unsaved edits first (#13594).
         if (!await ContinueNewOrExitOriginal())
@@ -3623,12 +3683,14 @@ public partial class MainViewModel :
         {
             // Nothing loaded yet: scaffold a blank translation from the original so the user
             // can start translating from scratch, instead of reporting a line-count mismatch.
+            SetOriginalMismatchChoice(null, fileName);
             ImportOriginalIntoEmptySubtitle(fileName, subtitle);
             return true;
         }
 
         if (subtitle.Paragraphs.Count == Subtitles.Count)
         {
+            SetOriginalMismatchChoice(null, fileName);
             ImportOriginalSubtitle(selectedIndex, fileName, subtitle);
             return true;
         }
@@ -3642,27 +3704,34 @@ public partial class MainViewModel :
             var match = ImportOriginalHelper.MatchOriginalLines(Subtitles, subtitle);
             var originalWithTextCount = match.Projection.Paragraphs.Count(p => !string.IsNullOrEmpty(p.Text));
 
-            var prompt = await ShowDialogAsync<OpenOriginalMismatchWindow, OpenOriginalMismatchViewModel>(vm =>
+            var choice = rememberedChoice;
+            if (choice == null)
             {
-                // Empty original lines never become display-only rows (see InsertReferenceOnlyRows),
-                // so they are not counted as lines the choice would show or hide either.
-                vm.Initialize(subtitle.Paragraphs.Count, Subtitles.Count, originalWithTextCount, match.Unmatched.Count(p => !string.IsNullOrWhiteSpace(p.Text)));
-            });
+                var prompt = await ShowDialogAsync<OpenOriginalMismatchWindow, OpenOriginalMismatchViewModel>(vm =>
+                {
+                    // Empty original lines never become display-only rows (see InsertReferenceOnlyRows),
+                    // so they are not counted as lines the choice would show or hide either.
+                    vm.Initialize(subtitle.Paragraphs.Count, Subtitles.Count, originalWithTextCount, match.Unmatched.Count(p => !string.IsNullOrWhiteSpace(p.Text)));
+                });
 
-            if (!prompt.OkPressed)
-            {
-                return false;
+                if (!prompt.OkPressed)
+                {
+                    return false;
+                }
+
+                // Both choices are remembered, so the next mismatching original opens the way this one did.
+                Se.Settings.General.AllowEditOfOriginalSubtitle = prompt.AllowEditOfOriginal;
+                Se.Settings.General.ShowOriginalNonMatchingLines = prompt.ShowAllOriginalLines;
+                choice = new OriginalMismatchChoice(prompt.ShowAllOriginalLines, prompt.AllowEditOfOriginal);
             }
 
-            // Both choices are remembered, so the next mismatching original opens the way this one did.
-            Se.Settings.General.AllowEditOfOriginalSubtitle = prompt.AllowEditOfOriginal;
-            Se.Settings.General.ShowOriginalNonMatchingLines = prompt.ShowAllOriginalLines;
-            var isReadOnly = !prompt.AllowEditOfOriginal;
+            var isReadOnly = !choice.Value.AllowEdit;
 
-            if (prompt.ShowAllOriginalLines)
+            if (choice.Value.ShowAllLines)
             {
                 // The whole original: matched lines in their working row, the rest as display-only
                 // rows. Nothing of it is dropped, so editing it stays lossless.
+                SetOriginalMismatchChoice(choice, fileName);
                 ImportOriginalSubtitle(selectedIndex, fileName, subtitle, match, isReadOnly);
                 return true;
             }
@@ -3670,6 +3739,7 @@ public partial class MainViewModel :
             if (originalWithTextCount > 0)
             {
                 // The old SE mode: the matching lines only, with no rows for the rest.
+                SetOriginalMismatchChoice(choice, fileName);
                 ImportOriginalSubtitle(selectedIndex, fileName, match.Projection, isReadOnly: isReadOnly);
                 return true;
             }
@@ -4991,7 +5061,7 @@ public partial class MainViewModel :
 
             await SubtitleOpen(recentFile.SubtitleFileName, recentFile.VideoFileName, recentFile.SelectedLine, rememberedEncoding, desiredAudioTrackId: recentFile.AudioTrack, videoOffsetToRestoreMs: recentFile.VideoOffsetInMs);
 
-            await RestoreRememberedOriginal(recentFile.SelectedLine, recentFile.SubtitleFileNameOriginal, recentFile.SubtitleFileName);
+            await RestoreRememberedOriginal(recentFile.SelectedLine, recentFile);
 
             SetRecentFileProperties(recentFile);
 
@@ -5008,12 +5078,15 @@ public partial class MainViewModel :
     {
         if (recentFile.VideoIsSmpte)
         {
-            IsSmpteTimingEnabled = false;
-            ToggleSmpteTiming();
+            if (!IsSmpteTimingEnabled)
+            {
+                ToggleSmpteTiming();
+            }
         }
-        else
+        else if (IsSmpteTimingEnabled && !IsSmpteTimingAutoDetected())
         {
-            IsSmpteTimingEnabled = false;
+            // Through the toggle, not just the flag, so the waveform leaves drop-frame time too.
+            ToggleSmpteTiming();
         }
 
         Se.Settings.General.CurrentVideoOffsetInMs = recentFile.VideoOffsetInMs;
@@ -6863,13 +6936,14 @@ public partial class MainViewModel :
     private async Task ShowWaveformSeekSilence()
     {
         var vp = GetVideoPlayerControl();
-        if (Window == null || AudioVisualizer?.WavePeaks == null || vp == null)
+        var audioPeaks = AudioPeaks;
+        if (Window == null || audioPeaks == null || vp == null)
         {
             return;
         }
 
         var result =
-            await ShowDialogAsync<WaveformSeekSilenceWindow, WaveformSeekSilenceViewModel>(vm => { vm.Initialize(AudioVisualizer.WavePeaks); });
+            await ShowDialogAsync<WaveformSeekSilenceWindow, WaveformSeekSilenceViewModel>(vm => { vm.Initialize(audioPeaks); });
 
         if (!result.OkPressed || !result.SilenceMaxVolume.HasValue || !result.SilenceMinDuration.HasValue)
         {
@@ -6896,7 +6970,7 @@ public partial class MainViewModel :
     private void SeekSilenceBack()
     {
         var vp = GetVideoPlayerControl();
-        if (AudioVisualizer?.WavePeaks == null || vp == null)
+        if (AudioPeaks == null || vp == null)
         {
             return;
         }
@@ -6915,7 +6989,7 @@ public partial class MainViewModel :
     private void SeekSilenceForward()
     {
         var vp = GetVideoPlayerControl();
-        if (AudioVisualizer?.WavePeaks == null || vp == null)
+        if (AudioPeaks == null || vp == null)
         {
             return;
         }
@@ -6984,7 +7058,7 @@ public partial class MainViewModel :
             return Se.Language.Main.Waveform.GuessStartTimeCodesLocked;
         }
 
-        if (AudioVisualizer?.WavePeaks == null)
+        if (AudioPeaks == null)
         {
             return Se.Language.Main.Waveform.GuessStartNoWaveform;
         }
@@ -7163,7 +7237,7 @@ public partial class MainViewModel :
             return Se.Language.Main.Waveform.GuessEndTimeCodesLocked;
         }
 
-        if (AudioVisualizer?.WavePeaks == null)
+        if (AudioPeaks == null)
         {
             return Se.Language.Main.Waveform.GuessEndNoWaveform;
         }
@@ -7375,8 +7449,8 @@ public partial class MainViewModel :
 
             var arguments = FfmpegGenerator.ExtractAudioClipFromVideoParameters(
                 _videoFileName,
-                line.StartTime.TotalSeconds,
-                line.Duration.TotalSeconds,
+                ToVideoSeconds(line.StartTime.TotalSeconds),
+                ToVideoSeconds(line.Duration.TotalSeconds),
                 false,
                 outputFileName,
                 _audioTrack?.FfIndex ?? -1,
@@ -7515,8 +7589,8 @@ public partial class MainViewModel :
             // cloning engine resamples it to whatever its backend wants on import.
             var arguments = FfmpegGenerator.ExtractAudioClipFromVideoParameters(
                 _videoFileName,
-                line.StartTime.TotalSeconds,
-                line.Duration.TotalSeconds,
+                ToVideoSeconds(line.StartTime.TotalSeconds),
+                ToVideoSeconds(line.Duration.TotalSeconds),
                 false,
                 clipFileName,
                 _audioTrack?.FfIndex ?? -1,
@@ -7700,7 +7774,7 @@ public partial class MainViewModel :
     private async Task ShowWaveformGuessTimeCodes()
     {
         var vp = GetVideoPlayerControl();
-        if (Window == null || AudioVisualizer?.WavePeaks == null || vp == null)
+        if (Window == null || AudioPeaks == null || vp == null)
         {
             return;
         }
@@ -8501,7 +8575,7 @@ public partial class MainViewModel :
 
         var result = await ShowDialogAsync<CutVideoWindow, CutVideoViewModel>(vm =>
         {
-            vm.Initialize(_videoFileName, AudioVisualizer?.WavePeaks, GetUpdateSubtitle(), SelectedSubtitleFormat, this);
+            vm.Initialize(_videoFileName, AudioPeaks, GetUpdateSubtitle(), SelectedSubtitleFormat, this);
         });
 
         if (!result.OkPressed)
@@ -8537,7 +8611,7 @@ public partial class MainViewModel :
 
         var result = await ShowDialogAsync<CutVideoWindow, CutVideoViewModel>(vm =>
         {
-            vm.Initialize(_videoFileName, AudioVisualizer?.WavePeaks, GetUpdateSubtitle(), SelectedSubtitleFormat, this, selectedItems);
+            vm.Initialize(_videoFileName, AudioPeaks, GetUpdateSubtitle(), SelectedSubtitleFormat, this, selectedItems);
         });
 
         if (!result.OkPressed)
@@ -8592,7 +8666,7 @@ public partial class MainViewModel :
         var toolApply = BeginToolApply(Se.Language.Video.SyncToAudioTitle);
         var result = await ShowDialogAsync<SyncToAudioWindow, SyncToAudioViewModel>(vm =>
         {
-            vm.Initialize(Subtitles, AudioVisualizer?.WavePeaks, (double)(_mediaInfo?.FramesRate ?? 0), _subtitleFileName ?? _videoFileName);
+            vm.Initialize(Subtitles, AudioPeaks, (double)(_mediaInfo?.FramesRate ?? 0), _subtitleFileName ?? _videoFileName);
         });
 
         if (result.OkPressed && result.Result != null)
@@ -11341,6 +11415,28 @@ public partial class MainViewModel :
 
         var result = await ShowDialogAsync<VideoOcrWindow, VideoOcrViewModel>(vm => { vm.Initialize(videoFileName); });
 
+        if (result.OkPressed && !string.IsNullOrEmpty(result.ResultBoxesAssa))
+        {
+            if (_videoFileName != videoFileName)
+            {
+                await VideoOpenFile(videoFileName);
+            }
+
+            ResetSubtitle();
+
+            var assa = new AdvancedSubStationAlpha();
+            _subtitle = new Subtitle();
+            assa.LoadSubtitle(_subtitle, result.ResultBoxesAssa.SplitToLines(), null);
+            SetSubtitleFormat(SubtitleFormats.FirstOrDefault(p => p is AdvancedSubStationAlpha) ?? assa);
+            _subtitleFileName = Path.ChangeExtension(videoFileName, ".boxes" + assa.Extension);
+            _converted = true;
+
+            SetSubtitles(_subtitle);
+            SelectAndScrollToRow(0);
+            ShowStatus(string.Format(Se.Language.Video.VideoOcr.LinesFoundX, _subtitle.Paragraphs.Count));
+            return;
+        }
+
         if (result.OkPressed && result.ResultSubtitle.Paragraphs.Count > 0)
         {
             // Open the video before setting the subtitle state - VideoOpenFile persists
@@ -11406,6 +11502,15 @@ public partial class MainViewModel :
         _audioTrackLangauge = language;
     }
 
+    /// <summary>
+    /// A row time (or duration) on the video file's clock, for ffmpeg: with SMPTE timing the rows
+    /// run on the time code clock, where t is t * 1.001 in the video.
+    /// </summary>
+    private double ToVideoSeconds(double rowSeconds)
+    {
+        return IsSmpteTimingEnabled ? rowSeconds * SmptePreviewStretch.Factor : rowSeconds;
+    }
+
     private async Task<bool> SpeechToTextSelectedLines(bool promptEngineAndLanguage, string? language)
     {
         var selectedItems = SubtitleGridSelectedItems.Cast<SubtitleLineViewModel>().ToList();
@@ -11420,10 +11525,11 @@ public partial class MainViewModel :
             return false;
         }
 
-        var resultGetAudioClips = await ShowDialogAsync<GetAudioClipsWindow, GetAudioClipsViewModel>(vm => { vm.Initialize(_videoFileName ?? string.Empty, selectedItems, _audioTrack?.FfIndex ?? -1); });
+        var resultGetAudioClips = await ShowDialogAsync<GetAudioClipsWindow, GetAudioClipsViewModel>(vm => { vm.Initialize(_videoFileName ?? string.Empty, selectedItems, _audioTrack?.FfIndex ?? -1, IsSmpteTimingEnabled); });
 
         if (!resultGetAudioClips.OkPressed || resultGetAudioClips.AudioClips.Count == 0)
         {
+            GetAudioClipsViewModel.DeleteAudioClipFiles(resultGetAudioClips.AudioClips);
             return false;
         }
 
@@ -11431,6 +11537,10 @@ public partial class MainViewModel :
         {
             vm.InitializeBatch(resultGetAudioClips.AudioClips, _audioTrack?.FfIndex ?? -1, !promptEngineAndLanguage, language);
         });
+
+        // The transcriptions are in memory now - the "se_audioclip_*.wav" temp files were left
+        // behind after every run (#16760).
+        GetAudioClipsViewModel.DeleteAudioClipFiles(resultGetAudioClips.AudioClips);
 
         if (!resultSpeechToText.OkPressed)
         {
@@ -11454,10 +11564,18 @@ public partial class MainViewModel :
                 {
                     // generate new subtitles
                     deleteLines.Add(selectedLine);
+                    // The clip was cut on the video's clock; with SMPTE timing its times are
+                    // brought back to the rows' clock (1.001 slower) before they are placed.
+                    var rowTimeFactor = IsSmpteTimingEnabled ? 1.0 / SmptePreviewStretch.Factor : 1.0;
                     foreach (var p in transcribedLine.Transcription.Paragraphs)
                     {
                         var newLine = new SubtitleLineViewModel(p, SelectedSubtitleFormat);
-                        newLine.SetStartTimeKeepDuration(TimeSpanExtensions.FromMillisecondsWholeMilliseconds(selectedLine.StartTime.TotalMilliseconds + p.StartTime.TotalMilliseconds));
+                        newLine.SetStartTimeKeepDuration(TimeSpanExtensions.FromMillisecondsWholeMilliseconds(selectedLine.StartTime.TotalMilliseconds + p.StartTime.TotalMilliseconds * rowTimeFactor));
+                        if (IsSmpteTimingEnabled)
+                        {
+                            newLine.EndTime = TimeSpanExtensions.FromMillisecondsWholeMilliseconds(selectedLine.StartTime.TotalMilliseconds + p.EndTime.TotalMilliseconds * rowTimeFactor);
+                        }
+
                         newLine.Style = selectedLine.Style; // the lines replace selectedLine, so they keep its style
                         newLines.Add(newLine);
                     }
@@ -12523,6 +12641,25 @@ public partial class MainViewModel :
         _updateAudioVisualizer = true;
     }
 
+    /// <summary>
+    /// Opt-in (Settings > Video player): a Timed Text file with non-drop SMPTE time codes at an
+    /// NTSC rate turns SMPTE timing on once both it and a video are loaded.
+    /// </summary>
+    private bool IsSmpteTimingAutoDetected()
+    {
+        return Se.Settings.Video.AutoDetectSmpteTiming && SmpteTimingDetector.IsSmpteTimedText(_subtitle?.Header);
+    }
+
+    private void AutoEnableSmpteTiming()
+    {
+        if (IsSmpteTimingEnabled || IsEmpty || string.IsNullOrEmpty(_videoFileName) || !IsSmpteTimingAutoDetected())
+        {
+            return;
+        }
+
+        ToggleSmpteTiming();
+    }
+
     [RelayCommand]
     private void ToggleSmpteTiming()
     {
@@ -13436,7 +13573,7 @@ public partial class MainViewModel :
             // its reference from the video, and the original line - not the translation being
             // dubbed - is what is spoken in that clip.
             vm.Initialize(subtitle, SelectedSubtitleFormat,
-                _videoFileName ?? string.Empty, AudioVisualizer?.WavePeaks, Path.GetTempPath(),
+                _videoFileName ?? string.Empty, AudioPeaks, Path.GetTempPath(),
                 originalSubtitle);
         });
 
@@ -15861,6 +15998,7 @@ public partial class MainViewModel :
         ShowUpDownEndTime = Se.Settings.Appearance.ShowUpDownEndTime;
         ShowUpDownDuration = Se.Settings.Appearance.ShowUpDownDuration;
         ShowUpDownLabels = Se.Settings.Appearance.ShowUpDownLabels;
+        ShowTimeCodeModeInStatusBar = Se.Settings.Appearance.ShowTimeCodeModeInStatusBar;
 
         _errorColor = Se.Settings.General.ErrorColor.FromHexToColor();
         _errorBrush = new ImmutableSolidColorBrush(_errorColor);
@@ -18008,7 +18146,7 @@ public partial class MainViewModel :
             return;
         }
 
-        ReplaceSelectedText(tb, tb.SelectedText.ToUpper(CultureInfo.CurrentCulture));
+        ReplaceSelectedText(tb, tb.SelectedText.ToUpperWithCapitalSharpS(CultureInfo.CurrentCulture));
     }
 
     [RelayCommand]
@@ -18332,11 +18470,9 @@ public partial class MainViewModel :
         // Teletext line is only changed when explicitly selected.
         if (result.ApplyTeletextLine)
         {
-            var marginV = result.TeletextLine.ToString(CultureInfo.InvariantCulture);
-
             foreach (var item in selectedItems)
             {
-                item.MarginV = marginV;
+                SetTeletextLine(item, result.TeletextLine);
             }
         }
 
@@ -18358,7 +18494,7 @@ public partial class MainViewModel :
                         shiftedLine = 23;
                     }
 
-                    item.MarginV = shiftedLine.ToString(CultureInfo.InvariantCulture);
+                    SetTeletextLine(item, shiftedLine);
                 }
             }
         }
@@ -18372,7 +18508,7 @@ public partial class MainViewModel :
                 if (int.TryParse(item.MarginV, out var teletextLine) &&
                     teletextLine == result.ReplaceFromLine)
                 {
-                    item.MarginV = result.ReplaceToLine.ToString(CultureInfo.InvariantCulture);
+                    SetTeletextLine(item, result.ReplaceToLine);
                 }
             }
         }
@@ -18399,6 +18535,18 @@ public partial class MainViewModel :
         }
 
         _updateAudioVisualizer = true;
+    }
+
+    /// <summary>
+    /// Stores the teletext row and moves the line's alignment tag to the band the row is in -
+    /// the tag is what positions the line wherever the row is not used (open subtitling, a
+    /// subtitle that was not read from an STL file), and the reader's bottom tag kept a line
+    /// moved to row 1 at the bottom there.
+    /// </summary>
+    private static void SetTeletextLine(SubtitleLineViewModel item, int teletextLine)
+    {
+        item.MarginV = teletextLine.ToString(CultureInfo.InvariantCulture);
+        item.Text = AlignmentTagHelper.SetTeletextRowBand(item.Text, teletextLine, Se.Settings.General.WriteAn2Tag);
     }
 
     /// <summary>
@@ -20928,7 +21076,15 @@ public partial class MainViewModel :
     [RelayCommand]
     private void FocusSelectedLine()
     {
-        var idx = SelectedSubtitleIndex ?? -1;
+        // Go to the topmost selected line like SE4's "Go to first selected line" - the current
+        // row is the moving end of a shift-selection, so it was the last line when selecting
+        // downwards and the first only when selecting upwards (#16751).
+        var idx = FirstSelectedSubtitleIndex;
+        if (idx < 0)
+        {
+            idx = SelectedSubtitleIndex ?? -1;
+        }
+
         if (Subtitles.Count == 0 || idx < 0 || idx >= Subtitles.Count)
         {
             return;
@@ -27385,9 +27541,15 @@ public partial class MainViewModel :
                 SelectedEncoding = otherEncoding ?? Encodings.First(p => p.DisplayName == TextEncoding.Utf8WithBom);
             }
 
-            if (Se.Settings.General.AutoConvertToUtf8 && !SelectedEncoding.DisplayName.StartsWith("utf-8", StringComparison.OrdinalIgnoreCase))
+            // (#9382) No "not UTF-8 yet" guard: the option normalises every opened file, including
+            // one that already is UTF-8 but carries the other BOM variant - that file used to be
+            // left exactly as it was, which is what made the option look broken.
+            if (Se.Settings.General.AutoConvertToUtf8)
             {
-                SelectedEncoding = Encodings.FirstOrDefault(p => p.DisplayName.StartsWith("utf-8", StringComparison.OrdinalIgnoreCase)) ?? SelectedEncoding;
+                var utf8Variant = Se.Settings.General.AutoConvertToUtf8WithoutBom
+                    ? TextEncoding.Utf8WithoutBom
+                    : TextEncoding.Utf8WithBom;
+                SelectedEncoding = Encodings.First(p => p.DisplayName == utf8Variant);
             }
 
             _subtitleFileName = fileName;
@@ -27480,6 +27642,9 @@ public partial class MainViewModel :
             // After the video, so the style is sized for it - and before the write below, which
             // would otherwise persist the entry without it.
             RestoreRememberedSecondarySubtitle(rememberedSecondaryFileName);
+
+            // For a video that was already open and stayed open: ResetSubtitle turned SMPTE off.
+            AutoEnableSmpteTiming();
 
             // Pass the index explicitly: SelectAndScrollToRow applies the selection via a
             // dispatcher post that may not have run yet, so reading SelectedSubtitleIndex
@@ -30001,7 +30166,7 @@ public partial class MainViewModel :
 
     internal void UpdateWaveformOriginalSubtitleCues(AudioVisualizer audioVisualizer)
     {
-        if (!ShowColumnOriginalText || !Se.Settings.Waveform.ShowOriginalSubtitle || _subtitleOriginal == null)
+        if (!ShowColumnOriginalText || !(Se.Settings.Waveform.ShowOriginalSubtitle || IsWaveformEditingOriginal) || _subtitleOriginal == null)
         {
             audioVisualizer.SetOriginalSubtitleCues(null);
             return;
@@ -30395,6 +30560,13 @@ public partial class MainViewModel :
         var oldSubtitleFileNameOriginal = _subtitleFileNameOriginal;
         var oldSubtitleOriginalFileName = _subtitleOriginal.FileName;
 
+        var oldOriginalMismatchChoiceFileName = _originalMismatchChoiceFileName;
+        if (string.Equals(_originalMismatchChoiceFileName, _subtitleFileNameOriginal, StringComparison.Ordinal))
+        {
+            // Same original under a new name: its mismatch choice still applies.
+            _originalMismatchChoiceFileName = fileName;
+        }
+
         _subtitleFileNameOriginal = fileName;
         _subtitleOriginal.FileName = fileName;
 
@@ -30408,6 +30580,7 @@ public partial class MainViewModel :
         {
             _subtitleFileNameOriginal = oldSubtitleFileNameOriginal;
             _subtitleOriginal.FileName = oldSubtitleOriginalFileName;
+            _originalMismatchChoiceFileName = oldOriginalMismatchChoiceFileName;
             return false;
         }
 
@@ -30445,6 +30618,13 @@ public partial class MainViewModel :
         return false;
     }
 
+    /// <summary>Set before the original is imported: the import itself writes the recent-file entry.</summary>
+    private void SetOriginalMismatchChoice(OriginalMismatchChoice? choice, string fileName)
+    {
+        _originalMismatchChoice = choice;
+        _originalMismatchChoiceFileName = fileName;
+    }
+
     private void AddToRecentFiles(bool updateMenu, int? selectedLine = null)
     {
         if (_loading || !Se.Settings.File.ShowRecentFiles)
@@ -30453,6 +30633,10 @@ public partial class MainViewModel :
         }
 
         var idx = selectedLine ?? SelectedSubtitleIndex ?? 0;
+        var mismatchChoice = !string.IsNullOrEmpty(_subtitleFileNameOriginal) &&
+                             string.Equals(_originalMismatchChoiceFileName, _subtitleFileNameOriginal, StringComparison.Ordinal)
+            ? _originalMismatchChoice
+            : null;
         Se.Settings.File.AddToRecentFiles(
             _subtitleFileName ?? string.Empty,
             _subtitleFileNameOriginal ?? string.Empty,
@@ -30462,7 +30646,10 @@ public partial class MainViewModel :
             Se.Settings.General.CurrentVideoOffsetInMs,
             IsSmpteTimingEnabled,
             _audioTrack?.Id ?? -1,
-            _subtitleSecondaryFileName ?? string.Empty);
+            _subtitleSecondaryFileName ?? string.Empty,
+            IsEmptyWaveformChosen(_videoFileName) ? true : null,
+            mismatchChoice?.ShowAllLines,
+            mismatchChoice?.AllowEdit);
         Se.SaveSettings();
 
         if (updateMenu)
@@ -30834,7 +31021,7 @@ public partial class MainViewModel :
 
                         // Restore the original/translator-mode file too - otherwise only the
                         // translation comes back on start-up, unlike the Reopen menu (issue #12705).
-                        await RestoreRememberedOriginal(first.SelectedLine, first.SubtitleFileNameOriginal, first.SubtitleFileName);
+                        await RestoreRememberedOriginal(first.SelectedLine, first);
 
                         SetRecentFileProperties(first);
 
@@ -31120,6 +31307,9 @@ public partial class MainViewModel :
             AddToRecentVideoFiles(videoFileName);
         }
 
+        // Before the recent-file write below, so the entry remembers it.
+        AutoEnableSmpteTiming();
+
         // Persist the media association as soon as the file opens so reopening this subtitle
         // reloads the same video/audio even if the app is force-quit before OnClosing runs.
         // Guarded by a known subtitle name so opening media without a subtitle doesn't create
@@ -31190,7 +31380,8 @@ public partial class MainViewModel :
 
         if (AudioVisualizer != null)
         {
-            AudioVisualizer.ClickToGenerateText = Se.Language.Main.ClickToGenerateWaveform;
+            AudioVisualizer.ClickToGenerateText = Se.Language.Main.GenerateWaveform;
+            AudioVisualizer.UseEmptyWaveformText = Se.Language.Main.UseEmptyWaveform;
         }
 
         CachedWaveform cached;
@@ -31223,6 +31414,14 @@ public partial class MainViewModel :
             else
             {
                 ShowClickToGenerateWaveformHint();
+
+                // "Use empty waveform" was picked for this subtitle and video before: go straight
+                // to it instead of asking again.
+                if (IsEmptyWaveformChosen(videoFileName) || IsEmptyWaveformRemembered(videoFileName))
+                {
+                    _emptyWaveformVideoFileName = videoFileName;
+                    Dispatcher.UIThread.Post(() => _ = ShowPlaceholderWaveformAsync());
+                }
             }
 
             return;
@@ -31316,6 +31515,78 @@ public partial class MainViewModel :
         });
     }
 
+    // "Use empty waveform" on the timeline: show the subtitles without extracting the audio, and
+    // remember the choice for this subtitle and video so reopening them does the same.
+    internal void AudioVisualizerOnUseEmptyWaveformRequested(object? sender, EventArgs e)
+    {
+        _emptyWaveformVideoFileName = _videoFileName;
+        _ = ShowPlaceholderWaveformAsync();
+        AddToRecentFiles(false);
+    }
+
+    // The video "Use empty waveform" was picked for - this session or remembered with the subtitle
+    // in the recent files. Cleared by "Generate waveform".
+    private string? _emptyWaveformVideoFileName;
+
+    private bool IsEmptyWaveformChosen(string? videoFileName) =>
+        !string.IsNullOrEmpty(videoFileName) && string.Equals(_emptyWaveformVideoFileName, videoFileName, StringComparison.Ordinal);
+
+    private bool IsEmptyWaveformRemembered(string videoFileName)
+    {
+        var subtitleFileName = _subtitleFileName;
+        return !string.IsNullOrEmpty(subtitleFileName) && Se.Settings.File.RecentFiles.Any(rf =>
+            rf.UseEmptyWaveform &&
+            string.Equals(rf.SubtitleFileName, subtitleFileName, StringComparison.Ordinal) &&
+            string.Equals(rf.VideoFileName, videoFileName, StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The real audio peaks of the current video, or null when there are none - the silent
+    /// placeholder that only gives the timeline a time scale does not count.
+    /// </summary>
+    private WavePeakData2? AudioPeaks => AudioVisualizer?.WavePeaks is { IsPlaceholder: false } peaks ? peaks : null;
+
+    /// <summary>
+    /// "Use empty waveform": with no waveform generated (auto-generate off, generation cancelled,
+    /// ffmpeg missing), give the timeline silent placeholder peaks so the subtitles, the time
+    /// ruler and the cursor are shown and can be edited without extracting any audio (#16710).
+    /// "Generate waveform" then moves to a small button in the timeline's top right corner. Real
+    /// peaks replace the placeholder as soon as they are generated.
+    /// </summary>
+    private async Task ShowPlaceholderWaveformAsync()
+    {
+        var videoFileName = _videoFileName;
+        var vp = GetVideoPlayerControl();
+        if (AudioVisualizer == null || vp == null || string.IsNullOrEmpty(videoFileName) || AudioPeaks != null)
+        {
+            return;
+        }
+
+        try
+        {
+            await vp.WaitForPlayersReadyAsync(10_000);
+        }
+        catch (Exception exception)
+        {
+            Se.LogError(exception, "Waiting for the video player before showing the placeholder waveform failed");
+            return;
+        }
+
+        var duration = vp.VideoPlayer.Duration;
+        var av = AudioVisualizer;
+        if (av == null || AudioPeaks != null || _videoFileName != videoFileName || !av.ShowClickToGenerateHint || duration <= 0)
+        {
+            return;
+        }
+
+        // Cover subtitles that run past the end of the video too, so they can still be reached.
+        var lastEnd = Subtitles.Count > 0 ? Subtitles.Max(p => p.EndTime.TotalSeconds) : 0;
+        av.WavePeaks = WavePeakData2.CreatePlaceholder(Math.Max(duration, lastEnd));
+        CenterAudioVisualizerOnCurrentVideoPosition();
+        _updateAudioVisualizer = true;
+        av.InvalidateVisual();
+    }
+
     /// <summary>
     /// Reads cached wave peaks, discarding the cache file when it cannot be read.
     /// </summary>
@@ -31387,12 +31658,7 @@ public partial class MainViewModel :
             // The auto-on-open path must not pop a modal (session restore, drag/drop, CLI opens),
             // so show the click-to-generate hint instead - clicking it runs RequireFfmpegOk,
             // which offers the download (or explains how to install ffmpeg on Linux).
-            if (AudioVisualizer != null)
-            {
-                AudioVisualizer.ShowClickToGenerateHint = true;
-                AudioVisualizer.InvalidateVisual();
-            }
-
+            ShowClickToGenerateWaveformHint();
             ShowStatus(Se.Language.Main.WaveformFfmpegNotFoundClickToSetUp);
             return;
         }
@@ -31440,6 +31706,17 @@ public partial class MainViewModel :
         if (string.IsNullOrEmpty(_videoFileName))
         {
             return;
+        }
+
+        // Picking "Generate waveform" ends "Use empty waveform" for this subtitle and video.
+        _emptyWaveformVideoFileName = null;
+        var remembered = Se.Settings.File.RecentFiles.Where(rf => rf.UseEmptyWaveform &&
+            string.Equals(rf.SubtitleFileName, _subtitleFileName, StringComparison.Ordinal) &&
+            string.Equals(rf.VideoFileName, _videoFileName, StringComparison.Ordinal)).ToList();
+        if (remembered.Count > 0)
+        {
+            remembered.ForEach(rf => rf.UseEmptyWaveform = false);
+            Se.SaveSettings();
         }
 
         // Explicit user action, so a modal "download ffmpeg?" prompt is fine here (#14390).
@@ -31953,9 +32230,13 @@ public partial class MainViewModel :
                 {
                     if (AudioVisualizer != null)
                     {
-                        AudioVisualizer.WavePeaks = null;
-                        AudioVisualizer.ShowClickToGenerateHint = true;
-                        AudioVisualizer.InvalidateVisual();
+                        // Back to how it was before: the empty waveform stays if it was in use.
+                        if (!AudioVisualizer.HasPlaceholderPeaks)
+                        {
+                            AudioVisualizer.WavePeaks = null;
+                        }
+
+                        ShowClickToGenerateWaveformHint();
                     }
                 });
             }
@@ -34028,7 +34309,8 @@ public partial class MainViewModel :
 
     private static bool IsAlphaNumericWordChar(char c)
     {
-        return char.IsLetterOrDigit(c) || c == '_';
+        // Combining marks (e.g. Arabic tanween) belong to the word (#16750).
+        return CombiningMarkWordSelection.IsWordChar(c) || c == '_';
     }
 
     private readonly Lock _onKeyDownHandlerLock = new();
@@ -35788,6 +36070,11 @@ public partial class MainViewModel :
         if (!value && ShowOriginalTextInPreview)
         {
             SetOriginalTextInPreview(false);
+        }
+
+        if (!value)
+        {
+            IsWaveformEditingOriginal = false;
         }
     }
 
@@ -37560,8 +37847,8 @@ public partial class MainViewModel :
                                        FfmpegMediaInfo.Parse(videoFileName).HasFrontCenterAudio(-1);
             var arguments = FfmpegGenerator.ExtractAudioClipFromVideoParameters(
                 videoFileName,
-                paragraph.StartTime.TotalSeconds,
-                paragraph.Duration.TotalSeconds,
+                ToVideoSeconds(paragraph.StartTime.TotalSeconds),
+                ToVideoSeconds(paragraph.Duration.TotalSeconds),
                 useCenterChannelOnly,
                 outputFileName);
 
@@ -38581,6 +38868,7 @@ public partial class MainViewModel :
         // right-clicked waveform position instead of wherever the play-head happens to be.
         _waveformContextMenuSeconds = e.PositionInSeconds;
 
+<<<<<<< HEAD
         // Minimal right-click menu: on a new (empty-area) selection keep only "Insert new
         // selection"; on a subtitle keep only "Merge with line before/after". Everything else is
         // hidden.
@@ -38611,6 +38899,16 @@ public partial class MainViewModel :
 
             return;
         }
+
+        // On the empty (placeholder) waveform: offer generating the real one, and hide what
+        // needs real audio to work on (#16710).
+        var isEmptyWaveform = AudioVisualizer?.HasPlaceholderPeaks == true;
+        var canGenerateWaveform = isEmptyWaveform && !IsWaveformGenerating;
+        MenuItemAudioVisualizerGenerateWaveform.IsVisible = canGenerateWaveform;
+        MenuItemAudioVisualizerGenerateWaveformSeparator.IsVisible = canGenerateWaveform;
+        MenuItemAudioVisualizerGuessTimeCodes.IsVisible = !isEmptyWaveform;
+        MenuItemAudioVisualizerSeekSilence.IsVisible = !isEmptyWaveform;
+        MenuItemAudioVisualizerShowSpeechOnly.IsVisible = !isEmptyWaveform;
 
         MenuItemAudioVisualizerInsertNewSelection.IsVisible = false;
         MenuItemAudioVisualizerPasteNewSelection.IsVisible = false;
