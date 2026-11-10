@@ -189,6 +189,12 @@ public class SeGeneral
     public bool CapitalizeAfterSplit { get; set; } = true;
 
     /// <summary>
+    /// Fork: when two lines are merged and the first ends with a period, drop that period and start
+    /// the second line with a lowercase letter - the merged line is one sentence, not two.
+    /// </summary>
+    public bool MergeStartsLowercaseAfterPeriod { get; set; } = true;
+
+    /// <summary>
     /// Draw the "end of video" line on the waveform (green while every cue fits inside the video,
     /// red when a cue runs past it). Applies to the main window and the text-to-speech review.
     /// </summary>

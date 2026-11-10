@@ -43,4 +43,6 @@ public static class Fork
     public static bool WaveformAnchorMarker => Enabled && Se.Settings.Waveform.AnchorMarker;
 
     public static bool WaveformAnchorGlide => Enabled && Se.Settings.Waveform.AnchorGlide;
+
+    public static bool MergeStartsLowercaseAfterPeriod => Enabled && Se.Settings.General.MergeStartsLowercaseAfterPeriod;
 }
