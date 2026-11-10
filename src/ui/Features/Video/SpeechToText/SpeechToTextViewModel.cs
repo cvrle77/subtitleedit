@@ -1070,7 +1070,7 @@ public partial class SpeechToTextViewModel : ObservableObject
     /// was the crispasr v0.8.29 GPU packages, built with AVX-512 against a CI runner that had it
     /// (CrispASR #374) - every CPU without AVX-512 got this on the CUDA/Vulkan build while the CPU
     /// build ran fine, so naming the installed package is most of the answer. That build flaw is
-    /// fixed from v0.8.30 (SE now pins v0.8.48), but the message still earns its keep: a pre-AVX2 CPU
+    /// fixed from v0.8.30 (SE now pins v0.8.50), but the message still earns its keep: a pre-AVX2 CPU
     /// hits the same silent death on the AVX2 CPU package, and an install predating the pin bump
     /// keeps the broken GPU binary until the user downloads the engine again.
     /// </summary>
@@ -1103,6 +1103,32 @@ public partial class SpeechToTextViewModel : ObservableObject
         return $"Crisp ASR was stopped for using CPU instructions this computer does not have ({code}, " +
                $"illegal instruction), so it never produced any output.{Environment.NewLine}{Environment.NewLine}" +
                advice;
+    }
+
+    /// <summary>
+    /// Explains a Qwen3 ASR CPP run that produced no output JSON, or null for a clean exit.
+    /// An illegal instruction gets its own message: qwen3-asr.cpp v0.1.10's Linux packages were
+    /// built for the CI runner's CPU (AVX-512 on x64, SVE on arm64) and died instantly with exit
+    /// code 132 on most other CPUs (#16593), where the generic "try a different model" advice
+    /// sent users the wrong way. Builds from v0.1.11 pick their CPU code at run time.
+    /// </summary>
+    internal static string? DescribeQwen3AsrCrash(int? exitCode, bool isVulkan, string url)
+    {
+        if (exitCode is null or 0)
+        {
+            return null;
+        }
+
+        if (exitCode.Value is StatusIllegalInstruction or UnixSigill)
+        {
+            return "The Qwen3 ASR engine was stopped for using CPU instructions this computer does not have " +
+                   "(illegal instruction), so it never produced any output. Download the Qwen3 ASR engine again " +
+                   $"to get a build that runs on this CPU, or report it at {url}";
+        }
+
+        return isVulkan
+            ? $"The Qwen3 ASR GPU (Vulkan) engine crashed before producing output. Try the CPU build instead (re-download the engine and choose CPU), or report it at {url}"
+            : $"The Qwen3 ASR engine crashed before producing output. Try re-running, a different model, or report it at {url}";
     }
 
     /// <summary>
@@ -1354,12 +1380,10 @@ public partial class SpeechToTextViewModel : ObservableObject
                         Se.Language.Video.AudioToText.UnknownArgumentMessage);
                 }
                 LogToConsole($"Speech to text: Could not find output JSON file ({exitCodeText}){Environment.NewLine}");
-                if (exitCode is not (null or 0))
+                var crash = DescribeQwen3AsrCrash(exitCode, isVulkan, new Qwen3AsrCppEngine().Url);
+                if (crash != null)
                 {
-                    var url = new Qwen3AsrCppEngine().Url;
-                    LogToConsole(isVulkan
-                        ? $"The Qwen3 ASR GPU (Vulkan) engine crashed before producing output. Try the CPU build instead (re-download the engine and choose CPU), or report it at {url}{Environment.NewLine}"
-                        : $"The Qwen3 ASR engine crashed before producing output. Try re-running, a different model, or report it at {url}{Environment.NewLine}");
+                    LogToConsole(crash + Environment.NewLine);
                 }
                 ProgressValue = 100;
                 IsTranscribeEnabled = true;
@@ -3282,8 +3306,7 @@ public partial class SpeechToTextViewModel : ObservableObject
             engine,
             SpeakerDiarizationModel.ToWhisperModel(),
             SpeakerDiarizationModel.DisplayName,
-            Se.Language.Video.AudioToText.DetectSpeakers,
-            "a speaker diarization model");
+            Se.Language.Video.AudioToText.DetectSpeakers);
     }
 
     /// <summary>
@@ -3320,8 +3343,7 @@ public partial class SpeechToTextViewModel : ObservableObject
             engine,
             vadOption.ToWhisperModel(),
             vadOption.DisplayName,
-            Se.Language.Video.AudioToText.Vad,
-            "a voice activity detection model");
+            Se.Language.Video.AudioToText.Vad);
     }
 
     private Task<bool> EnsureSpeechIsolationModelDownloadedAsync(ISpeechToTextEngine engine)
@@ -4860,6 +4882,17 @@ public partial class SpeechToTextViewModel : ObservableObject
             var langPart = crispAsrEngine.IncludeLanguage || langCode == "auto"
                 ? $"-l {langCode} "
                 : string.Empty;
+            if (langCode == "auto")
+            {
+                // Backends without their own language detection run an external LID model
+                // (whisper-tiny, ~75 MB). Since CrispASR v0.8.50 (#570) a missing one is only
+                // fetched with --auto-download or after a [Y/n] prompt on a TTY; otherwise LID is
+                // skipped and the run silently falls back to English. SE's stdin is not
+                // redirected, so the prompt could also hang the run. -m is always an existing
+                // file here, so this only fetches the LID model - as every earlier release did.
+                langPart += "--auto-download ";
+            }
+
             if (crispAsrEngine is CrispAsrIndexEcho)
             {
                 // A speech translation model: the language list is the target, the source is Chinese.
