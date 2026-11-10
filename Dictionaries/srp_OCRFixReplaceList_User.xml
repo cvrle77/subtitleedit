@@ -6135,6 +6135,32 @@
     <Word to="Cvet" from="Cvetu" />
     <Word to="posuti" from="Posnuti" />
     <Word to="posuti" from="posnuti" />
+    <Word to="vatru" from="vatruvu" />
+    <Word to="Vatru" from="Vatruvu" />
+    <Word to="smanjim" from="smanjem" />
+    <Word to="Smanjim" from="Smanjem" />
+    <Word to="jačinom" from="učinom" />
+    <Word to="Jačinom" from="Učinom" />
+    <Word to="skinem" from="skinam" />
+    <Word to="Skinem" from="Skinam" />
+    <Word to="mlečnu" from="mlačnu" />
+    <Word to="Mlečnu" from="Mlačnu" />
+    <Word to="mlečni" from="mlačni" />
+    <Word to="Mlečni" from="Mlačni" />
+    <Word to="steže" from="stježa" />
+    <Word to="Steže" from="Stježa" />
+    <Word to="ucentrirajte" from="ucentrirate" />
+    <Word to="Ucentrirajte" from="Ucentrirate" />
+    <Word to="sobnoj" from="sovnoj" />
+    <Word to="Sobnoj" from="Sovnoj" />
+    <Word to="najjednostavniji" from="najodostavniji" />
+    <Word to="Najjednostavniji" from="Najodostavniji" />
+    <Word to="ceo" from="cijel" />
+    <Word to="Ceo" from="Cijel" />
+    <Word to="kontra" from="kontrap" />
+    <Word to="Kontra" from="Kontrap" />
+    <Word to="utrošimo" from="utršimo" />
+    <Word to="Utrošimo" from="Utršimo" />
 </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
@@ -6665,6 +6691,11 @@
     <LinePart to="Donji deo" from="Dunji del" />
     <LinePart to="kontra stranu" from="kontrastranu" />
     <LinePart to="Kontra stranu" from="Kontrastranu" />
+    <LinePart to="bele čokolade" from="bela čokolade" />
+    <LinePart to="Isključiću" from="Sljučit ću" />
+    <LinePart to="isljučiću" from="sljučit ću" />
+    <LinePart to="Birajte da li će" from="Verite da će" />
+    <LinePart to="Je'l i vama stalno" from="Je li ostalno" />
 </PartialLines>
   <BeginLines />
   <EndLines />
