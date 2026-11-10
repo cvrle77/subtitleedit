@@ -6696,6 +6696,14 @@
     <LinePart to="isljučiću" from="sljučit ću" />
     <LinePart to="Birajte da li će" from="Verite da će" />
     <LinePart to="Je'l i vama stalno" from="Je li ostalno" />
+    <LinePart to="imaćemo" from="imat ćemo" />
+    <LinePart to="Imaćemo" from="Imat ćemo" />
+    <LinePart to="uzeću" from="uzet cu" />
+    <LinePart to="Uzeću" from="Uzet cu" />
+    <LinePart to="sačekaću" from="sačekat ću" />
+    <LinePart to="Sačekaću" from="Sačekat ću" />
+    <LinePart to="sačekaću" from="sačekat cu" />
+    <LinePart to="Sačekaću" from="Sačekat cu" />
 </PartialLines>
   <BeginLines />
   <EndLines />
