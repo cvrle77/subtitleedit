@@ -38868,7 +38868,6 @@ public partial class MainViewModel :
         // right-clicked waveform position instead of wherever the play-head happens to be.
         _waveformContextMenuSeconds = e.PositionInSeconds;
 
-<<<<<<< HEAD
         // Minimal right-click menu: on a new (empty-area) selection keep only "Insert new
         // selection"; on a subtitle keep only "Merge with line before/after". Everything else is
         // hidden.
