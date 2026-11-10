@@ -867,6 +867,28 @@ v5.3.0-beta14 (27th of September 2026)
 
 -----------------------------------------------------------------------------------------------------
 
+v5.3.0-beta13 (cvrle77 fork)
+
+* TTS review window: draw a line at the end of the video that is green when every clip fits and red when a clip runs past the last frame (it will be trimmed), so the line's end can be dragged back first; the merged audio is now never longer than the video - thx cvrle77
+* TTS: add a "Re-run adjust speed" button that reruns the speed + merge stages on the last generated or imported clips without calling the engine, so the speed step can be tested without spending API credits - thx cvrle77
+* TTS: "adjusting speed" now processes several segments in parallel (Settings > cvrle77, default 4, adjustable up to 32) instead of one at a time; each segment is still handled by the same ffmpeg calls, so the output is unchanged - thx cvrle77
+* TTS: optional "fast merge" (Settings > General) that places every clip on the timeline in a single ffmpeg pass (adelay + amix) instead of re-encoding the whole growing track once per line - same output format, same clip start times, far faster on a long session - thx cvrle77
+* TTS ElevenLabs: optional parallel generation (a checkbox in the ElevenLabs settings) that synthesizes lines through a pool sized to your account's plan - the tier is read from the API key automatically, no manual entry; the default linear mode is unchanged - thx cvrle77
+* TTS: the parallel generation status shows "X of Y done, N running" instead of a bare percentage, so it is visible that the requests really run in parallel - thx cvrle77
+* TTS: pin the merged audio to the video's own duration, so a cue that ends past the last frame no longer makes the exported wav longer than the video - thx cvrle77
+* Fix common errors: add a "Split/rebalance long lines" rule that re-wraps every line using the settings that tool remembers (falls back to the general line-length settings when it was never run); it is listed last and runs last, after the wording fixes - thx cvrle77
+* TTS review window: show two waveforms - the original video audio on top and the generated speech of every line on the bottom, on one shared time axis (scrolling, zoom and the play-head stay in sync) - thx cvrle77
+* TTS review window: the play-head now moves at ~60 fps and eases the view to keep it centered instead of snapping, so playing clips one after another no longer jerks the timeline - thx cvrle77
+* TTS review window: "Split line at video and text box position" (text box right-click, row button or waveform menu) splits the line at the play-head (audio) and the text caret (text) into two rows that are both re-synthesized, re-wrapped like the main window's split, with Undo (Ctrl+Z / the Undo button) to put the line back - thx cvrle77
+* TTS review window: Play (and Space) now plays the clip under the play-head, or the next clip when the play-head sits in a gap, never the clip it already passed - thx cvrle77
+* TTS review window: the waveform right-click menu lists "Regenerate audio" first - thx cvrle77
+* Waveform: the play-head is also drawn on a second/companion waveform that has no peaks of its own yet (the TTS review generated-speech track) - thx cvrle77
+* TTS review: the text drawn inside a waveform block now follows an edit to the line's text immediately (it used to keep the old wording) - thx cvrle77
+* Split: when the left half ends a sentence (a ".") and the right half starts with a lower case letter, that letter is upper cased (main window and TTS review; switch it off in Settings > cvrle77) - thx cvrle77
+* Waveform: show the "end of video" line (green while every cue fits, red when a cue runs past the video) in the main window too, and add a Settings > cvrle77 switch to hide it - thx cvrle77
+
+-----------------------------------------------------------------------------------------------------
+
 v5.3.0-beta13 (26th of September 2026)
 
 * Add TikTok/YouTube Shorts (1-3 words) rule profile - thx hardpenguin
@@ -973,6 +995,13 @@ v5.3.0-beta10 (23rd of September 2026)
 
 v5.3.0-beta9 (22nd of September 2026)
 
+* Add optional Silero VAD voice detection for the split trim (Settings > General; the model is installed from there): the right line's start moves to the next voice, so a clink or a rustle is no longer taken for speech; without the model it falls back to the waveform - thx cvrle77
+* Add a "Trim leading silence of the line after a split" option (Settings > General): after "split line at video and text box position" the right line's start moves to the next speech (detected adaptively from the waveform, no tuning needed, and anything shorter than half a second is not mistaken for speech), so the silence the cut left in front of it is removed - thx cvrle77
+* Fix "Seek silence" volume: the dialog edited a 0-1 fraction while the search treated it as a percentage, so the setting was unusable below ~0.4; the value is now converted and the dialog edits it with three decimals - thx cvrle77
+* "Split line at video and text box position" now automatically re-wraps both halves the way "split/rebalance long lines" does, without asking - thx cvrle77
+* Add a "Minimal right-click menus" option (Settings > General): keeps only the commands you use in the subtitle text box (split at video and text box position), the subtitle grid (merge selected) and the waveform (insert new selection / merge with line before/after) - thx cvrle77
+* Waveform "center on video position": the play-head now eases to the center over a configurable time instead of snapping the whole waveform over, and the ease pauses while you scroll/drag/zoom and resumes when you stop. A far next subtitle no longer snaps the view instantly, even when it arrives while the ease is still running - the 50 ms play-head-follow step stays out of the way while centering is on, and a jump mid-ease restarts the ease from the current position - thx cvrle77
+* "Play selected lines" (F5) now plays from the playhead (even from a gap) through every following line to the end, skipping the gaps between subtitles and highlighting each line as it is reached; pressing it again pauses and resumes - thx cvrle77
 * Add TranslatePsy-AfriSLM 4B (English <-> 19 African languages) to the llama.cpp auto-translate models
 * Add Romanian OCR fix replace list (cedilla ş/ţ to comma below ș/ț) - thx Gabriel
 * Batch convert: OCR language per file from the container track or file name (e.g. "Movie [fra].sup") - thx Gabriel

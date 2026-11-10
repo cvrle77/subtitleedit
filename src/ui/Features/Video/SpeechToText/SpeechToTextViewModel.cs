@@ -821,7 +821,7 @@ public partial class SpeechToTextViewModel : ObservableObject
                     ProgressOpacity = 0;
                     var partialSub = new Subtitle();
                     partialSub.Paragraphs.AddRange(_resultList
-                        .Select(p => new Paragraph(p.Text, (double)p.Start * 1000.0, (double)p.End * 1000.0)).ToList());
+                        .Select(p => new Paragraph(p.Text, (double)p.Start * 1000.0, (double)p.End * 1000.0) { IsSmartBreakRisky = p.Risky }).ToList());
 
                     // Engine output is not guaranteed to be sorted or free of overlaps
                     // (issue #13548) - a kept partial must go through the same repair as
@@ -971,7 +971,7 @@ public partial class SpeechToTextViewModel : ObservableObject
                     _loadedFromStdOut = false;
                     var subtitle = new Subtitle();
                     subtitle.Paragraphs.AddRange(resultTexts
-                        .Select(p => new Paragraph(p.Text, (double)p.Start * 1000.0, (double)p.End * 1000.0)).ToList());
+                        .Select(p => new Paragraph(p.Text, (double)p.Start * 1000.0, (double)p.End * 1000.0) { IsSmartBreakRisky = p.Risky }).ToList());
 
                     // The result file is engine output and is not guaranteed to be
                     // sorted or free of overlaps (issue #13548), so straighten the
@@ -1002,7 +1002,7 @@ public partial class SpeechToTextViewModel : ObservableObject
                 _outputText.Enqueue("Loading result from STDOUT");
                 var transcribedSubtitleFromStdOut = new Subtitle();
                 transcribedSubtitleFromStdOut.Paragraphs.AddRange(_resultList
-                    .Select(p => new Paragraph(p.Text, (double)p.Start * 1000.0, (double)p.End * 1000.0)).ToList());
+                    .Select(p => new Paragraph(p.Text, (double)p.Start * 1000.0, (double)p.End * 1000.0) { IsSmartBreakRisky = p.Risky }).ToList());
                 transcribedSubtitleFromStdOut = SpeechToTextTimingFixer.SortAndRemoveOverlaps(transcribedSubtitleFromStdOut);
                 _loadedFromStdOut = transcribedSubtitleFromStdOut.Paragraphs.Count > 0;
                 await MakeResult(transcribedSubtitleFromStdOut);
@@ -2394,13 +2394,18 @@ public partial class SpeechToTextViewModel : ObservableObject
             EngineCommandLineArguments = GetEffectiveSelectedEngine()?.CommandLineParameter ?? string.Empty,
         };
 
+        // Smart break already placed the line breaks and the cue ends (Silero speech runs), so the
+        // engine-agnostic merge/split/shorten steps below would only undo that and re-time the cues
+        // on top of the engine's own trailing silence. When it is on, keep its output intact.
+        var smartBreak = Se.Settings.Tools.AudioToText.SmartBreak;
+
         WavePeakData2? wavePeaks = null;
-        if (DoAdjustTimings)
+        if (DoAdjustTimings && !smartBreak)
         {
             wavePeaks = MakeWavePeaks();
         }
 
-        if (DoAdjustTimings && wavePeaks != null)
+        if (DoAdjustTimings && wavePeaks != null && !smartBreak)
         {
             transcript = SpeechToTextTimingFixer.ShortenLongDuration(transcript);
             transcript = SpeechToTextTimingFixer.ShortenViaWavePeaks(transcript, wavePeaks);
@@ -2412,10 +2417,10 @@ public partial class SpeechToTextViewModel : ObservableObject
             transcript,
             DoPostProcessing,
             settings.WhisperPostProcessingAddPeriods,
-            settings.WhisperPostProcessingMergeLines,
+            smartBreak ? false : settings.WhisperPostProcessingMergeLines,
             settings.WhisperPostProcessingFixCasing,
-            settings.WhisperPostProcessingFixShortDuration,
-            settings.WhisperPostProcessingSplitLines,
+            smartBreak ? false : settings.WhisperPostProcessingFixShortDuration,
+            smartBreak ? false : settings.WhisperPostProcessingSplitLines,
             settings.WhisperPostProcessingChangeUnderlineToColor,
             settings.WhisperPostProcessingChangeUnderlineToColorColor.FromHexToColor()
             );
@@ -2666,6 +2671,11 @@ public partial class SpeechToTextViewModel : ObservableObject
             Text = engine is CrispAsrIndexEcho ? CrispAsrIndexEcho.GetTranslation(p.Text) : p.Text
         }).ToList();
 
+        if (Se.Settings.Tools.AudioToText.SmartBreak)
+        {
+            resultTexts = ApplySmartBreak(resultTexts, waveFileName, videoFileName);
+        }
+
         if (!string.IsNullOrEmpty(srtFileName))
         {
             filesToDelete?.Add(srtFileName);
@@ -2680,6 +2690,182 @@ public partial class SpeechToTextViewModel : ObservableObject
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Rebuilds the speech-to-text result into subtitle lines/cues using the engine's word-level
+    /// timings (a JSON next to the extracted audio) plus Silero VAD for pauses and cue ends. No-op
+    /// when no word timings are present.
+    /// </summary>
+    private List<ResultText> ApplySmartBreak(List<ResultText> resultTexts, string waveFileName, string videoFileName)
+    {
+        string? vadWav = null;
+        try
+        {
+            string? wordJson = null;
+            foreach (var f in Directory.EnumerateFiles(GetSttTempFolder(), "*.json"))
+            {
+                if (f.IndexOf("SubtitleEditTts", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    continue;
+                }
+
+                if (Nikse.SubtitleEdit.Logic.Media.SmartBreak.ParseWords(f).Count > 0)
+                {
+                    wordJson = f;
+                    break;
+                }
+            }
+
+            if (wordJson == null)
+            {
+                return resultTexts;
+            }
+
+            var words = Nikse.SubtitleEdit.Logic.Media.SmartBreak.ParseWords(wordJson);
+
+            var aiSettings = Se.Settings.Tools.AudioToText;
+            if (aiSettings.AiFix && !string.IsNullOrWhiteSpace(aiSettings.AiFixApiKey))
+            {
+                words = Nikse.SubtitleEdit.Logic.Media.AiTextFixer.Fix(
+                    words,
+                    aiSettings.AiFixUrl,
+                    aiSettings.AiFixApiKey,
+                    aiSettings.AiFixModel,
+                    aiSettings.AiFixPrompt);
+            }
+
+            var runs = new List<(double Start, double End)>();
+            if (SileroVadModel.IsInstalled())
+            {
+                // Engines that read the media file directly (Purfview Faster Whisper XXL) hand
+                // over the .mov/.mp4, not a WAV, so extract a 16 kHz mono WAV for Silero first.
+                // Without this the VAD step was skipped and cue ends kept the engine's trailing
+                // silence.
+                vadWav = ResolveVadWav(waveFileName, videoFileName);
+                if (vadWav != null)
+                {
+                    using var vad = new SileroVad(SileroVadModel.GetModelPath());
+                    foreach (var (start, end) in vad.DetectSpeech(vadWav, 0.5, 0.25, 0.1))
+                    {
+                        runs.Add((Math.Max(0.0, start - 0.05), end + 0.05));
+                    }
+                }
+            }
+
+            // Temporary diagnostic: words the engine timed inside silence (no Silero speech at their
+            // time). These are the ones behind a stray single-word cue ("Ovaj") or an early cue
+            // ("Opa"); the log tells us their exact times and the nearest speech run.
+            foreach (var w in words)
+            {
+                if (w.End - w.Start < 0.25)
+                {
+                    continue;
+                }
+
+                var overlap = 0.0;
+                var nearestStart = 0.0;
+                var nearestEnd = 0.0;
+                var nearestDist = double.MaxValue;
+                foreach (var (a, b) in runs)
+                {
+                    overlap = Math.Max(overlap, Math.Min(w.End, b) - Math.Max(w.Start, a));
+                    var d = a >= w.Start ? a - w.Start : w.Start - b;
+                    if (d < nearestDist)
+                    {
+                        nearestDist = d;
+                        nearestStart = a;
+                        nearestEnd = b;
+                    }
+                }
+
+                if (overlap <= 0.03 && runs.Count > 0)
+                {
+                    Se.WriteToolsLog($"DIAG silent word: \"{w.Word}\" {w.Start:F2}-{w.End:F2} (dur {w.End - w.Start:F2}s, no speech) nearest run {nearestStart:F2}-{nearestEnd:F2}");
+                }
+            }
+
+            var cues = Nikse.SubtitleEdit.Logic.Media.SmartBreak.Build(words, runs);
+            if (cues.Count == 0)
+            {
+                return resultTexts;
+            }
+
+            Se.WriteToolsLog($"Smart break: {resultTexts.Count} -> {cues.Count} cues ({words.Count} words, {runs.Count} Silero runs)");
+
+            foreach (var c in cues)
+            {
+                Se.WriteToolsLog($"SRTDUMP {c.Start:F3} --> {c.End:F3} | " + string.Join(" | ", c.Lines));
+            }
+
+            return cues.Select(c => new ResultText
+            {
+                Start = (decimal)c.Start,
+                End = (decimal)c.End,
+                Text = string.Join(Environment.NewLine, c.Lines),
+                Risky = c.Risky,
+            }).ToList();
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, "Smart break failed");
+            return resultTexts;
+        }
+        finally
+        {
+            if (vadWav != null && !string.Equals(vadWav, waveFileName, StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    File.Delete(vadWav);
+                }
+                catch
+                {
+                    // temp cleanup only
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Returns a 16 kHz mono WAV that Silero can read: the extracted audio when it already is one,
+    /// otherwise a freshly extracted copy of the media. Null when nothing usable is available.
+    /// </summary>
+    private string? ResolveVadWav(string waveFileName, string videoFileName)
+    {
+        if (!string.IsNullOrEmpty(waveFileName) &&
+            waveFileName.EndsWith(".wav", StringComparison.OrdinalIgnoreCase) &&
+            File.Exists(waveFileName))
+        {
+            return waveFileName;
+        }
+
+        var media = !string.IsNullOrEmpty(waveFileName) && File.Exists(waveFileName)
+            ? waveFileName
+            : (!string.IsNullOrEmpty(videoFileName) && File.Exists(videoFileName) ? videoFileName : null);
+        if (media == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var outWav = Path.Combine(GetSttTempFolder(), "smartbreak-vad.wav");
+            if (File.Exists(outWav))
+            {
+                File.Delete(outWav);
+            }
+
+            using var process = Nikse.SubtitleEdit.Logic.Media.FfmpegGenerator.ConvertToMono16kHzWav(media, outWav);
+            process.Start();
+            process.WaitForExit();
+            return File.Exists(outWav) && new FileInfo(outWav).Length > 1000 ? outWav : null;
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, "Smart break: VAD WAV extraction failed");
+            return null;
+        }
     }
 
     internal static List<string> GetResultFileCandidates(string ext, string waveFileName, string videoFileName, string whisperFolder, ConcurrentQueue<string> outputText, string? sttTempFolder = null)
@@ -4592,8 +4778,11 @@ public partial class SpeechToTextViewModel : ObservableObject
             var outputDir = string.IsNullOrEmpty(engineOutputFolder)
                 ? GetSttTempFolder()
                 : engineOutputFolder;
+            // "all" also writes the JSON with the word-level timings the smart break needs, and
+            // still writes the SRT the normal result loader reads.
+            var outputFormat = Se.Settings.Tools.AudioToText.SmartBreak ? "all" : "srt";
             var parametersX =
-                $"{languageArgX}--model \"{model}\" --output_format srt --output_dir \"{outputDir}\" " +
+                $"{languageArgX}--model \"{model}\" --output_format {outputFormat} --output_dir \"{outputDir}\" " +
                 $"{taskArg}{whisperXArgs} \"{waveFileName}\"";
 
             // The generic launch path is bypassed here, so repeat the piece of its setup a
@@ -4833,8 +5022,25 @@ public partial class SpeechToTextViewModel : ObservableObject
             outputDirArg = $"--output_dir \"{engineOutputFolder}\" ";
         }
 
+        // Smart break needs word-level timings, which Purfview Faster Whisper XXL only writes when
+        // asked: request JSON (alongside the SRT) and word timestamps when the user opted in.
+        // The user's own --output_format/-f or --word_timestamps/-wt flags always win.
+        var smartArgs = string.Empty;
+        if (engine is WhisperEnginePurfviewFasterWhisperXxl && Se.Settings.Tools.AudioToText.SmartBreak)
+        {
+            if (!args.Contains("--output_format", StringComparison.Ordinal) && !Regex.IsMatch(args, @"(^|\s)-f(\s|$)"))
+            {
+                smartArgs += "--output_format all ";
+            }
+
+            if (!args.Contains("--word_timestamps", StringComparison.Ordinal) && !Regex.IsMatch(args, @"(^|\s)-wt(\s|$)"))
+            {
+                smartArgs += "--word_timestamps True ";
+            }
+        }
+
         var parameters =
-            $"{languageArg}--model \"{m}\" {outputSrt}{outputDirArg}{translateToEnglish}{args} \"{waveFileName}\"{postParams}";
+            $"{languageArg}--model \"{m}\" {smartArgs}{outputSrt}{outputDirArg}{translateToEnglish}{args} \"{waveFileName}\"{postParams}";
 
         if (engine is WhisperEngineCTranslate2)
         {
@@ -5458,6 +5664,18 @@ public partial class SpeechToTextViewModel : ObservableObject
     internal void OnEngineChanged(object? sender, SelectionChangedEventArgs e)
     {
         EngineChanged();
+    }
+
+    partial void OnSelectedEngineChanged(ISpeechToTextEngine value)
+    {
+        // Refresh the language (and model) list when the engine actually changes. Relying only on
+        // the combo's SelectionChanged fired before the binding wrote SelectedEngine back, so the
+        // OLD engine's languages were listed and the languages only appeared after reopening the
+        // window. Reacting to the property change always uses the new engine.
+        if (value != null && Languages != null)
+        {
+            EngineChanged();
+        }
     }
 
     private void EngineChanged()

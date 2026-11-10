@@ -99,6 +99,22 @@ public class LanguageSettings
     public string MoveStartEndStepMs { get; set; }
     public string MoveLinesShortenNeighbor { get; set; }
     public string PromptBeforeDelete { get; set; }
+    public string MinimalContextMenus { get; set; }
+    public string ReviewOkAlsoExports { get; set; }
+    public string CustomizeContextMenus { get; set; }
+    public string ContextMenuTextBox { get; set; }
+    public string ContextMenuGrid { get; set; }
+    public string ContextMenuWaveform { get; set; }
+    public string TrimSilenceAfterSplit { get; set; }
+    public string SplitTrimUseVoiceDetection { get; set; }
+    public string CapitalizeAfterSplit { get; set; }
+    public string ShowVideoEndLine { get; set; }
+    public string SileroVadModel { get; set; }
+    public string SileroVadInstalled { get; set; }
+    public string SileroVadNotInstalled { get; set; }
+    public string VadThreshold { get; set; }
+    public string VadMinSpeechSeconds { get; set; }
+    public string VadMinSilenceSeconds { get; set; }
     public string RememberPositionAndSize { get; set; }
     public string TitleBarFullFileName { get; set; }
     public string ShowRecentFiles { get; set; }
@@ -144,6 +160,8 @@ public class LanguageSettings
     public string WaveformCenterVideoPositionAlsoWhenPaused { get; set; }
     public string WaveformSelectCurrentSubtitleWhilePaused { get; set; }
     public string WaveformRememberZoom { get; set; }
+    public string WaveformCenterSmoothSeconds { get; set; }
+    public string WaveformZoomCentersOnSelection { get; set; }
     public string WaveformShowToolbar { get; set; }
     public string WaveformShowToolbarEdit { get; set; }
     public string WaveformShowToolbarEditLabel { get; set; }
@@ -342,6 +360,19 @@ public class LanguageSettings
     public string TextToSpeechPromptMergeContinuationLines { get; set; }
     public string TextToSpeechPromptSkipNoiseLines { get; set; }
     public string TextToSpeechPromptDetectSpeakers { get; set; }
+    public string TextToSpeechFastMerge { get; set; }
+        public string SmartBreak { get; set; }
+
+        public string AiFix { get; set; }
+        public string AiFixUrl { get; set; }
+        public string AiFixApiKey { get; set; }
+        public string AiFixModel { get; set; }
+        public string AiFixPrompt { get; set; }
+
+    public string TextToSpeechDescriptiveFilenames { get; set; }
+    public string TextToSpeechThreeColumnReview { get; set; }
+    public string AdjustSpeedParallelism { get; set; }
+    public string ShowTestingTools { get; set; }
     public string UseFocusedButtonBackgroundColor { get; set; }
     public string FocusedButtonBackgroundColor { get; set; }
     public string ForceCrLfOnSave { get; set; }
@@ -490,6 +521,22 @@ public class LanguageSettings
         MoveStartEndStepMs = "Move start/end shortcut step (ms)";
         MoveLinesShortenNeighbor = "Move lines: shorten previous/next line instead of overlapping it";
         PromptBeforeDelete = "Prompt before delete";
+        MinimalContextMenus = "Minimal right-click menus (text box, grid, waveform)";
+        ReviewOkAlsoExports = "On OK, also save the TTS session next to the subtitle (silently, like Export)";
+        CustomizeContextMenus = "Customize right-click menus...";
+        ContextMenuTextBox = "Text box menu";
+        ContextMenuGrid = "Subtitle grid menu";
+        ContextMenuWaveform = "Waveform menu";
+        TrimSilenceAfterSplit = "Trim leading silence after a split";
+        SplitTrimUseVoiceDetection = "Use voice detection (Silero VAD)";
+        CapitalizeAfterSplit = "Capitalize the second half after a split at a sentence end";
+        ShowVideoEndLine = "Show the end-of-video line (green/red)";
+        SileroVadModel = "Silero VAD model";
+        SileroVadInstalled = "Installed";
+        SileroVadNotInstalled = "Not installed";
+        VadThreshold = "Voice detection threshold (0-1)";
+        VadMinSpeechSeconds = "Minimum speech (seconds)";
+        VadMinSilenceSeconds = "Minimum silence (seconds)";
         RememberPositionAndSize = "Remember window position and size";
         TitleBarFullFileName = "Show full file path in title bar";
         ShowRecentFiles = "Show recent files (for reopen)";
@@ -536,6 +583,8 @@ public class LanguageSettings
         WaveformCenterVideoPositionAlsoWhenPaused = "Center video position also while paused";
         WaveformSelectCurrentSubtitleWhilePaused = "Select current subtitle also while paused";
         WaveformRememberZoom = "Remember zoom (horizontal and vertical)";
+        WaveformCenterSmoothSeconds = "Center transition time (seconds)";
+        WaveformZoomCentersOnSelection = "Zoom (Alt+wheel) keeps the selection centered";
         WaveformShowToolbar = "Show toolbar";
         WaveformShowToolbarEdit = "Edit toolbar...";
         WaveformShowToolbarEditLabel = "Toolbar items";
@@ -732,6 +781,18 @@ public class LanguageSettings
         TextToSpeechPromptMergeContinuationLines = "Text to speech: prompt to merge continuation lines";
         TextToSpeechPromptSkipNoiseLines = "Text to speech: prompt to skip sound/music lines";
         TextToSpeechPromptDetectSpeakers = "Text to speech: prompt to detect speaker names in the text";
+        TextToSpeechFastMerge = "Fast merge (one ffmpeg pass)";
+            SmartBreak = "Smart break: rebreak speech-to-text into subtitle lines (word-timed)";
+            AiFix = "AI: fix text (punctuation + spelling/dialect) via an OpenAI-compatible endpoint";
+            AiFixUrl = "AI URL";
+            AiFixApiKey = "AI API key";
+            AiFixModel = "AI model";
+            AiFixPrompt = "AI prompt";
+
+        TextToSpeechDescriptiveFilenames = "Export filenames: 001-text-00 (off = 0001)";
+        TextToSpeechThreeColumnReview = "Review window: three columns (tags | lines | controls)";
+        AdjustSpeedParallelism = "Segments processed at once (adjust speed)";
+        ShowTestingTools = "Show testing tools (re-run adjust speed)";
         UseFocusedButtonBackgroundColor = "Use focused button background color";
         FocusedButtonBackgroundColor = "Focused button background color";
         ForceCrLfOnSave = "Force CR+LF on save (text subtitle files)";

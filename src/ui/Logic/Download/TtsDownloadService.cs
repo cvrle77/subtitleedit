@@ -4,6 +4,7 @@ using Nikse.SubtitleEdit.Core.SubtitleFormats;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Voices;
 using Nikse.SubtitleEdit.Logic.Config;
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
@@ -18,6 +19,17 @@ using System.Threading.Tasks;
 
 namespace Nikse.SubtitleEdit.Logic.Download;
 
+/// <summary>
+/// Audio plus per-character timings from ElevenLabs' timestamped dialogue endpoint
+/// (<c>/v1/text-to-dialogue/with-timestamps</c>). The arrays are parallel to the characters of the
+/// exact text that was sent, so a cue's spoken start/end can be read off by its character range.
+/// </summary>
+public sealed record ElevenLabsTimedAudio(
+    double[] StartTimes,
+    double[] EndTimes,
+    byte[] Audio,
+    string RequestId);
+
 public interface ITtsDownloadService
 {
     Task DownloadPiper(string destinationFileName, IProgress<float>? progress, CancellationToken cancellationToken);
@@ -29,10 +41,12 @@ public interface ITtsDownloadService
     Task<string> AllTalkVoiceSpeak(string text, AllTalkVoice voice, string language, CancellationToken cancellationToken);
     Task<bool> AllTalkIsInstalled();
     Task DownloadElevenLabsVoiceList(Stream stream, IProgress<float>? progress, CancellationToken cancellationToken);
+    Task<string?> GetElevenLabsSubscriptionTier(CancellationToken cancellationToken);
+    Task<(int Used, int Limit)?> GetElevenLabsCredits(CancellationToken cancellationToken);
     Task DownloadAzureVoiceList(Stream stream, IProgress<float>? progress, CancellationToken cancellationToken);
     Task DownloadMurfVoiceList(MemoryStream stream, IProgress<float>? progress, CancellationToken cancellationToken);
 
-    Task<(bool Ok, string Error)> DownloadElevenLabsVoiceSpeak(
+    Task<(bool Ok, string Error, string RequestId)> DownloadElevenLabsVoiceSpeak(
         string inputText,
         ElevenLabVoice voice,
         string model,
@@ -40,6 +54,17 @@ public interface ITtsDownloadService
         string languageCode,
         MemoryStream stream,
         IProgress<float>? progress,
+        CancellationToken cancellationToken,
+        string previousText = "",
+        string nextText = "",
+        IReadOnlyList<string>? previousRequestIds = null);
+
+    Task<(bool Ok, string Error, ElevenLabsTimedAudio? Result)> DownloadElevenLabsDialogueWithTimestamps(
+        string inputText,
+        ElevenLabVoice voice,
+        string model,
+        string apiKey,
+        string languageCode,
         CancellationToken cancellationToken);
 
     Task<bool> DownloadAzureVoiceSpeak(
@@ -243,6 +268,85 @@ public class TtsDownloadService : ITtsDownloadService
         await result.Content.CopyToAsync(ms, cancellationToken);
     }
 
+    /// <summary>
+    /// One GET /v1/user/subscription, shared by the tier lookup and the credit balance so the
+    /// endpoint, headers and error handling live in one place. Null on any failure (offline, invalid
+    /// key, a key without the user_read permission).
+    /// </summary>
+    private async Task<JsonDocument?> GetElevenLabsSubscriptionAsync(CancellationToken cancellationToken)
+    {
+        var apiKey = Se.Settings.Video.TextToSpeech.ElevenLabsApiKey;
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Get, "https://api.elevenlabs.io/v1/user/subscription");
+            requestMessage.Headers.TryAddWithoutValidation("Accept", "application/json");
+            requestMessage.Headers.TryAddWithoutValidation("xi-api-key", apiKey.Trim());
+
+            using var result = await _httpClient.SendAsync(requestMessage, cancellationToken);
+            if (!result.IsSuccessStatusCode)
+            {
+                Se.WriteToolsLog($"ElevenLabs: subscription lookup failed (HTTP {(int)result.StatusCode})");
+                return null;
+            }
+
+            var json = await result.Content.ReadAsStringAsync(cancellationToken);
+            return JsonDocument.Parse(json);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, "ElevenLabs: could not read the subscription");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Reads the subscription tier for the configured API key ("tier"), so the parallel generation
+    /// mode can size its concurrency to the plan without the user entering anything. Returns null
+    /// when the request fails - the caller then falls back to a safe default.
+    /// </summary>
+    public async Task<string?> GetElevenLabsSubscriptionTier(CancellationToken cancellationToken)
+    {
+        using var document = await GetElevenLabsSubscriptionAsync(cancellationToken);
+        return document != null
+            && document.RootElement.TryGetProperty("tier", out var tier)
+            && tier.ValueKind == JsonValueKind.String
+            ? tier.GetString()
+            : null;
+    }
+
+    /// <summary>
+    /// The account's character usage and limit, so the UI can show how many credits are left without
+    /// tallying requests locally. Returns null when the request fails.
+    /// </summary>
+    public async Task<(int Used, int Limit)?> GetElevenLabsCredits(CancellationToken cancellationToken)
+    {
+        using var document = await GetElevenLabsSubscriptionAsync(cancellationToken);
+        if (document == null)
+        {
+            return null;
+        }
+
+        var root = document.RootElement;
+        if (root.TryGetProperty("character_count", out var usedElement)
+            && usedElement.TryGetInt32(out var used)
+            && root.TryGetProperty("character_limit", out var limitElement)
+            && limitElement.TryGetInt32(out var limit))
+        {
+            return (used, limit);
+        }
+
+        return null;
+    }
+
     public async Task DownloadMurfVoiceList(MemoryStream ms, IProgress<float>? progress, CancellationToken cancellationToken)
     {
         var url = "https://api.murf.ai/v1/speech/voices";
@@ -286,7 +390,7 @@ public class TtsDownloadService : ITtsDownloadService
         await result.Content.CopyToAsync(stream, cancellationToken);
     }
 
-    public async Task<(bool Ok, string Error)> DownloadElevenLabsVoiceSpeak(
+    public async Task<(bool Ok, string Error, string RequestId)> DownloadElevenLabsVoiceSpeak(
         string inputText,
         ElevenLabVoice voice,
         string model,
@@ -294,11 +398,17 @@ public class TtsDownloadService : ITtsDownloadService
         string languageCode,
         MemoryStream stream,
         IProgress<float>? progress,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string previousText = "",
+        string nextText = "",
+        IReadOnlyList<string>? previousRequestIds = null)
     {
-        if (model == "eleven_v3")
+        // Eleven v3 and the Eleven v4 family are only available through the text-to-dialogue
+        // endpoint (they are not served by /v1/text-to-speech). The request body below is the
+        // same shape for all of them.
+        if (model is "eleven_v3" or "eleven_v4" or "eleven_v4_turbo")
         {
-            return await DownloadElevenLabsVoiceSpeak3(inputText, voice, model, apiKey, languageCode, stream, progress, cancellationToken);
+            return await DownloadElevenLabsVoiceSpeak3(inputText, voice, model, apiKey, languageCode, stream, progress, cancellationToken, previousText, nextText, previousRequestIds);
         }
 
         var url = "https://api.elevenlabs.io/v1/text-to-speech/" + voice.VoiceId;
@@ -356,7 +466,7 @@ public class TtsDownloadService : ITtsDownloadService
     /// honors the Retry-After header instead of failing the segment outright (#12093). Returns a
     /// human-readable error for the UI when all attempts fail.
     /// </summary>
-    private async Task<(bool Ok, string Error)> SendElevenLabsSpeakRequestAsync(
+    private async Task<(bool Ok, string Error, string RequestId)> SendElevenLabsSpeakRequestAsync(
         string url,
         string jsonData,
         string apiKey,
@@ -389,7 +499,11 @@ public class TtsDownloadService : ITtsDownloadService
             {
                 stream.SetLength(0);
                 await result.Content.CopyToAsync(stream, cancellationToken);
-                return (true, string.Empty);
+                var requestId = ReadHeader(result, "request-id");
+                // character-cost is ElevenLabs' own billing figure for the call, logged the same way
+                // the chunk requests log it so the per-line spend is visible in the tools log.
+                Se.WriteToolsLog($"{logContext}: HTTP 200, request-id=\"{requestId}\", character-cost=\"{ReadHeader(result, "character-cost")}\"");
+                return (true, string.Empty, requestId);
             }
 
             var errorBody = TruncateForLog((await result.Content.ReadAsStringAsync(cancellationToken)).Trim());
@@ -406,8 +520,27 @@ public class TtsDownloadService : ITtsDownloadService
                 ? $"ElevenLabs rate limit (HTTP 429) still hit after {maxAttempts} attempts with backoff - the plan's concurrency/request limit is likely exceeded. {errorBody}"
                 : $"HTTP {(int)result.StatusCode} {result.StatusCode}: {errorBody}";
             SeLogger.Error($"{logContext} failed calling {url}: {error}" + Environment.NewLine + "Data=" + jsonData);
-            return (false, error);
+            return (false, error, string.Empty);
         }
+    }
+
+    // A response header by name - ElevenLabs sends request-id and character-cost, on the response
+    // headers or (for some endpoints) the content headers.
+    private static string ReadHeader(HttpResponseMessage response, string name)
+    {
+        if (response.Headers.TryGetValues(name, out var headerValues) &&
+            headerValues.FirstOrDefault() is { Length: > 0 } headerValue)
+        {
+            return headerValue;
+        }
+
+        if (response.Content.Headers.TryGetValues(name, out var contentValues) &&
+            contentValues.FirstOrDefault() is { Length: > 0 } contentValue)
+        {
+            return contentValue;
+        }
+
+        return string.Empty;
     }
 
     private static TimeSpan GetRetryDelay(HttpResponseMessage response, int attempt)
@@ -440,7 +573,7 @@ public class TtsDownloadService : ITtsDownloadService
         return text.Length <= maxLength ? text : text.Substring(0, maxLength) + "...";
     }
 
-    private async Task<(bool Ok, string Error)> DownloadElevenLabsVoiceSpeak3(
+    private async Task<(bool Ok, string Error, string RequestId)> DownloadElevenLabsVoiceSpeak3(
         string inputText, 
         ElevenLabVoice voice, 
         string model, 
@@ -448,7 +581,10 @@ public class TtsDownloadService : ITtsDownloadService
         string languageCode, 
         MemoryStream stream, 
         IProgress<float>? progress, 
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string previousText = "",
+        string nextText = "",
+        IReadOnlyList<string>? previousRequestIds = null)
     {
         var url = "https://api.elevenlabs.io/v1/text-to-dialogue";
 
@@ -470,14 +606,141 @@ public class TtsDownloadService : ITtsDownloadService
         var languageFragment = string.IsNullOrEmpty(languageCode)
             ? string.Empty
             : ", \"language_code\": \"" + languageCode + "\"";
+        // Request stitching (Eleven v4): previous_request_ids names the earlier generations whose
+        // audio this one should continue (max 3, each lasts two hours); previous_text/future_text
+        // give the surrounding words when no id is available yet (the first line, or the parallel
+        // path). The dialogue endpoint REJECTS previous_request_ids together with previous_text
+        // ("Provide only one of previous_request_ids or previous_text"), so the two are mutually
+        // exclusive here - the ids win when present, the text is the fallback otherwise. v3 does
+        // not support request stitching - the caller withholds the context for it - and the fields
+        // stay out when empty.
+        var stitchFragment = string.Empty;
+        if (previousRequestIds is { Count: > 0 })
+        {
+            stitchFragment = ", \"previous_request_ids\": [" +
+                             string.Join(", ", previousRequestIds.Select(id => "\"" + id + "\"")) + "]";
+        }
+        else
+        {
+            if (!string.IsNullOrEmpty(previousText))
+            {
+                stitchFragment += ", \"previous_text\": \"" + Json.EncodeJsonText(previousText) + "\"";
+            }
+
+            if (!string.IsNullOrEmpty(nextText))
+            {
+                stitchFragment += ", \"future_text\": \"" + Json.EncodeJsonText(nextText) + "\"";
+            }
+        }
+
+        // The dialogue endpoint defaults to eleven_v3, so model_id must be sent explicitly to
+        // actually select the Eleven v4 / v4 Turbo model the caller asked for.
         var data = "{ \"inputs\": [{ " +
                    "\"text\": \"" + Json.EncodeJsonText(text) + "\", " +
                    "\"voice_id\": \"" + voice.VoiceId + "\"" +
                    " }]" +
+                   ", \"model_id\": \"" + model + "\"" +
                    languageFragment +
+                   stitchFragment +
                    ", \"settings\": { \"stability\": " + stability + " } }";
 
         return await SendElevenLabsSpeakRequestAsync(url, data, apiKey, acceptAudioMpeg: false, stream, "ElevenLabs TTS v3", cancellationToken);
+    }
+
+    /// <summary>
+    /// The timestamped dialogue endpoint: same request shape as the plain one, but the response is
+    /// JSON carrying the audio plus the start/end time of every character of the sent text. A whole
+    /// run of cues is sent as one request (see the ElevenLabs v4 chunked generation), and the
+    /// per-character timings are what map the single audio back onto each cue.
+    /// </summary>
+    public async Task<(bool Ok, string Error, ElevenLabsTimedAudio? Result)> DownloadElevenLabsDialogueWithTimestamps(
+        string inputText,
+        ElevenLabVoice voice,
+        string model,
+        string apiKey,
+        string languageCode,
+        CancellationToken cancellationToken)
+    {
+        var url = "https://api.elevenlabs.io/v1/text-to-dialogue/with-timestamps";
+
+        // Same text preparation as the plain dialogue path: v3/v4 use audio tags rather than SSML.
+        var text = ConvertBreakTagsToV3AudioTags(Utilities.UnbreakLine(inputText));
+        var stability = Se.Settings.Video.TextToSpeech.ElevenLabsStability.ToString(CultureInfo.InvariantCulture);
+        var languageFragment = string.IsNullOrEmpty(languageCode)
+            ? string.Empty
+            : ", \"language_code\": \"" + languageCode + "\"";
+        var data = "{ \"inputs\": [{ " +
+                   "\"text\": \"" + Json.EncodeJsonText(text) + "\", " +
+                   "\"voice_id\": \"" + voice.VoiceId + "\"" +
+                   " }]" +
+                   ", \"model_id\": \"" + model + "\"" +
+                   languageFragment +
+                   ", \"settings\": { \"stability\": " + stability + " } }";
+
+        Se.WriteToolsLog($"ElevenLabs TTS (timestamps): POST {url} body={data}");
+
+        // Retry like the per-line path: the chunked run fires several requests at once, so a 429 or a
+        // transient 5xx must back off and retry rather than throw the whole chunk away.
+        const int maxAttempts = 4;
+        for (var attempt = 1; ; attempt++)
+        {
+            using var requestMessage = new HttpRequestMessage(HttpMethod.Post, url);
+            requestMessage.Content = new StringContent(data, Encoding.UTF8);
+            requestMessage.Content.Headers.ContentType = MediaTypeHeaderValue.Parse("application/json");
+            requestMessage.Headers.TryAddWithoutValidation("Content-Type", "application/json");
+            requestMessage.Headers.TryAddWithoutValidation("xi-api-key", apiKey.Trim());
+
+            using var result = await _httpClient.SendAsync(requestMessage, cancellationToken);
+            if (!result.IsSuccessStatusCode)
+            {
+                var errorBody = TruncateForLog((await result.Content.ReadAsStringAsync(cancellationToken)).Trim());
+                var retryable = result.StatusCode == System.Net.HttpStatusCode.TooManyRequests || (int)result.StatusCode >= 500;
+                if (retryable && attempt < maxAttempts)
+                {
+                    var delay = GetRetryDelay(result, attempt);
+                    SeLogger.Error($"ElevenLabs TTS (timestamps): HTTP {(int)result.StatusCode} - retrying in {delay.TotalSeconds:0.#}s (attempt {attempt} of {maxAttempts}): {errorBody}");
+                    await Task.Delay(delay, cancellationToken);
+                    continue;
+                }
+
+                var error = result.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                    ? $"ElevenLabs rate limit (HTTP 429) still hit after {maxAttempts} attempts with backoff - the plan's concurrency/request limit is likely exceeded. {errorBody}"
+                    : $"HTTP {(int)result.StatusCode} {result.StatusCode}: {errorBody}";
+                SeLogger.Error($"ElevenLabs TTS (timestamps) failed calling {url}: {error}" + Environment.NewLine + "Data=" + data);
+                return (false, error, null);
+            }
+
+            var requestId = ReadHeader(result, "request-id");
+            // character-cost is ElevenLabs' own billing figure for this request, so the tools log can
+            // settle "were these chunk requests actually generated (and charged)?" without guessing.
+            var characterCost = result.Headers.TryGetValues("character-cost", out var costValues)
+                ? costValues.FirstOrDefault() ?? string.Empty
+                : string.Empty;
+            Se.WriteToolsLog($"ElevenLabs TTS (timestamps): HTTP {(int)result.StatusCode} {result.StatusCode}, request-id=\"{requestId}\", character-cost=\"{characterCost}\", textLen={text.Length}");
+            var json = await result.Content.ReadAsStringAsync(cancellationToken);
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                var audioBase64 = root.TryGetProperty("audio_base64", out var audioElement) ? audioElement.GetString() ?? string.Empty : string.Empty;
+                if (audioBase64.Length == 0
+                    || !root.TryGetProperty("alignment", out var alignment)
+                    || alignment.ValueKind != JsonValueKind.Object)
+                {
+                    return (false, "ElevenLabs returned no audio/timestamps for the chunked request.", null);
+                }
+
+                var startTimes = alignment.GetProperty("character_start_times_seconds").EnumerateArray().Select(e => e.GetDouble()).ToArray();
+                var endTimes = alignment.GetProperty("character_end_times_seconds").EnumerateArray().Select(e => e.GetDouble()).ToArray();
+                var audio = Convert.FromBase64String(audioBase64);
+                return (true, string.Empty, new ElevenLabsTimedAudio(startTimes, endTimes, audio, requestId));
+            }
+            catch (Exception ex)
+            {
+                SeLogger.Error(ex, "ElevenLabs TTS (timestamps): could not parse the response");
+                return (false, "Could not parse the ElevenLabs timestamped response: " + ex.Message, null);
+            }
+        }
     }
 
     // Matches SSML break tags like <break time="1.5s"/>, <break time="500ms" />, <break time='2s'>.

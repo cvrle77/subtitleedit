@@ -25,11 +25,18 @@ public class TtsImportExportItem
     // ordinary voices and for legacy exports.
     public string VoiceFileName { get; set; }
 
+    // The text exactly as it was sent to the TTS engine, audio tags and CAPS emphasis included
+    // ("[happy] BAKE the cake"). Text above is the cleaned subtitle form; this one is what a
+    // re-import must restore so the emotion markup survives an export/import round-trip. Falls
+    // back to Text when absent (legacy exports).
+    public string TextWithTags { get; set; }
+
     public bool Include { get; set; }
 
     public TtsImportExportItem()
     {
         Text = string.Empty;
+        TextWithTags = string.Empty;
         StartMs = 0;
         EndMs = 0;
         AudioFileName = string.Empty;

@@ -3,7 +3,9 @@ using Avalonia.Headless.XUnit;
 using Nikse.SubtitleEdit.Core.Common;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.ReviewSpeech;
 using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Download;
 using Nikse.SubtitleEdit.Logic.Media;
+using System.Net.Http;
 
 namespace UITests.Features.Video.TextToSpeech.ReviewSpeech;
 
@@ -28,7 +30,7 @@ public class ReviewPositionLabelTests : IDisposable
     [AvaloniaFact]
     public void MovingThePlayheadUpdatesThePositionText()
     {
-        var vm = new ReviewSpeechViewModel(new FolderHelper(), new StubWindowService());
+        var vm = new ReviewSpeechViewModel(new FolderHelper(), new StubWindowService(), new TtsDownloadService(new HttpClient()));
         _windows.Add(new ReviewSpeechWindow(vm));
         var offsetSeconds = Se.Settings.General.CurrentVideoOffsetInMs / 1000.0;
 
@@ -40,7 +42,7 @@ public class ReviewPositionLabelTests : IDisposable
     [AvaloniaFact]
     public void GoingToAPositionOutsideTheViewScrollsTheWaveformThere()
     {
-        var vm = new ReviewSpeechViewModel(new FolderHelper(), new StubWindowService());
+        var vm = new ReviewSpeechViewModel(new FolderHelper(), new StubWindowService(), new TtsDownloadService(new HttpClient()));
         var window = new ReviewSpeechWindow(vm);
         _windows.Add(window);
         var peaks = new WavePeak2[126 * 600];

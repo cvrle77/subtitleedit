@@ -23,6 +23,11 @@ public sealed class LibMpvDynamicPlayer : IDisposable, IVideoPlayer
     public string PlayerSubName { get; set; } = string.Empty;
     public static int MaxVolume { get; set; } = 130;
 
+    // A volume set before the mpv core exists (the render pass creates it lazily). The setter used
+    // to drop it, so a volume applied at player creation - the main window's startup setting - was
+    // lost and mpv kept its own value.
+    private double? _pendingVolume;
+
     private IntPtr _library = IntPtr.Zero;
     private IntPtr _mpv = IntPtr.Zero;
     private IntPtr _renderContext = IntPtr.Zero;
@@ -537,6 +542,13 @@ public sealed class LibMpvDynamicPlayer : IDisposable, IVideoPlayer
     {
         _coreInitialized = true;
         StartEventLoop();
+
+        // Apply a volume that was set before the core existed (see the Volume setter).
+        if (_pendingVolume is { } pendingVolume)
+        {
+            _pendingVolume = null;
+            SetVolumeNow(pendingVolume);
+        }
 
         var pendingFileName = Interlocked.Exchange(ref _pendingLoadFileName, null);
         if (string.IsNullOrEmpty(pendingFileName))
@@ -2119,11 +2131,19 @@ public sealed class LibMpvDynamicPlayer : IDisposable, IVideoPlayer
         }
     }
 
-    public async Task LoadAudio(string path)
+    public async Task LoadAudio(string path, double startPositionSeconds = 0)
     {
         EnsureNotDisposed();
 
         await WaitForCoreInitializedAsync();
+
+        // Open at the wanted position instead of seeking after the load: a seek issued right after
+        // "loadfile" can run before mpv has the file and is then dropped, so the clip played from
+        // 0:00 while the video ran from the play-head (the two resynced only on the next row).
+        // "start" is sticky, so clear it for the opens that want the beginning.
+        SetOptionString("start", startPositionSeconds > 0
+            ? startPositionSeconds.ToString(CultureInfo.InvariantCulture)
+            : "none");
 
         // Unlike LoadFile this one is meant to start playing: it backs the "play this clip"
         // buttons in the text-to-speech windows, which load a file and expect to hear it.
@@ -2594,8 +2614,12 @@ public sealed class LibMpvDynamicPlayer : IDisposable, IVideoPlayer
         set
         {
             EnsureNotDisposed();
+            var clampedVolume = Math.Max(0, Math.Min(MaxVolume, value));
             if (_mpv == IntPtr.Zero)
             {
+                // Core not created yet: remember it and apply it in MarkCoreInitialized.
+                _pendingVolume = clampedVolume;
+                Se.WriteToolsLog($"VIDEO volume: deferred {clampedVolume:0.#} (mpv core not created yet)");
                 return;
             }
 
@@ -2603,13 +2627,26 @@ public sealed class LibMpvDynamicPlayer : IDisposable, IVideoPlayer
             // volume-max is 130, matching MaxVolume, so values above 100 boost
             // (amplify) the audio. Clamping to 100 here meant the upper part of
             // the volume slider (100..130) did nothing.
-            var clampedVolume = Math.Max(0, Math.Min(MaxVolume, value));
+            Se.WriteToolsLog($"VIDEO volume: set {clampedVolume:0.#}");
             var err = DoMpvCommand("set", "volume", clampedVolume.ToString(CultureInfo.InvariantCulture));
             //if (err < 0)
             //{
             //    Se.LogError(new InvalidOperationException(GetErrorString(err)), "LibMpvDynamicPlayer Volume set");
             //}
         }
+    }
+
+    private void SetVolumeNow(double volume)
+    {
+        if (_mpv == IntPtr.Zero)
+        {
+            _pendingVolume = volume;
+            return;
+        }
+
+        var clampedVolume = Math.Max(0, Math.Min(MaxVolume, volume));
+        Se.WriteToolsLog($"VIDEO volume: applied {clampedVolume:0.#} after core init (was {Volume:0.#})");
+        DoMpvCommand("set", "volume", clampedVolume.ToString(CultureInfo.InvariantCulture));
     }
 
     public double Speed

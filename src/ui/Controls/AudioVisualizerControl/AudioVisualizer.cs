@@ -106,6 +106,16 @@ public class AudioVisualizer : Control
         set => SetValue(CurrentVideoPositionSecondsProperty, value);
     }
 
+    /// <summary>
+    /// Where on screen the play-head is anchored while the view follows it: the fraction of the
+    /// visible window it sits at. 0.5 is the centre (upstream behaviour); the fork's red marker
+    /// above the waveform sets this. Only honoured while <see cref="Fork.WaveformAnchorMarker"/> is
+    /// on, so turning the option off restores the classic centring.
+    /// </summary>
+    public double AnchorFraction { get; set; } = 0.5;
+
+    private double EffectiveAnchorFraction => Fork.WaveformAnchorMarker ? AnchorFraction : 0.5;
+
     public bool InvertMouseWheel
     {
         get => GetValue(InvertMouseWheelProperty);
@@ -261,7 +271,50 @@ public class AudioVisualizer : Control
 
     public SubtitleLineViewModel? SelectedParagraph { get; set; }
 
+    /// <summary>
+    /// The time-base rate used for the playhead when <see cref="WavePeaks"/> is null/empty, so a
+    /// control that is fed a time axis by its owner (the review window's generated-speech track)
+    /// still draws the shared cursor before its own peaks exist. 0 (the default) keeps the old
+    /// "no cursor without peaks" behavior.
+    /// </summary>
+    public int FallbackSampleRate { get; set; }
+
+    /// <summary>
+    /// End of the loaded video, in seconds (0 = unknown/none). Drawn as a red vertical line so the
+    /// review window can show that a clip runs past the last frame - the merge then trims the tail,
+    /// which could cut speech. A red line the user can drag a line's end back behind.
+    /// </summary>
+    public static readonly StyledProperty<double> VideoEndSecondsProperty =
+        AvaloniaProperty.Register<AudioVisualizer, double>(nameof(VideoEndSeconds));
+
+    public double VideoEndSeconds
+    {
+        get => GetValue(VideoEndSecondsProperty);
+        set => SetValue(VideoEndSecondsProperty, value);
+    }
+
+    /// <summary>
+    /// Whether some cue runs past the end of the video. The end-of-video line is drawn red when
+    /// true (a clip will be trimmed), green when false (everything fits).
+    /// </summary>
+    public static readonly StyledProperty<bool> VideoEndOverrunProperty =
+        AvaloniaProperty.Register<AudioVisualizer, bool>(nameof(VideoEndOverrun));
+
+    public bool VideoEndOverrun
+    {
+        get => GetValue(VideoEndOverrunProperty);
+        set => SetValue(VideoEndOverrunProperty, value);
+    }
+
     public double MinGapSeconds { get; set; } = 0.1;
+
+
+    /// <summary>
+    /// When true, a dragged paragraph can never overlap its neighbours - the drag is clamped at the
+    /// neighbour's edge regardless of Shift, the "allow overlap" setting or a pre-existing overlap.
+    /// Used by the TTS review waveform, where blocks must stay disjoint.
+    /// </summary>
+    public bool PreventOverlap { get; set; }
 
     /// <summary>Fallback capture distance when the pixel distance cannot be converted (no peaks yet).</summary>
     public double ShotChangeSnapSeconds { get; set; } = 0.05;
@@ -568,6 +621,8 @@ public class AudioVisualizer : Control
     private readonly Pen _paintShotChangeParagraphStartPen = new Pen(new SolidColorBrush(Color.FromArgb(175, 0, 100, 0)), 2, dashStyle: DashStyle.Dash);
     private readonly Pen _paintShotChangeParagraphEndPen = new Pen(new SolidColorBrush(Color.FromArgb(175, 110, 10, 10)), 2, dashStyle: DashStyle.Dash);
     private readonly Pen _centerLinePen = new Pen(Brushes.DarkGray, 0.5);
+    private readonly Pen _videoEndPenOverrun = new Pen(new SolidColorBrush(Color.FromArgb(255, 230, 30, 30)), 2);
+    private readonly Pen _videoEndPenOk = new Pen(new SolidColorBrush(Color.FromArgb(255, 40, 200, 60)), 2);
     private readonly HashSet<int> _paragraphStartPositions = new();
     private readonly HashSet<int> _paragraphEndPositions = new();
     private readonly HashSet<SubtitleLineViewModel> _selectedParagraphsRenderSet = new();
@@ -657,6 +712,14 @@ public class AudioVisualizer : Control
     private const double ClickDragSlopPixels = 3.0;
     private bool _dragThresholdExceeded;
     public bool IsScrolling => (Environment.TickCount64 - _audioVisualizerLastScroll) < 100;
+
+    /// <summary>
+    /// True for a moment after any mouse-wheel event over the waveform, including the Alt+wheel
+    /// horizontal zoom and the Shift+wheel vertical zoom. The view model uses it to hold off the
+    /// smooth "center on play-head" scroll while the user is wheel-interacting, so a zoom or a
+    /// manual scroll is not fought - it resumes once the wheel stops.
+    /// </summary>
+    public bool IsMouseWheelInteracting => (Environment.TickCount64 - _lastMouseWheelScroll) < 250;
 
     // Wall clock of the last pointer-driven time code edit (drag move/resize/new selection).
     private long _lastPointerEditMs;
@@ -780,6 +843,8 @@ public class AudioVisualizer : Control
             ZoomFactorProperty,
             VerticalZoomFactorProperty,
             CurrentVideoPositionSecondsProperty,
+            VideoEndSecondsProperty,
+            VideoEndOverrunProperty,
             AllSelectedParagraphsProperty);
 
         PointerMoved += OnPointerMoved;
@@ -959,6 +1024,51 @@ public class AudioVisualizer : Control
     public const double MinZoomFactor = 0.1;
     public const double MaxZoomFactor = 20.0;
 
+    /// <summary>
+    /// Time to keep in the middle of the view while Alt+wheel zooming: the middle of the range
+    /// the user is dragging out in the waveform if there is one, otherwise the middle of the
+    /// selected subtitle block(s). Null when there is nothing to anchor to - the view then keeps
+    /// its left edge, as it did before.
+    /// </summary>
+    private double? GetZoomAnchorSeconds()
+    {
+        var dragged = NewSelectionParagraph;
+        if (dragged != null)
+        {
+            var draggedStart = dragged.StartTime.TotalSeconds;
+            var draggedEnd = dragged.EndTime.TotalSeconds;
+            if (draggedEnd > draggedStart)
+            {
+                return (draggedStart + draggedEnd) / 2.0;
+            }
+        }
+
+        var selected = AllSelectedParagraphs;
+        if (selected is { Count: > 0 })
+        {
+            var start = double.MaxValue;
+            var end = double.MinValue;
+            foreach (var paragraph in selected)
+            {
+                var paragraphStart = paragraph.StartTime.TotalSeconds;
+                var paragraphEnd = paragraph.EndTime.TotalSeconds;
+                if (paragraphStart < start)
+                {
+                    start = paragraphStart;
+                }
+
+                if (paragraphEnd > end)
+                {
+                    end = paragraphEnd;
+                }
+            }
+
+            return end > start ? (start + end) / 2.0 : start;
+        }
+
+        return null;
+    }
+
     private void OnPointerWheelChanged(object? sender, PointerWheelEventArgs e)
     {
         _lastMouseWheelScroll = Environment.TickCount64;
@@ -991,7 +1101,18 @@ public class AudioVisualizer : Control
                 newZoomFactor = MaxZoomFactor;
             }
 
+            // Remember what to keep in the middle before the zoom changes: the range being
+            // dragged out in the waveform if there is one, otherwise the selected block(s).
+            // Only when the option is on - otherwise the view keeps its left edge as upstream did.
+            var anchorSeconds = Se.Settings.Waveform.ZoomCentersOnSelection ? GetZoomAnchorSeconds() : null;
+
             ZoomFactor = newZoomFactor;
+
+            if (anchorSeconds.HasValue && WavePeaks != null && WavePeaks.SampleRate > 0 && Bounds.Width > 0)
+            {
+                var halfWidthInSeconds = (Bounds.Width / 2) / (WavePeaks.SampleRate * newZoomFactor);
+                StartPositionSeconds = anchorSeconds.Value - halfWidthInSeconds;
+            }
 
             InvalidateVisual();
             return;
@@ -1082,8 +1203,10 @@ public class AudioVisualizer : Control
             if (visibleSeconds > 0 &&
                 (keepCentered || newVideoPosition < StartPositionSeconds || newVideoPosition > EndPositionSeconds))
             {
-                var followStart = newVideoPosition - visibleSeconds / 2;
-                StartPositionSeconds = followStart < 0 ? 0 : followStart;
+                var followStart = newVideoPosition - visibleSeconds * EffectiveAnchorFraction;
+                // With the anchor marker the view may run left of zero (empty space) - clamping it
+                // there is what stopped the play-head reaching the anchor at the video start.
+                StartPositionSeconds = Fork.WaveformAnchorMarker ? followStart : (followStart < 0 ? 0 : followStart);
                 OnHorizontalScroll?.Invoke(this, new PositionEventArgs { PositionInSeconds = StartPositionSeconds });
             }
 
@@ -1110,7 +1233,7 @@ public class AudioVisualizer : Control
             var videoPosition = RelativeXPositionToSeconds(point.X);
             if (Se.Settings.Waveform.CenterVideoPosition && WavePeaks != null)
             {
-                var halfWidthInSeconds = (Bounds.Width / 2) / (WavePeaks.SampleRate * ZoomFactor);
+                var halfWidthInSeconds = (Bounds.Width * EffectiveAnchorFraction) / (WavePeaks.SampleRate * ZoomFactor);
                 videoPosition = StartPositionSeconds + halfWidthInSeconds;
             }
             OnVideoPositionChanged?.Invoke(this, new PositionEventArgs { PositionInSeconds = videoPosition });
@@ -1122,7 +1245,7 @@ public class AudioVisualizer : Control
             // only worked while paused (#12864). Honor the scroll by seeking the video to the
             // new view center instead: the play-head stays pinned to the middle and the video
             // follows the scroll, matching SE 4. Paused scrolling stays free (no seek).
-            var halfWidthInSeconds = (Bounds.Width / 2) / (WavePeaks.SampleRate * ZoomFactor);
+            var halfWidthInSeconds = (Bounds.Width * EffectiveAnchorFraction) / (WavePeaks.SampleRate * ZoomFactor);
             OnVideoPositionChanged?.Invoke(this, new PositionEventArgs { PositionInSeconds = StartPositionSeconds + halfWidthInSeconds });
         }
 
@@ -1790,7 +1913,7 @@ public class AudioVisualizer : Control
         var previous = previousIndex >= 0 ? _displayableParagraphs[previousIndex] : null;
         var next = nextIndex >= 0 ? _displayableParagraphs[nextIndex] : null;
 
-        if (_isShiftDown || Se.Settings.Waveform.AllowOverlap)
+        if (!PreventOverlap && (_isShiftDown || Se.Settings.Waveform.AllowOverlap))
         {
             previous = null;
             next = null;
@@ -1836,8 +1959,9 @@ public class AudioVisualizer : Control
                 }
 
                 // Allow overlap if shift key, setting, or already overlapping
-                // (previous and next are already null if _isShiftDown or Se.Settings.Waveform.AllowOverlap)
-                bool allowOverlap = (previous == null && next == null) || alreadyOverlapping;
+                // (previous and next are already null if _isShiftDown or Se.Settings.Waveform.AllowOverlap);
+                // PreventOverlap (TTS review) forbids it outright.
+                bool allowOverlap = !PreventOverlap && ((previous == null && next == null) || alreadyOverlapping);
 
                 // SE4 parity: a whole-paragraph drag snaps to shot changes too, not just an edge
                 // resize (issue #13953). Whichever cue is captured first wins, and the other cue
@@ -2574,6 +2698,7 @@ public class AudioVisualizer : Control
             DrawParagraphs(context, ref renderCtx);
             DrawShotChanges(context, ref renderCtx);
             DrawChapters(context, ref renderCtx);
+            DrawVideoEndMarker(context, ref renderCtx);
             DrawCurrentVideoPosition(context, ref renderCtx);
             DrawNewParagraph(context, ref renderCtx);
 
@@ -4343,17 +4468,61 @@ public class AudioVisualizer : Control
     private static readonly IPen _paintPenCursorOnShotChange =
         new ImmutablePen(Brushes.LightCyan, 1.5, new ImmutableDashStyle(new[] { 2.0, 2.0 }, 1));
 
-    private void DrawCurrentVideoPosition(DrawingContext context, ref RenderContext renderCtx)
+    // Red vertical line at the end of the video, so the review window shows when a clip runs past
+    // the last frame (the merge then trims the tail, which can cut speech).
+    private void DrawVideoEndMarker(DrawingContext context, ref RenderContext renderCtx)
     {
-        // Without peaks there is no timeline to place the cursor on (closing the video clears them
-        // and resets the position to 0). With them, 0 is a real position - after Stop, or on a
-        // freshly opened video - and the cursor shows there like anywhere else.
-        if (renderCtx.SampleRate <= 0 || renderCtx.CurrentVideoPositionSeconds < 0)
+        if (VideoEndSeconds <= 0)
         {
             return;
         }
 
-        var currentPositionPos = SecondsToXPositionOptimized(renderCtx.CurrentVideoPositionSeconds - renderCtx.StartPositionSeconds, renderCtx.SampleRate, renderCtx.ZoomFactor);
+        if (!Se.Settings.General.ShowVideoEndLine)
+        {
+            return;
+        }
+
+        var sampleRate = renderCtx.SampleRate > 0 ? renderCtx.SampleRate : FallbackSampleRate;
+        if (sampleRate <= 0)
+        {
+            return;
+        }
+
+        var x = SecondsToXPositionOptimized(VideoEndSeconds - renderCtx.StartPositionSeconds, sampleRate, renderCtx.ZoomFactor);
+        // The video end is normally the far right of the audio, so x lands exactly on the edge -
+        // "x >= Width" used to skip the line entirely in the main window. Clamp into view instead.
+        if (x < 0 || x > renderCtx.Width)
+        {
+            return;
+        }
+
+        // Traffic light: red when a clip runs past the line (it will be trimmed), green when fine.
+        var pen = VideoEndOverrun
+            ? _videoEndPenOverrun
+            : _videoEndPenOk;
+        var clampedX = Math.Min(Math.Max(x, pen.Thickness / 2), renderCtx.Width - pen.Thickness / 2);
+        context.DrawLine(pen, new Point(clampedX, 0), new Point(clampedX, renderCtx.Height));
+    }
+
+    private void DrawCurrentVideoPosition(DrawingContext context, ref RenderContext renderCtx)
+    {
+        // Without peaks there is no timeline to place the cursor on (closing the video clears them
+        // and resets the position to 0) UNLESS a caller is driving the control's time axis on its
+        // own - the review window's generated-speech track has its own peaks of a different length
+        // and the shared playhead must still show there. In that case UseFallbackSampleRate tells
+        // this control which rate to measure the x position with.
+        if (renderCtx.CurrentVideoPositionSeconds < 0)
+        {
+            return;
+        }
+
+        var sampleRate = renderCtx.SampleRate > 0 ? renderCtx.SampleRate : FallbackSampleRate;
+        if (sampleRate <= 0)
+        {
+            return;
+        }
+
+        var currentPositionPos = SecondsToXPositionOptimized(renderCtx.CurrentVideoPositionSeconds - renderCtx.StartPositionSeconds, sampleRate, renderCtx.ZoomFactor);
         if (currentPositionPos >= 0 && currentPositionPos < renderCtx.Width)
         {
             var isOnShotChange = GetShotChangeIndex(renderCtx.CurrentVideoPositionSeconds) >= 0;
@@ -4539,12 +4708,58 @@ public class AudioVisualizer : Control
 
             changed = !SameParagraphs(_previousDisplayableParagraphs, _displayableParagraphs) ||
                       !SameParagraphs(_previousSelectedParagraphs, AllSelectedParagraphs);
+
+            // Remember the view the block set was built at, so NeedsParagraphReload can tell a
+            // meaningful scroll from the sub-pixel per-frame drift of the center-ease (the review
+            // window calls SetPosition on every frame while it keeps the play-head centered).
+            _paragraphsAtStartPositionSeconds = StartPositionSeconds;
+            _paragraphsAtZoomFactor = ZoomFactor;
         }
 
         if (changed)
         {
             InvalidateVisual();
         }
+    }
+
+    private double _paragraphsAtStartPositionSeconds = double.NaN;
+    private double _paragraphsAtZoomFactor = double.NaN;
+
+    /// <summary>
+    /// True when the view has moved far enough since the last <see cref="SetPosition"/> that the
+    /// set of blocks it holds is likely stale and worth rebuilding (scroll, zoom, resize). The
+    /// center-ease writes StartPositionSeconds many times a second; rebuilding the paragraph lists
+    /// on every one of those writes re-sorts a large subtitle ~60 times a second, so a caller that
+    /// drives SetPosition every frame should gate on this instead. A block spans at least a few
+    /// seconds, so a threshold of half a second of drift never hides one that scrolled into view.
+    /// </summary>
+    public bool NeedsParagraphReload()
+    {
+        if (double.IsNaN(_paragraphsAtStartPositionSeconds))
+        {
+            return true;
+        }
+
+        if (Math.Abs(ZoomFactor - _paragraphsAtZoomFactor) > 0.001)
+        {
+            return true;
+        }
+
+        if (WavePeaks == null || WavePeaks.SampleRate <= 0)
+        {
+            return true;
+        }
+
+        var visibleSeconds = ZoomFactor > 0 ? Bounds.Width / (ZoomFactor * WavePeaks.SampleRate) : 0;
+        if (visibleSeconds <= 0)
+        {
+            return true;
+        }
+
+        // 1/8 of the visible window, but never more than 0.5 s - so a zoomed-in view still reloads
+        // before a block can slide into it, while a zoomed-out one does not rebuild constantly.
+        var threshold = Math.Min(0.5, visibleSeconds / 8.0);
+        return Math.Abs(StartPositionSeconds - _paragraphsAtStartPositionSeconds) > threshold;
     }
 
     /// <summary>
@@ -4931,6 +5146,67 @@ public class AudioVisualizer : Control
         }
 
         return -1;
+    }
+
+    /// <summary>
+    /// Finds where the speech after <paramref name="startSeconds"/> begins, i.e. the end of the
+    /// silence the position sits in. Used to trim the leading silence off the right half of a
+    /// split. The position must be in silence, at least <paramref name="minSilenceSeconds"/> must
+    /// pass before the speech, and the loud part must then be sustained for
+    /// <paramref name="minSpeechSeconds"/> - so a short noise blip on the waveform is not mistaken
+    /// for the speech. Returns -1 when any of that fails; the caller then leaves the position
+    /// untouched.
+    /// </summary>
+    /// <returns>video position in seconds, -1 if not found</returns>
+    public double FindSpeechStartAfter(double thresholdPercent, double minSilenceSeconds, double minSpeechSeconds, double startSeconds, double maxForwardSeconds)
+    {
+        if (WavePeaks == null || WavePeaks.Peaks.Count == 0)
+        {
+            return -1;
+        }
+
+        var startSample = SecondsToSampleIndex(startSeconds);
+        if (startSample < 0 || startSample >= WavePeaks.Peaks.Count)
+        {
+            return -1;
+        }
+
+        var threshold = thresholdPercent / 100.0 * WavePeaks.HighestPeak;
+        if (WavePeaks.Peaks[startSample].Abs > threshold)
+        {
+            return -1; // already speech
+        }
+
+        var endSample = maxForwardSeconds > 0
+            ? Math.Min(WavePeaks.Peaks.Count - 1, SecondsToSampleIndex(startSeconds + maxForwardSeconds))
+            : WavePeaks.Peaks.Count - 1;
+        var minSilenceSamples = Math.Max(0, SecondsToSampleIndex(minSilenceSeconds));
+        var minSpeechSamples = Math.Max(1, SecondsToSampleIndex(minSpeechSeconds));
+
+        for (var i = startSample + minSilenceSamples; i <= endSample; i++)
+        {
+            if (WavePeaks.Peaks[i].Abs <= threshold)
+            {
+                continue;
+            }
+
+            // The loud stretch must last, or a single noise blip would be taken for the onset.
+            var speechEnd = Math.Min(endSample + 1, i + minSpeechSamples);
+            double sum = 0;
+            var count = 0;
+            for (var j = i; j < speechEnd; j++)
+            {
+                sum += WavePeaks.Peaks[j].Abs;
+                count++;
+            }
+
+            if (count > 0 && sum / count > threshold)
+            {
+                return SampleIndexToSeconds(i);
+            }
+        }
+
+        return -1; // no sustained speech within the window
     }
 
     /// <summary>

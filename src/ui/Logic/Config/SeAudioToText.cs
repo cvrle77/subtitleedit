@@ -63,6 +63,23 @@ public class SeAudioToText
     public bool CrispAsrIsolateSpeech { get; set; }
     public bool CrispAsrDetectSpeakers { get; set; }
     public string CrispAsrVad { get; set; } = "auto";
+
+    // After speech-to-text, rebreak the result into subtitle lines using the engine's word-level
+    // timings (plus Silero VAD for pauses and ends) - the "smart break" rules. Works for engines
+    // that emit word timings (WhisperX, faster-whisper, whisper.cpp, ...). Default off.
+    public bool SmartBreak { get; set; }
+
+    // Optional AI post-fix (OpenAI-compatible chat endpoint, e.g. OpenRouter): adds punctuation
+    // and fixes spelling/dialect in the transcript. Applied inside the word-timed rebuid so the
+    // timings stay from the original words.
+    public bool AiFix { get; set; }
+    public string AiFixUrl { get; set; } = "https://openrouter.ai/api/v1/chat/completions";
+    public string AiFixApiKey { get; set; } = string.Empty;
+    public string AiFixModel { get; set; } = "qwen/qwen3.7-flash";
+    public string AiFixPrompt { get; set; } =
+        "Dodaj SAMO interpunkciju (zareze i tačke) u srpski tekst ispod. " +
+        "Ne menjaj nijednu reč i ne ispravljaj pravopis. Vrati tačno isti broj redova, red po red.";
+
     public bool ForcedAlignerEndsFromIsolatedSpeech { get; set; }
 
     public bool WhisperAutoAdjustTimings { get; set; } = true;

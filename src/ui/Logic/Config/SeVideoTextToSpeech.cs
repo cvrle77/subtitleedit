@@ -25,11 +25,101 @@ public class SeVideoTextToSpeech
     public string ElevenLabsApiKey { get; set; }
     public string ElevenLabsModel { get; set; }
     public string ElevenLabsLanguage { get; set; }
+
+    // A hidden accent applied to every line sent to ElevenLabs (v4) - inserted as a leading tag
+    // ("[American accent] ...") without ever appearing in the visible text. Empty = none.
+    public string ElevenLabsGeneralAccent { get; set; }
+
+    // Review window layout: true = three columns (tags left, line grid centre, engine/voice
+    // controls right); false = the original layout.
+    public bool ThreeColumnReview { get; set; }
+
+    // When true, clicking OK in the review first saves the TTS session next to the subtitle being
+    // worked on - the same export as the Export button, but silently (no picker, no prompts) - and
+    // then does what OK normally does. See the cvrle77 options section.
+    public bool ReviewOkAlsoExports { get; set; }
+
+    // Last folder used for TTS import/export; used to open the import picker straight there so it
+    // does not start in a (possibly slow) remembered location such as Quick access.
+    public string LastImportExportFolder { get; set; } = string.Empty;
+
+    // --- Review window features. Each one also requires Se.Settings.General.ForkFeatures, so the
+    // master switch reverts them all to upstream. See Logic.Config.Fork. ---
+
+    // Video player above the tag palette in the review's left column, and playback driven by it
+    // (the video is the clock, the sound comes from the clip player). Off = no video, the review
+    // plays clips the way upstream does.
+    public bool ReviewVideoPlayer { get; set; }
+
+    // The red anchor marker above the waveform: the view scrolls the play-head to the marker
+    // instead of always to the centre.
+    public bool ReviewAnchorMarker { get; set; }
+
+    // ElevenLabs credit panel at the top of the controls column.
+    public bool ReviewCredits { get; set; }
+
+    // Audio-tag palette and the category colouring of "[tag]"s in the grid and the edit box.
+    public bool ReviewTagPalette { get; set; }
+
+    // The review grid's fork look: alternating rows, vertically centred cells and the fork's column
+    // order (Voice + row actions pinned right).
+    public bool ReviewGridLook { get; set; }
+
+    // "Split line" / "Merge lines" in the grid's right-click menu.
+    public bool ReviewSplitMerge { get; set; }
+
+    // Tint the play-head of the waveform that is carrying the sound.
+    public bool ReviewPlayheadTint { get; set; }
+
+    // Play always starts from the block's beginning instead of from the play-head.
+    public bool ReviewPlayFromBlockStart { get; set; }
+
+    // Two waveforms in the review: the original video audio and the generated speech laid out at
+    // each cue. Off = upstream's single waveform (the original video audio only).
+    public bool ReviewTwoWaveforms { get; set; }
+
+    // TTS window/review fork layout: the review's three columns (controls right) and "Auto-continue
+    // playing" moved into the controls column. Off = upstream: controls on the left, auto-continue
+    // in the bottom bar below the waveform.
+    public bool TtsLayout { get; set; }
+
+    // ElevenLabs v4 (chunked generation, request stitching, v4 models). Off = upstream, whose
+    // ElevenLabs model list has no v4 entries and never chunks.
+    public bool ElevenLabsV4 { get; set; }
+
+    // The hidden general accent prepended to every line for the tag-reading models. Off = upstream,
+    // which has no such option.
+    public bool ElevenLabsGeneralAccentEnabled { get; set; }
+
+    // Clean each line's text (tags, contractions, acronyms) before it is sent to the engine and
+    // written to the session. Off = upstream: the text goes through untouched.
+    public bool TtsCleanText { get; set; }
+
+    // Regenerate previews only the clip, without starting the video/play-head.
+    public bool ReviewRegeneratePreviewOnly { get; set; }
+
+    // Remembered widths (pixels) of the three columns in the three-column review layout, so the
+    // splitter positions survive reopening the window. 0 = not set yet (use the defaults).
+    public double ThreeColumnTagWidth { get; set; }
+    public double ThreeColumnGridWidth { get; set; }
+    public double ThreeColumnControlsWidth { get; set; }
+
     public double ElevenLabsStability { get; set; }
     public double ElevenLabsSimilarity { get; set; }
     public double ElevenLabsSpeakerBoost { get; set; }
     public double ElevenLabsSpeed { get; set; }
     public double ElevenLabsStyleeExaggeration { get; set; }
+
+    // When true, ElevenLabs lines are synthesized in parallel with a bounded pool sized to the
+    // account's plan (read from the API). Off by default: the linear one-at-a-time generation
+    // stays exactly as it was.
+    public bool ElevenLabsGenerateInParallel { get; set; }
+
+    // Last tier read from the API ("creator", "pro", ...) and the concurrency it maps to. Cached so
+    // the settings dialog can show the detected plan without a network call each time.
+    public string ElevenLabsTier { get; set; }
+    public int ElevenLabsMaxConcurrency { get; set; }
+
     public string MurfApiKey { get; set; }
     public string MurfStyle { get; set; }
     [Obsolete("Use Se.Settings.Providers.MistralApiKey - kept only so old settings files can be migrated.")]
@@ -190,6 +280,20 @@ public class SeVideoTextToSpeech
     // Output sample rate (0 = default)
     public int OutputSampleRate { get; set; }
 
+    // Merge every clip onto the timeline in ONE ffmpeg pass (adelay per clip + amix) instead of
+    // the running concat+amix chain that re-encodes the whole growing track once per line. Same
+    // output format, same clip start times; vastly faster on a long session.
+    public bool FastMerge { get; set; }
+
+    // How many segments the "adjust speed" step processes at once. Each segment is still handled by
+    // its own ffmpeg calls, so the output is unchanged - they just run in parallel. 1 = the old
+    // one-at-a-time behaviour.
+    public int AdjustSpeedParallelism { get; set; }
+
+    // Show the "Re-run adjust speed" testing button in the TTS window (reruns the speed + merge
+    // stages on the last clips without calling the engine). Off by default - it is a test tool.
+    public bool ShowTestingTools { get; set; }
+
     // Base folder the generation clips are written into while a run is in progress. Empty = the
     // system temp folder. Each run still gets its own "se-tts-<guid>" subfolder inside it, so
     // pointing this at the subtitle folder keeps the clips next to the work instead of buried in
@@ -199,6 +303,12 @@ public class SeVideoTextToSpeech
     // Remove the run's generation folder when the Text to speech window closes. Turn it off to
     // keep the per-line clips around for inspection - nothing else sweeps them.
     public bool DeleteTempFiles { get; set; }
+
+    // Naming of the per-line wavs written by Review -> Export. "numeric" keeps the old
+    // 0001.wav names; "descriptive" writes the line number, the first few spoken words and the
+    // take index, e.g. "002-bla-bla-bla-00.wav". Import reads the name from the JSON, so both
+    // schemes round-trip; this only decides what Export writes.
+    public string ExportFileNaming { get; set; }
 
     // Remembered actor/voice mappings. Pre-fills the cast dialog so users don't have to
     // re-assign the same character voices every time they open a new subtitle. Keyed by actor
@@ -214,11 +324,17 @@ public class SeVideoTextToSpeech
         AzureRegion = string.Empty;
         ElevenLabsModel = "eleven_v4_turbo";
         ElevenLabsLanguage = string.Empty;
+        ElevenLabsGeneralAccent = string.Empty;
+        ThreeColumnReview = false;
+        ReviewOkAlsoExports = true;
         ElevenLabsStability = 0.5;
         ElevenLabsSimilarity = 0.5;
         ElevenLabsSpeakerBoost = 0;
         ElevenLabsStyleeExaggeration = 0;
         ElevenLabsSpeed = 1.0;
+        ElevenLabsGenerateInParallel = false;
+        ElevenLabsTier = string.Empty;
+        ElevenLabsMaxConcurrency = 0;
         ReviewAudioClips = true;
         CustomAudio = false;
         CustomAudioStereo = true;
@@ -321,8 +437,26 @@ public class SeVideoTextToSpeech
         HighQualityTimeStretchEnabled = false;
         SilencePaddingMs = 0;
         OutputSampleRate = 0;
+        FastMerge = false;
+        AdjustSpeedParallelism = 4;
+        ShowTestingTools = false;
         GenerationFolder = string.Empty;
         DeleteTempFiles = true;
+        ExportFileNaming = "descriptive";
+        ReviewVideoPlayer = true;
+        ReviewAnchorMarker = true;
+        ReviewCredits = true;
+        ReviewTagPalette = true;
+        ReviewGridLook = true;
+        ReviewSplitMerge = true;
+        ReviewPlayheadTint = true;
+        ReviewPlayFromBlockStart = true;
+        ReviewRegeneratePreviewOnly = true;
+        ReviewTwoWaveforms = true;
+        TtsCleanText = true;
+        ElevenLabsV4 = true;
+        TtsLayout = true;
+        ElevenLabsGeneralAccentEnabled = true;
         LastActorVoiceMappings = new List<ActorVoiceMapping>();
     }
 }

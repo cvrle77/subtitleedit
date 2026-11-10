@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Media;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -15,7 +16,9 @@ using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Voices;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.VoiceCloneConsent;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic.Download;
 using Nikse.SubtitleEdit.Logic.Media;
+using Nikse.SubtitleEdit.Controls.VideoPlayer;
 using Nikse.SubtitleEdit.Logic.VideoPlayers.LibMpvDynamic;
 using System;
 using System.Collections.Generic;
@@ -57,12 +60,94 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // are gated on it, and the default false left them dead until the first regenerate ran.
     [ObservableProperty] private bool _isRegenerateEnabled = true;
     [ObservableProperty] private bool _isElevenLabsControlsVisible;
-    [ObservableProperty] private bool _autoContinue;
+    // On by default: after a clip finishes the review plays the next line automatically, so a
+    // full pass can be listened to without clicking each row.
+    [ObservableProperty] private bool _autoContinue = true;
+
+    // --- Fork feature switches (see Logic.Config.Fork). Each getter is the master switch AND the
+    // feature's own setting, so the master reverts everything; each setter stores the setting and
+    // notifies, so the bound UI follows at once and the review never has to be reopened. ---
+
+    private void SetReviewSwitch(bool value, Action<bool> store, string name)
+    {
+        store(value);
+        OnPropertyChanged(name);
+        OnPropertyChanged(nameof(IsCreditsPanelVisible));
+    }
+
+    public bool ShowReviewVideo
+    {
+        get => Fork.ReviewVideoPlayer;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewVideoPlayer = v, nameof(ShowReviewVideo));
+    }
+
+    public bool ShowReviewAnchorMarker
+    {
+        get => Fork.ReviewAnchorMarker;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewAnchorMarker = v, nameof(ShowReviewAnchorMarker));
+    }
+
+    public bool ShowReviewCredits
+    {
+        get => Fork.ReviewCredits;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewCredits = v, nameof(ShowReviewCredits));
+    }
+
+    public bool ShowReviewTagPalette
+    {
+        get => Fork.ReviewTagPalette;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewTagPalette = v, nameof(ShowReviewTagPalette));
+    }
+
+    public bool ShowReviewGridLook
+    {
+        get => Fork.ReviewGridLook;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewGridLook = v, nameof(ShowReviewGridLook));
+    }
+
+    public bool ShowReviewSplitMerge
+    {
+        get => Fork.ReviewSplitMerge;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewSplitMerge = v, nameof(ShowReviewSplitMerge));
+    }
+
+    public bool ShowReviewPlayheadTint
+    {
+        get => Fork.ReviewPlayheadTint;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewPlayheadTint = v, nameof(ShowReviewPlayheadTint));
+    }
+
+    public bool ShowReviewPlayFromBlockStart
+    {
+        get => Fork.ReviewPlayFromBlockStart;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewPlayFromBlockStart = v, nameof(ShowReviewPlayFromBlockStart));
+    }
+
+    public bool ShowReviewRegeneratePreviewOnly
+    {
+        get => Fork.ReviewRegeneratePreviewOnly;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewRegeneratePreviewOnly = v, nameof(ShowReviewRegeneratePreviewOnly));
+    }
+
+    public bool ShowReviewTwoWaveforms
+    {
+        get => Fork.ReviewTwoWaveforms;
+        set => SetReviewSwitch(value, v => Se.Settings.Video.TextToSpeech.ReviewTwoWaveforms = v, nameof(ShowReviewTwoWaveforms));
+    }
+
+    // When checked, a regenerate ignores the configured general accent (the hidden accent tag
+    // added to every line on the way to the API) for the line being regenerated.
+    [ObservableProperty] private bool _skipGeneralAccent;
     [ObservableProperty] private bool _isPlayVisible;
     [ObservableProperty] private bool _isStopVisible;
     // Waveform playhead as a time code, so a spot can be compared with the original video (#15211).
     [ObservableProperty] private string _positionText = FormatPosition(0);
     [ObservableProperty] private bool _isElevenLabsEngineV3Selected;
+
+    // True for the eleven_v3 / eleven_v4 family, which expose only Stability and Similarity:
+    // SpeakerBoost, Speed and Style are ignored by those models (the text-to-dialogue endpoint
+    // has no such fields), so their sliders must be hidden instead of appearing to do nothing.
+    [ObservableProperty] private bool _isElevenLabsV3OrV4Selected;
     // Whether the picked engine has a settings dialog. The knobs in there (emotion, speed,
     // instruction) change how a regenerated line sounds, so they belong next to Regenerate.
     [ObservableProperty] private bool _isEngineSettingsVisible;
@@ -96,12 +181,171 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     public Window? Window { get; set; }
     public TableView LineGrid { get; internal set; }
+    public TextBox? EditTextBox { get; set; }
     public AudioVisualizer? AudioVisualizer { get; set; }
+
+    // The tag palette control. Used to let keyboard shortcuts (bare R = regenerate) fire while the
+    // mouse is over the palette even though clicking a tag moved focus to the text box.
+    public InputElement? TagPalette { get; set; }
+
+    // Bare tag names (without brackets) currently present in the selected line's leading "[...]"
+    // group. The tag palette highlights buttons whose tag is in this set, so the user can see which
+    // tags are on and click one to turn it off.
+    public ObservableCollection<string> ActiveTags { get; } = new();
+
+    // Rebuilds ActiveTags from the selected line's current text. Called on selection change and on
+    // every text edit (palette click or hand-typed text) so the highlights stay in sync.
+    public void RefreshActiveTags()
+    {
+        ActiveTags.Clear();
+        if (SelectedLine == null)
+        {
+            return;
+        }
+
+        // Every "[...]" group in the line, not only the leading one, so a tag inserted mid-text
+        // (e.g. a pause) lights up its palette chip too.
+        var text = SelectedLine.Text ?? string.Empty;
+        var index = 0;
+        while (index < text.Length)
+        {
+            var open = text.IndexOf('[', index);
+            if (open < 0)
+            {
+                break;
+            }
+
+            var close = text.IndexOf(']', open + 1);
+            if (close < 0)
+            {
+                break;
+            }
+
+            var inner = text.Substring(open + 1, close - open - 1);
+            if (inner.Trim().Length > 0)
+            {
+                foreach (var tag in SplitTagGroup(inner))
+                {
+                    ActiveTags.Add(tag);
+                }
+            }
+
+            index = close + 1;
+        }
+    }
+
+    /// <summary>
+    /// Removes the "[...]" tag the caret sits in: the whole group when it holds only one tag, or
+    /// just the tag under the caret when the group is a multi-tag leading group. Called when the
+    /// user clicks a tag in the edit box.
+    /// </summary>
+    public void RemoveTagAtCaret()
+    {
+        var row = SelectedLine;
+        if (row == null || EditTextBox == null)
+        {
+            return;
+        }
+
+        var text = row.Text ?? string.Empty;
+        var caret = Math.Clamp(EditTextBox.CaretIndex, 0, text.Length);
+        if (caret == 0)
+        {
+            return;
+        }
+
+        var open = text.LastIndexOf('[', caret - 1);
+        if (open < 0)
+        {
+            return;
+        }
+
+        var close = text.IndexOf(']', open + 1);
+        if (close < 0)
+        {
+            return;
+        }
+
+        // Only a caret INSIDE the group counts as "on the tag": a click before '[' or after ']'
+        // must not remove it.
+        if (caret <= open || caret > close)
+        {
+            return;
+        }
+
+        var inner = text.Substring(open + 1, close - open - 1);
+        var tokens = TtsTagPalette.TokenizeGroup(inner);
+        var offset = caret - (open + 1);
+
+        // Find the tag token containing the caret, using the real character offsets. A known
+        // multi-word tag (e.g. "short pause") stays one token, so a click on either word removes it.
+        var removeIndex = -1;
+        for (var i = 0; i < tokens.Count; i++)
+        {
+            if (offset >= tokens[i].Start && offset <= tokens[i].Start + tokens[i].Length)
+            {
+                removeIndex = i;
+                break;
+            }
+        }
+
+        if (removeIndex < 0)
+        {
+            return;
+        }
+
+        var remaining = tokens
+            .Where((_, i) => i != removeIndex)
+            .Select(t => t.Tag)
+            .ToList();
+
+        var newText = remaining.Count == 0
+            ? TrimOneSpace(text.Substring(0, open), text.Substring(close + 1))
+            : text.Substring(0, open) + "[" + string.Join(" ", remaining) + "]" + text.Substring(close + 1);
+
+        row.Text = newText;
+        RefreshActiveTags();
+
+        EditTextBox.Text = newText;
+        EditTextBox.CaretIndex = Math.Clamp(open, 0, newText.Length);
+        EditTextBox.Focus();
+    }
+
+    // Joins the two sides of a removed tag: exactly one space when either side had one (so words
+    // don't run together), and none when the tag was glued to both sides.
+    private static string TrimOneSpace(string left, string right)
+    {
+        if (!left.EndsWith(' ') && !right.StartsWith(' '))
+        {
+            return left + right;
+        }
+
+        return (left.TrimEnd() + " " + right.TrimStart()).Trim();
+    }
+
+    // Second waveform stacked under the original one: the generated speech of every row placed at
+    // its cue's start, on the same time axis. The window keeps it in sync with AudioVisualizer
+    // (scroll, zoom, selection, playhead).
+    public AudioVisualizer? AudioVisualizerTts { get; set; }
     public TtsStepResult[] StepResults { get; set; }
 
     // Source-of-truth peaks (of the original video audio) for the waveform shown next to the
     // review grid. May be null when no video is loaded — the visualizer then sits idle.
     [ObservableProperty] private WavePeakData2? _wavePeakData;
+
+    // Composite peaks of every row's generated clip laid out at the row's cue start - the "TTS
+    // wav" track under the original audio. Built in the background (see ScheduleTtsWaveformRebuild)
+    // and rebuilt whenever clips or cue times change.
+    [ObservableProperty] private WavePeakData2? _wavePeakDataTts;
+
+    // End of the loaded video in seconds (0 = unknown). Drawn as a line on both waveform tracks so
+    // a clip that runs past the last frame is visible; the merge trims that tail, which can cut
+    // speech, so the user can drag the line's end back first.
+    [ObservableProperty] private double _videoEndSeconds;
+
+    // True when some cue ends after the video does - the end-of-video line turns red (a clip will be
+    // trimmed), green when everything fits.
+    [ObservableProperty] private bool _videoEndOverrun;
 
     // Each ReviewRow's paragraph projected as a SubtitleLineViewModel so AudioVisualizer drag
     // logic (which writes to SubtitleLineViewModel.StartTime/EndTime) works unchanged. The
@@ -120,6 +364,238 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // picker was last used (#13881).
     public string SubtitleFileName { get; set; } = string.Empty;
 
+    // Character usage on the ElevenLabs account captured before the generate run, so the review
+    // can show what the run cost. Set by the TTS window before the review opens; null when unknown
+    // (an imported session, a non-ElevenLabs engine, or a failed lookup).
+    public int? ElevenLabsUsedBeforeSession { get; set; }
+
+    // Text of the live credit line above the tag palette. Updated from the account itself
+    // (GET /v1/user/subscription), not by tallying requests.
+    [ObservableProperty] private string _elevenLabsCreditsFixedText = string.Empty;
+    [ObservableProperty] private string _elevenLabsCreditsNowText = string.Empty;
+    [ObservableProperty] private string _elevenLabsCreditsSpentText = string.Empty;
+    [ObservableProperty] private bool _isElevenLabsCreditsVisible;
+
+    // The credit panel's visibility: the fork switch AND the credit state. Bound by the panel, so
+    // turning the switch off hides it at once.
+    public bool IsCreditsPanelVisible => Fork.ReviewCredits && IsElevenLabsCreditsVisible;
+
+    // The binding listens on IsCreditsPanelVisible, so a change of the credit state alone (an
+    // imported session fetching the balance) has to announce the computed name too - without this
+    // the panel only appeared once the switch was toggled.
+    partial void OnIsElevenLabsCreditsVisibleChanged(bool value) => OnPropertyChanged(nameof(IsCreditsPanelVisible));
+
+    private int? _elevenLabsCreditsBaseline;
+
+    // The review's video surface (left column, above the tags). Its sound follows the
+    // "Original"/"Generated" waveform labels: muted while the generated clips play.
+    public VideoPlayerControl? VideoPlayerControl { get; set; }
+    private double _lastVideoSeekSeconds = -1;
+    // When that seek was asked for. A freshly opened mpv keeps reporting the pre-seek position (0)
+    // for a moment, and acting on it moved the play-head - and started the first block's clip.
+    private long _lastSeekTicks;
+    private bool _isOriginalAudioActive;
+    // Row's own audio, cut out of the video, so "Original" plays through the same per-line flow as
+    // a generated clip. Keyed by the row's time range.
+    private readonly Dictionary<string, string> _originalClipCache = new();
+
+    private ReviewRow? _activeClipRow;
+
+    // The start of the first line that begins after the given position (for skipping the silence
+    // between lines), or null when there is none.
+    private double? NextRowStartAfter(double seconds)
+    {
+        var best = (double?)null;
+        foreach (var row in Lines)
+        {
+            var start = row.StepResult.Paragraph?.StartTime.TotalSeconds;
+            if (start.HasValue && start.Value > seconds && (best == null || start.Value < best.Value))
+            {
+                best = start;
+            }
+        }
+
+        return best;
+    }
+
+    // The row whose time range contains the given position (for scheduling clips under the video).
+    private ReviewRow? RowAtPosition(double seconds)
+    {
+        foreach (var row in Lines)
+        {
+            var paragraph = row.StepResult.Paragraph;
+            if (paragraph != null
+                && seconds >= paragraph.StartTime.TotalSeconds
+                && seconds < paragraph.EndTime.TotalSeconds)
+            {
+                return row;
+            }
+        }
+
+        return null;
+    }
+    private async Task<string?> GetOriginalClipAsync(ReviewRow row)
+    {
+        var paragraph = row.StepResult.Paragraph;
+        if (paragraph == null || string.IsNullOrEmpty(_videoFileName) || !File.Exists(_videoFileName))
+        {
+            return null;
+        }
+
+        var key = $"{paragraph.StartTime.TotalMilliseconds:0}_{paragraph.EndTime.TotalMilliseconds:0}";
+        if (_originalClipCache.TryGetValue(key, out var cached) && File.Exists(cached))
+        {
+            return cached;
+        }
+
+        var ffmpeg = Se.Settings.General.FfmpegPath;
+        if (!File.Exists(ffmpeg))
+        {
+            return null;
+        }
+
+        var output = Path.Combine(_waveFolder, $"orig_{key}.wav");
+        var args = $"-nostdin -y -ss {paragraph.StartTime.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)} " +
+                   $"-t {paragraph.Duration.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture)} " +
+                   $"-i \"{_videoFileName}\" -vn -ac 2 \"{output}\"";
+        try
+        {
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo(ffmpeg, args)
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                },
+            };
+            process.Start();
+            await process.WaitForExitAsync();
+            if (process.ExitCode == 0 && File.Exists(output))
+            {
+                _originalClipCache[key] = output;
+                return output;
+            }
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, "ReviewSpeech: could not cut the original audio clip");
+        }
+
+        return null;
+    }
+
+    public void UseOriginalAudio() => SetAudioSource(original: true);
+
+    public void UseTtsAudio() => SetAudioSource(original: false);
+
+    // Switching the source NEVER starts playback on its own - if nothing is playing, stay silent.
+    // If a line is already playing, restart it from the top in the new source.
+    private void SetAudioSource(bool original)
+    {
+        if (_isOriginalAudioActive == original)
+        {
+            return;
+        }
+
+        _isOriginalAudioActive = original;
+        ApplyVideoAudio();
+        ApplyPlayheadHighlight();
+        LogVideoState($"source={(original ? "original" : "generated")}");
+
+        // Never starts playback on its own: if the video is already running, switch the sound under
+        // it; otherwise stay silent.
+        if (VideoPlayerControl?.VideoPlayer.IsPlaying == true)
+        {
+            var row = RowAtPosition(VideoPlayerControl.VideoPlayer.Position);
+            if (row != null)
+            {
+                _activeClipRow = row;
+                _ = StartRowClipAsync(row);
+            }
+        }
+    }
+
+    // Diagnostic: what the video surface thinks it is doing, so the tools log answers "why does
+    // Original not play" without guessing.
+    private void LogVideoState(string where)
+    {
+        var v = VideoPlayerControl?.VideoPlayer;
+        var player = v == null ? "null" : v.GetType().Name;
+        var playing = v == null ? "?" : v.IsPlaying.ToString();
+        var pos = v == null ? "?" : v.Position.ToString("0.00", CultureInfo.InvariantCulture);
+        Se.WriteToolsLog($"TTS review video [{where}]: mode={(_isOriginalAudioActive ? "original" : "generated")}, player={player}, playing={playing}, pos={pos}");
+    }
+
+    private void ApplyVideoAudio()
+    {
+        // The video is muted in both modes: the sound always comes from the clip player. The video's
+        // own audio output does not survive a Stop/Play cycle - it stalled mpv (no picture, no
+        // sound), while the clip path works. Original therefore plays the row's audio cut out of the
+        // video (GetOriginalClipAsync) instead of unmuting the video.
+        if (VideoPlayerControl != null)
+        {
+            VideoPlayerControl.Volume = 0;
+        }
+    }
+
+    partial void OnIsStopVisibleChanged(bool value) => ApplyPlayheadHighlight();
+
+    // The play-head spans both stacked waveforms, so tint the half that is actually carrying the
+    // sound: the running track's play-head goes green, the idle one keeps the configured colour.
+    private void ApplyPlayheadHighlight()
+    {
+        var normal = Se.Settings.Waveform.WaveformCursorColor.FromHexToColor();
+        var highlight = Color.FromRgb(0x2E, 0xCC, 0x71);
+        var playing = Fork.ReviewPlayheadTint && IsStopVisible;
+        if (AudioVisualizer != null)
+        {
+            AudioVisualizer.WaveformCursorColor = playing && _isOriginalAudioActive ? highlight : normal;
+        }
+
+        if (AudioVisualizerTts != null)
+        {
+            AudioVisualizerTts.WaveformCursorColor = playing && !_isOriginalAudioActive ? highlight : normal;
+        }
+    }
+
+    // Opens the loaded video in the review's video surface and parks it on the playhead. The video
+    // stays muted - the sound always comes from the clip player (see ApplyVideoAudio).
+    public async Task OpenReviewVideoAsync()
+    {
+        if (VideoPlayerControl == null || string.IsNullOrEmpty(_videoFileName) || !File.Exists(_videoFileName))
+        {
+            Se.WriteToolsLog($"TTS review: video player not opened (control={VideoPlayerControl != null}, file=\"{_videoFileName}\")");
+            return;
+        }
+
+        try
+        {
+            await VideoPlayerControl.Open(_videoFileName);
+            await VideoPlayerControl.WaitForPlayersReadyAsync();
+            ApplyVideoAudio();
+            // A paused mpv only paints a frame after it has actually played once, so nudge it: seek,
+            // play, pause. Without this the surface stays blank.
+            VideoPlayerControl.SeekTo(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+            try
+            {
+                VideoPlayerControl.VideoPlayer.Play();
+                VideoPlayerControl.VideoPlayer.Pause();
+            }
+            catch (Exception playException)
+            {
+                Se.WriteToolsLog("TTS review video: prime failed: " + playException.Message, true);
+            }
+
+            var v = VideoPlayerControl.VideoPlayer;
+            Se.WriteToolsLog($"TTS review: video opened \"{_videoFileName}\" (player={v.GetType().Name}, duration={VideoPlayerControl.Duration:0.0}s, pos={v.Position:0.0}s, surface={VideoPlayerControl.ContentWidth}x{VideoPlayerControl.ContentHeight})");
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, "ReviewSpeech: could not open the video player");
+            Se.WriteToolsLog("TTS review: video player open FAILED: " + exception.Message, true);
+        }
+    }
+
     // What the video says during a paragraph - the transcript for a reference clip cut here (see
     // ResolvePerLineCloneVoiceAsync). Supplied by the TTS window, which knows the original-language
     // subtitle a translation was dubbed from; null when it does not, and the line's own text is
@@ -134,10 +610,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     private readonly IFolderHelper _folderHelper;
     private readonly IWindowService _windowService;
+    private readonly ITtsDownloadService _ttsDownloadService;
 
     private LibMpvDynamicPlayer? _mpvContext;
     private Lock _playLock;
     private readonly Timer _timer;
+    private UiTickPump? _cursorTimer;
     private volatile bool _isClosing;
     private string _videoFileName;
     private string _waveFolder;
@@ -151,10 +629,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
     // from SelectedLine - grid selection is two-way and can move during playback.
     private ReviewRow? _playingRow;
 
-    public ReviewSpeechViewModel(IFolderHelper folderHelper, IWindowService windowService)
+    public ReviewSpeechViewModel(IFolderHelper folderHelper, IWindowService windowService, ITtsDownloadService ttsDownloadService)
     {
         _folderHelper = folderHelper;
         _windowService = windowService;
+        _ttsDownloadService = ttsDownloadService;
 
         LineGrid = new TableView();
         Lines = new ObservableCollection<ReviewRow>();
@@ -179,14 +658,25 @@ public partial class ReviewSpeechViewModel : ObservableObject
         _cancellationToken = _cancellationTokenSource.Token;
 
         _playLock = new Lock();
-        // 100 ms: also drives the waveform playhead during playback, 200 ms looked steppy.
+        // 100 ms: drives the playback state machine (auto-continue, play/stop UI). The waveform
+        // playhead/scroll is driven separately at ~60 fps by _cursorTimer - 100 ms looked steppy.
         _timer = new Timer(100);
         _timer.Elapsed += OnTimerOnElapsed;
         _timer.Start();
+
+        // ~60 fps, same as the main window's waveform cursor. Reading mpv's position here (instead
+        // of on the 100 ms timer) is what makes the playhead and the center-scroll smooth.
+        _cursorTimer = new UiTickPump(TimeSpan.FromMilliseconds(16), CursorTick, DispatcherPriority.Normal);
     }
 
     private async void OnTimerOnElapsed(object? sender, ElapsedEventArgs args)
     {
+        // While the video is the master, clips are scheduled by CursorTick - the clip-end timer
+        // must not reset the UI (it would stop the video).
+        if (VideoPlayerControl?.VideoPlayer.IsPlaying == true)
+        {
+            return;
+        }
         if (_isClosing)
         {
             return;
@@ -221,14 +711,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 return;
             }
 
-            // The clip plays from the cue's start, so the waveform playhead is start + clip
-            // position - the user sees where in the cue the speech currently is (#14000).
-            var playingRow = _playingRow;
-            if (!paused && playingRow?.WaveformParagraph != null)
-            {
-                var playheadSeconds = playingRow.WaveformParagraph.StartTime.TotalSeconds + positionSeconds;
-                await Dispatcher.UIThread.InvokeAsync(() => SetWaveformPlayhead(playheadSeconds));
-            }
+            // The playhead is driven by _cursorTimer at ~60 fps; this 100 ms tick only runs the
+            // state machine (auto-continue, play/stop UI), so it deliberately does not move it -
+            // doing both here is what forced the cursor into 100 ms steps.
 
             // The row that is actually playing - not SelectedLine: two-way grid selection meant
             // clicking another row during playback made auto-continue advance from the *clicked*
@@ -310,6 +795,15 @@ public partial class ReviewSpeechViewModel : ObservableObject
         IsPlayVisible = true;
         IsStopVisible = false;
         _playingRow = null;
+        _activeClipRow = null;
+        // Keep the tick alive while a centre ease is running (an anchor drag, the glide after Stop):
+        // it stops itself once it has landed.
+        if (!_centerAnimActive)
+        {
+            _cursorTimer?.Stop();
+        }
+
+        try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* core not initialised yet */ }
         foreach (var l in Lines)
         {
             l.IsPlaying = false;
@@ -318,6 +812,111 @@ public partial class ReviewSpeechViewModel : ObservableObject
     }
 
     private async Task PlayAudio(string fileName)
+    {
+        Se.WriteToolsLog($"TTS review: PlayAudio \"{Path.GetFileName(fileName)}\" (original={_isOriginalAudioActive}, video={(VideoPlayerControl?.VideoPlayer.IsPlaying.ToString() ?? "null")}, row={(_playingRow == null ? "null" : "yes")})");
+
+        // The video is the master clock in both modes: it plays from the block start and the
+        // play-head follows it. The sound - Original or generated - comes from the clip player
+        // (see ApplyVideoAudio).
+        if (VideoPlayerControl != null)
+        {
+            var video = VideoPlayerControl.VideoPlayer;
+            ApplyVideoAudio();
+
+            // Play always starts from the block's beginning: the play-head is a split tool while
+            // stopped, not a resume point, so the audio and the waveform must start together. The
+            // row is the one the caller already resolved (_playingRow): Play() applies the
+            // play-head rule there, PlayRow takes it from the double-clicked row. Reading the
+            // play-head first here made the first double-click after an import play the FIRST
+            // block - the play-head was still at 0, so RowAtPosition(0) returned row one.
+            var startRow = _playingRow ?? RowAtPosition(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0) ?? SelectedLine;
+            var startSeconds = Fork.ReviewPlayFromBlockStart
+                ? startRow?.StepResult.Paragraph?.StartTime.TotalSeconds
+                    ?? AudioVisualizer?.CurrentVideoPositionSeconds
+                    ?? 0
+                : AudioVisualizer?.CurrentVideoPositionSeconds ?? 0;
+            _playingRow = startRow;
+            // Set before the clip is loaded: the cursor tick starts the row's clip whenever it sees
+            // a row that is not _activeClipRow, so leaving this null across the load started the
+            // same row twice - two mpv cores, and the second one destroyed the first mid-load.
+            _activeClipRow = startRow;
+
+            if (!video.IsPlaying)
+            {
+                try
+                {
+                    // Re-open and prime exactly like OpenReviewVideoAsync: after a reload a paused
+                    // mpv paints no frame until it has played once, and a bare Play() on a core left
+                    // mid-seek is accepted without ever resuming (no picture, no sound).
+                    _lastVideoSeekSeconds = startSeconds;
+                    _lastSeekTicks = Stopwatch.GetTimestamp();
+                    await VideoPlayerControl.Open(_videoFileName, startSeconds);
+                    VideoPlayerControl.SeekTo(startSeconds);
+                    video.Play();
+                    video.Pause();
+                    video.Play();
+                    LogVideoState("after play");
+                }
+                catch (Exception playException)
+                {
+                    Se.WriteToolsLog("TTS review video: open+play failed: " + playException.Message, true);
+                }
+            }
+
+            _cursorTimer?.Start();
+            IsPlayVisible = false;
+            IsStopVisible = true;
+        }
+
+        var clipRow = _playingRow ?? SelectedLine;
+        var clip = Fork.ReviewVideoPlayer && _isOriginalAudioActive && clipRow != null
+            ? await GetOriginalClipAsync(clipRow) ?? string.Empty
+            : fileName;
+        if (string.IsNullOrEmpty(clip))
+        {
+            // e.g. ffmpeg is not configured, so the original audio cannot be cut - stay silent.
+            // The rows were disabled and the playback timer is stopped by now (only StartClipAsync
+            // restarts it), so a bare return left every button dead until the window was reopened.
+            ResetPlaybackUiState();
+            return;
+        }
+
+        await StartClipAsync(clip, Fork.ReviewPlayFromBlockStart ? 0 : ClipOffsetForRow(clipRow));
+        _activeClipRow = clipRow;
+    }
+
+    // Starts a row's sound in the current mode: its TTS clip, or the original audio cut out of the
+    // video. Both go through the clip player - see ApplyVideoAudio.
+    private async Task StartRowClipAsync(ReviewRow row)
+    {
+        var file = row.StepResult.CurrentFileName;
+        if (_isOriginalAudioActive)
+        {
+            file = await GetOriginalClipAsync(row) ?? string.Empty;
+        }
+
+        if (string.IsNullOrEmpty(file))
+        {
+            return;
+        }
+
+        await StartClipAsync(file, ClipOffsetForRow(row));
+    }
+
+    // How far into the row's clip the play-head already is, so a mid-block Play starts the clip in
+    // sync with the video.
+    private double ClipOffsetForRow(ReviewRow? row)
+    {
+        if (row?.StepResult.Paragraph is not { } paragraph)
+        {
+            return 0;
+        }
+
+        var playhead = AudioVisualizer?.CurrentVideoPositionSeconds ?? paragraph.StartTime.TotalSeconds;
+        return Math.Max(0, playhead - paragraph.StartTime.TotalSeconds);
+    }
+
+    private async Task StartClipAsync(string fileName, double startSeconds = 0)
     {
         // A row can point at a deleted/moved file (e.g. an imported session whose folder was
         // cleaned). mpv's failed loadfile is only logged, so playback used to sit in "playing"
@@ -363,7 +962,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
             }
 
             // Through the local: a close running now can null the field out from under us.
-            await player.LoadAudio(fileName);
+            // The start position goes to LoadAudio (the file opens there): a seek after the load
+            // could land before mpv had the file and was dropped.
+            await player.LoadAudio(fileName, startSeconds);
         }
         catch (Exception exception)
         {
@@ -386,6 +987,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
 
         _timer.Start();
+        _cursorTimer?.Start();
     }
 
     internal void Initialize(
@@ -422,21 +1024,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
             row.StartHistory();
             Lines.Add(row);
 
-            // Mirror this row's paragraph as a SubtitleLineViewModel so the AudioVisualizer can
-            // draw + drag it. The visualizer's drag handlers mutate StartTime/EndTime on the VM,
-            // so OnWaveformParagraphChanged below forwards those edits back to row.StepResult.Paragraph.
-            var waveformParagraph = new SubtitleLineViewModel
-            {
-                Number = p.Paragraph.Number,
-                Text = p.Text,
-                StartTime = TimeSpan.FromMilliseconds(p.Paragraph.StartTime.TotalMilliseconds),
-                EndTime = TimeSpan.FromMilliseconds(p.Paragraph.EndTime.TotalMilliseconds),
-            };
-            waveformParagraph.UpdateDuration();
-            waveformParagraph.PropertyChanged += OnWaveformParagraphChanged;
-            row.WaveformParagraph = waveformParagraph;
-            WaveformParagraphs.Add(waveformParagraph);
-            _waveformParagraphToRow[waveformParagraph] = row;
+            AttachWaveformMirror(row);
         }
 
         // The caller passes either real peaks of the source video, an empty placeholder (when
@@ -444,6 +1032,15 @@ public partial class ReviewSpeechViewModel : ObservableObject
         // background generation in TextToSpeechViewModel.Import pushes real peaks into this
         // property once ffmpeg finishes, at which point the binding refreshes the visualizer.
         WavePeakData = wavePeakData;
+
+        // One-time alignment of every block with its generated clip length, before the track is
+        // drawn. Runs only here (open) and after a regenerate - never inside a rebuild - so a
+        // manual resize the user makes later is preserved.
+        AlignAllBlocksToAudio();
+
+        // Build the generated-speech track for the second waveform (background - reading every
+        // clip can take a moment on a long session).
+        ScheduleTtsWaveformRebuild();
 
         // Shared with the Cast dialog (see ActorVoiceDetector.FilterUsableEngines) so the two
         // windows always show the same set of usable engines. Add new engine availability rules
@@ -464,12 +1061,117 @@ public partial class ReviewSpeechViewModel : ObservableObject
         _videoFileName = videoFileName;
         _waveFolder = waveFolder;
 
+        // End-of-video marker for the waveform. Read once - it does not change for the session.
+        // 0 when there is no video or ffmpeg cannot read it (no line is drawn).
+        VideoEndSeconds = GetVideoDurationSeconds();
+        UpdateVideoEndOverrun();
+
         if (Lines.Count > 0)
         {
             SelectedLine = Lines[0];
             LineGrid.SelectedIndex = 0;
             LineGrid.ScrollIntoView(Lines[0]);
         }
+
+        // Pull the current ElevenLabs balance (the run has just spent credits) - off the UI thread
+        // and not awaited, so opening the review is not delayed by a network round trip.
+        _ = RefreshElevenLabsCreditsAsync();
+    }
+
+    /// <summary>
+    /// Refreshes the credit line by asking the ElevenLabs account itself (GET /v1/user/subscription)
+    /// rather than tallying the requests, so it shows the real balance. Called when the review opens
+    /// and after every regenerate.
+    /// </summary>
+    public async Task RefreshElevenLabsCreditsAsync()
+    {
+        if (SelectedEngine is not ElevenLabs || string.IsNullOrWhiteSpace(Se.Settings.Video.TextToSpeech.ElevenLabsApiKey))
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                IsElevenLabsCreditsVisible = false;
+                ElevenLabsCreditsFixedText = string.Empty;
+                ElevenLabsCreditsNowText = string.Empty;
+                ElevenLabsCreditsSpentText = string.Empty;
+            });
+            return;
+        }
+
+        (int Used, int Limit)? credits;
+        try
+        {
+            // Deliberately NOT _cancellationToken: Stop() cancels it and every Play/Regenerate
+            // replaces it (ReplaceCts), so the refresh that runs right after a regenerate was
+            // cancelled and its OperationCanceledException swallowed - the panel then kept the
+            // numbers from the first refresh for the rest of the session (Fixed == Now, no error).
+            // This is one small read-only GET; letting it finish is harmless.
+            credits = await _ttsDownloadService.GetElevenLabsCredits(CancellationToken.None);
+        }
+        catch (OperationCanceledException)
+        {
+            Se.WriteToolsLog("TTS review credits: refresh cancelled - the panel keeps its old values");
+            return;
+        }
+        catch (Exception ex)
+        {
+            Se.WriteToolsLog("TTS review credits: refresh failed - " + ex.Message, true);
+            SeLogger.Error(ex, "ReviewSpeech: could not read the ElevenLabs credit balance");
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            IsElevenLabsCreditsVisible = true;
+            if (credits == null)
+            {
+                ElevenLabsCreditsFixedText = "ElevenLabs credits: n/a";
+                ElevenLabsCreditsNowText = string.Empty;
+                ElevenLabsCreditsSpentText = string.Empty;
+                return;
+            }
+
+            var (used, limit) = credits.Value;
+            // The baseline is the balance the session started from: the pre-run reading the TTS
+            // window supplied (captured right before Generate), otherwise the first reading here.
+            // It is frozen on the first refresh, so "Fixed" stays put for the whole session.
+            _elevenLabsCreditsBaseline ??= ElevenLabsUsedBeforeSession ?? used;
+
+            // All three are REMAINING credits, so the arithmetic reads Fixed - Now = Spent.
+            var fixedRemaining = Math.Max(0, limit - _elevenLabsCreditsBaseline.Value);
+            var nowRemaining = Math.Max(0, limit - used);
+            // used grows as the session spends, so spent is used - baseline (Fixed - Now).
+            var spent = Math.Max(0, used - _elevenLabsCreditsBaseline.Value);
+
+            ElevenLabsCreditsFixedText = $"Fixed: {fixedRemaining:N0}";
+            ElevenLabsCreditsNowText = $"Now: {nowRemaining:N0}";
+            ElevenLabsCreditsSpentText = $"Spent: {spent:N0}";
+
+            // Diagnostic (credit panel): the numbers behind Fixed/Now/Spent. If the panel stops
+            // moving, this line is what says whether the refresh ran at all and what the account
+            // reported. Remove once the panel is trusted.
+            Se.WriteToolsLog(
+                $"TTS review credits: preSession={(ElevenLabsUsedBeforeSession?.ToString() ?? "null")}, " +
+                $"baseline={_elevenLabsCreditsBaseline.Value}, used={used}, limit={limit}, " +
+                $"fixed={fixedRemaining}, now={nowRemaining}, spent={spent}");
+        });
+    }
+
+    // Duration of the loaded video in seconds, 0 when there is no video or it cannot be read.
+    private double GetVideoDurationSeconds()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(_videoFileName) && File.Exists(_videoFileName))
+            {
+                return FfmpegMediaInfo2.Parse(_videoFileName).Duration?.TotalSeconds ?? 0;
+            }
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, $"ReviewSpeech: cannot read the video duration of \"{_videoFileName}\"");
+        }
+
+        return 0;
     }
 
     // Drag/edit done on the waveform mutates the SubtitleLineViewModel mirror; this writes the
@@ -498,8 +1200,82 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         // Cps depends on duration; refresh so the grid stays consistent with the dragged times.
         row.Cps = Math.Round(paragraph.GetCharactersPerSecond(), 2).ToString(CultureInfo.CurrentCulture);
+
+        // The other waveform shows the same cue block - repaint it too so a drag on one control
+        // moves the block on both.
+        InvalidateWaveforms();
     }
 
+    // The original-audio visualizer plus, when the window built it, the generated-speech one.
+    private IEnumerable<AudioVisualizer> WaveformControls()
+    {
+        if (AudioVisualizer != null)
+        {
+            yield return AudioVisualizer;
+        }
+
+        if (AudioVisualizerTts != null)
+        {
+            yield return AudioVisualizerTts;
+        }
+    }
+
+    // Copies the view state (scroll, zoom, playhead) from one waveform to the other so the two
+    // stay on the same time axis. Guarded against re-entry: assigning a property raises the other
+    // control's PropertyChanged, which would otherwise bounce straight back.
+    private bool _syncingWaveformView;
+
+    public void SyncWaveformView(AudioVisualizer source, AudioVisualizer target)
+    {
+        if (_syncingWaveformView || ReferenceEquals(source, target))
+        {
+            return;
+        }
+
+        _syncingWaveformView = true;
+        try
+        {
+            target.ZoomFactor = source.ZoomFactor;
+            target.VerticalZoomFactor = source.VerticalZoomFactor;
+            target.StartPositionSeconds = source.StartPositionSeconds;
+
+            // The playhead is NOT copied here: SetWaveformPlayhead writes CurrentVideoPositionSeconds
+            // on both controls directly each tick, and copying it back through this path only fed a
+            // feedback loop (the other control would re-raise for the value it already had and both
+            // ended up drifting off the same position).
+        }
+        finally
+        {
+            _syncingWaveformView = false;
+        }
+    }
+
+    // State of the smooth "keep the play-head centered" scroll - the same magnet the main window
+    // uses. While it runs the view eases to the center over the configured time instead of
+    // snapping, so a clip ending and the next one starting does not jerk the timeline. The target
+    // jumps on every clip change (start time of the new cue); when that happens the ease restarts
+    // from wherever the view is now, so the block still glides into the center.
+    private bool _centerAnimActive;
+    private long _centerAnimStartTicks;
+    private double _centerAnimFromSeconds;
+    private double _centerAnimTargetSeconds;
+
+    // Where on screen the play-head is anchored: the fraction of the visible window the red marker
+    // above the waveform sits at. 0.5 is the centre (the old behaviour); dragging the marker moves
+    // the anchor, so the view scrolls to put the play-head there instead of always in the middle.
+    private double _anchorFraction = 0.5;
+
+    public double AnchorFraction => _anchorFraction;
+
+    internal void SetAnchorFraction(double fraction)
+    {
+        _anchorFraction = Math.Clamp(fraction, 0.02, 0.98);
+        SetWaveformPlayhead(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+    }
+
+    // Called from the playback timer (and on any paused position change) to move the playhead and
+    // keep the view centered on it. The original waveform is the one that owns StartPositionSeconds
+    // here; the generated-speech one follows it through SyncWaveformView.
     private void SetWaveformPlayhead(double seconds)
     {
         var av = AudioVisualizer;
@@ -508,8 +1284,266 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return;
         }
 
+        // Both tracks show the same cursor. It is written here directly (not copied through
+        // SyncWaveformView) so the generated-speech track gets it too - the sync only carries the
+        // scroll/zoom, and leaving the cursor out of it there meant the second track's playhead
+        // never moved.
         av.CurrentVideoPositionSeconds = seconds;
+        var avTts = AudioVisualizerTts;
+        if (avTts != null)
+        {
+            avTts.CurrentVideoPositionSeconds = seconds;
+        }
+
+        // The video follows the playhead only while nothing is playing, and at most every 0.25 s:
+        // seeking on every 60 fps cursor tick hammered mpv into ~2 fps and "error running command".
+        if (VideoPlayerControl != null && !VideoPlayerControl.VideoPlayer.IsPlaying && Math.Abs(seconds - _lastVideoSeekSeconds) >= 0.25)
+        {
+            _lastVideoSeekSeconds = seconds;
+            _lastSeekTicks = Stopwatch.GetTimestamp();
+            try { VideoPlayerControl.SeekTo(seconds); } catch { /* not ready */ }
+        }
+
+        // Center mode is opt-in. Either the snap toggle (CenterVideoPosition) or the smooth one
+        // (CenterVideoPositionSmooth) enables it - the main window treats them as one "center any"
+        // flag, and this window must follow, otherwise turning on only "Center (smooth)" left the
+        // playhead walking off the right edge here.
+        var centerEnabled = Se.Settings.Waveform.CenterVideoPosition || Se.Settings.Waveform.CenterVideoPositionSmooth;
+
+        if (centerEnabled && av.WavePeaks != null)
+        {
+            var windowSeconds = av.EndPositionSeconds - av.StartPositionSeconds;
+            var anchor = Fork.ReviewAnchorMarker ? _anchorFraction : 0.5;
+            // No 0 clamp: at the video start the view has to be able to run left of zero (empty
+            // space) or the play-head can never reach the anchor there.
+            var centerTarget = seconds - windowSeconds * anchor;
+            var centerSuspended = av.IsEditingWithPointer || av.IsMouseWheelInteracting;
+
+            if (centerSuspended)
+            {
+                _centerAnimActive = false;
+            }
+            else
+            {
+                // The target jumped (a seek, the next clip) while the ease was still running:
+                // restart it from where the view is now. Carrying the old progress onto the new
+                // target snapped the view the rest of the way at once - the skip the user sees
+                // when one clip ends and the next begins.
+                if (_centerAnimActive && Math.Abs(centerTarget - _centerAnimTargetSeconds) > 0.15)
+                {
+                    _centerAnimActive = false;
+                }
+
+                if (!_centerAnimActive && Fork.WaveformAnchorGlide && Math.Abs(av.StartPositionSeconds - centerTarget) > 0.15)
+                {
+                    _centerAnimActive = true;
+                    _centerAnimFromSeconds = av.StartPositionSeconds;
+                    _centerAnimStartTicks = Stopwatch.GetTimestamp();
+                    // A paused view has no cursor tick running: start it so this ease actually
+                    // advances (a selection, an anchor drag). It stops itself when it has landed.
+                    _cursorTimer?.Start();
+                }
+
+                _centerAnimTargetSeconds = centerTarget;
+
+                if (_centerAnimActive)
+                {
+                    // Distance-based duration: one screen of travel takes CenterSmoothSeconds, an
+                    // adjacent block (nothing to skip) takes none - a 0 duration makes the progress
+                    // check below snap at once. Measured in screens, so the feel does not change with
+                    // the zoom level.
+                    var screens = windowSeconds > 0
+                        ? Math.Abs(centerTarget - _centerAnimFromSeconds) / windowSeconds
+                        : 1.0;
+                    var duration = Math.Sqrt(Math.Min(1.0, screens)) * Se.Settings.Waveform.CenterSmoothSeconds;
+                    var progress = (Stopwatch.GetTimestamp() - _centerAnimStartTicks) / (double)Stopwatch.Frequency / duration;
+                    if (progress >= 1)
+                    {
+                        _centerAnimActive = false;
+                        av.StartPositionSeconds = centerTarget;
+                    }
+                    else
+                    {
+                        // Ease-out: quick at first, settling as it reaches the center.
+                        var eased = 1 - Math.Pow(1 - progress, 3);
+                        av.StartPositionSeconds = _centerAnimFromSeconds + (centerTarget - _centerAnimFromSeconds) * eased;
+                    }
+                }
+                else
+                {
+                    av.StartPositionSeconds = centerTarget;
+                }
+
+                SyncWaveformView(av, AudioVisualizerTts);
+            }
+        }
+        else
+        {
+            _centerAnimActive = false;
+        }
+
         av.InvalidateVisual();
+        AudioVisualizerTts?.InvalidateVisual();
+    }
+
+    // ~60 fps tick whose only job is moving the playhead (and, in center mode, easing the scroll)
+    // while a clip plays. Runs on the UI thread (UiTickPump posts to the dispatcher), so it can
+    // read mpv directly and write the visualizer without a per-frame InvokeAsync hop - the 100 ms
+    // timer was the reason the playhead moved in ~3-10 fps jumps.
+    private void CursorTick()
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        // Any centre ease is driven from here. While playing the paths below do it, but with nothing
+        // playing (a selection, an anchor drag, the glide after Stop) the tick has to keep itself
+        // alive until the ease has landed, then stop.
+        if (_centerAnimActive && VideoPlayerControl?.VideoPlayer.IsPlaying != true)
+        {
+            SetWaveformPlayhead(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+            if (!_centerAnimActive)
+            {
+                _cursorTimer?.Stop();
+            }
+
+            return;
+        }
+
+        // The video is the master clock: the playhead follows it, and in Generated mode the row's
+        // clip is (re)started as the video enters each row.
+        var video = VideoPlayerControl?.VideoPlayer;
+        if (video != null && video.IsPlaying)
+        {
+            var videoPosition = video.Position;
+
+            // The seek we asked for has not landed yet: hold the play-head where we asked for it
+            // instead of following the stale position. mpv reports the pre-seek position - 0 right
+            // after Open - and the gap-skip below then jumped the video to the first block and
+            // started its clip (wrong sound, play-head back on block one).
+            if (SeekNotLanded(videoPosition))
+            {
+                SetWaveformPlayhead(_lastVideoSeekSeconds);
+                return;
+            }
+
+            var row = RowAtPosition(videoPosition);
+
+            // Skip the silence between lines, like the review's playback always did: while in a gap,
+            // jump the video to the next line's start.
+            if (row == null && Math.Abs(videoPosition - _lastVideoSeekSeconds) >= 0.25)
+            {
+                var nextStart = NextRowStartAfter(videoPosition);
+                if (nextStart.HasValue)
+                {
+                    _lastVideoSeekSeconds = nextStart.Value;
+                    _lastSeekTicks = Stopwatch.GetTimestamp();
+                    try { VideoPlayerControl!.SeekTo(nextStart.Value); } catch { /* not ready */ }
+                    videoPosition = nextStart.Value;
+                    row = RowAtPosition(videoPosition);
+                }
+            }
+
+            SetWaveformPlayhead(videoPosition);
+
+            // Mark the row the video is inside: grid highlight, waveform block and selection. The
+            // playing row is set BEFORE selecting so OnSelectedLineChanged does not restart playback.
+            if (row != null && !ReferenceEquals(row, _playingRow))
+            {
+                if (_playingRow != null)
+                {
+                    _playingRow.IsPlaying = false;
+                }
+
+                row.IsPlaying = true;
+                _playingRow = row;
+                SelectedLine = row;
+                TableViewExtras.CenterRowAnimated(LineGrid, row);
+            }
+
+            if (row != null && !ReferenceEquals(row, _activeClipRow))
+            {
+                _activeClipRow = row;
+                _ = StartRowClipAsync(row);
+            }
+
+            return;
+        }
+
+        var playingRow = _playingRow;
+        if (playingRow == null)
+        {
+            return;
+        }
+
+        double positionSeconds;
+        lock (_playLock)
+        {
+            if (_cancellationTokenSource.IsCancellationRequested || _mpvContext == null || _mpvContext.IsPaused)
+            {
+                return;
+            }
+
+            positionSeconds = _mpvContext.Position;
+        }
+
+        var waveformParagraph = playingRow.WaveformParagraph;
+        if (waveformParagraph == null)
+        {
+            return;
+        }
+
+        SetWaveformPlayhead(waveformParagraph.StartTime.TotalSeconds + positionSeconds);
+    }
+
+    // True while the video is still reporting the position it had before the seek we asked for.
+    // mpv accepts a seek and keeps the old position for a moment (0 right after Open), so the
+    // cursor tick must not act on it - it would read the wrong row and start the wrong clip.
+    // Bounded by a grace window, so a seek that never lands (a failed load) resumes normal play.
+    private bool SeekNotLanded(double videoPosition)
+    {
+        if (Math.Abs(videoPosition - _lastVideoSeekSeconds) <= 1.0)
+        {
+            return false;
+        }
+
+        return (Stopwatch.GetTimestamp() - _lastSeekTicks) / (double)Stopwatch.Frequency < 0.75;
+    }
+
+    private void InvalidateWaveforms()
+    {
+        UpdateVideoEndOverrun();
+        foreach (var av in WaveformControls())
+        {
+            av.InvalidateVisual();
+        }
+    }
+
+    // Recomputes whether any cue ends after the video, so the end-of-video line's colour can turn
+    // red (overrun) or green. Tracks the row times, not the generated clip length (the clip is
+    // what gets placed and trimmed).
+    private void UpdateVideoEndOverrun()
+    {
+        var videoEnd = VideoEndSeconds;
+        if (videoEnd <= 0)
+        {
+            VideoEndOverrun = false;
+            return;
+        }
+
+        var overrun = false;
+        foreach (var row in Lines)
+        {
+            var paragraph = row.StepResult.Paragraph;
+            if (paragraph.EndTime.TotalSeconds > videoEnd + 0.001)
+            {
+                overrun = true;
+                break;
+            }
+        }
+
+        VideoEndOverrun = overrun;
     }
 
     // Length of each row's generated clip, keyed by file name: a regenerate always writes a new
@@ -530,23 +1564,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return cached;
         }
 
-        var seconds = 0.0;
-        try
-        {
-            if (File.Exists(fileName))
-            {
-                using var stream = File.OpenRead(fileName);
-                var header = new WaveHeader2(stream);
-                if (header.ChunkId == "RIFF" && header.Format == "WAVE" && header.BytesPerSecond > 0)
-                {
-                    seconds = header.LengthInSeconds;
-                }
-            }
-        }
-        catch (Exception exception)
-        {
-            SeLogger.Error(exception, $"ReviewSpeech: cannot read audio length of \"{fileName}\"");
-        }
+        var seconds = TtsAudioFile.GetLengthSeconds(fileName);
 
         _audioLengthCache[fileName] = seconds;
         return seconds;
@@ -557,6 +1575,262 @@ public partial class ReviewSpeechViewModel : ObservableObject
     public double GetWaveformParagraphAudioLength(SubtitleLineViewModel waveformParagraph)
     {
         return _waveformParagraphToRow.TryGetValue(waveformParagraph, out var row) ? GetGeneratedAudioLengthSeconds(row) : 0;
+    }
+
+    // Peaks of each generated clip, keyed by file name. A regenerate always writes a new file, so
+    // an entry can never go stale for a changed clip; the cache is what makes a rebuild cheap
+    // (only the placement is redone, not the wav reads).
+    private readonly Dictionary<string, WavePeakData2?> _ttsClipPeaks = new(StringComparer.OrdinalIgnoreCase);
+    // A cancelled rebuild can still be inside GetClipPeaks when the next one starts, so both the
+    // cache read and the write are locked.
+    private readonly Lock _ttsClipPeaksLock = new();
+    private CancellationTokenSource? _ttsWaveformCts;
+    // Peaks-per-second the generated track is (re)built at - the original track's rate. Published
+    // to AudioVisualizerTts.FallbackSampleRate so the two controls measure time identically even
+    // before the track is built.
+    private int _ttsTargetSampleRate = Se.Settings.Waveform.WaveformMinimumSampleRate;
+
+    private WavePeakData2? GetClipPeaks(string fileName)
+    {
+        lock (_ttsClipPeaksLock)
+        {
+            if (_ttsClipPeaks.TryGetValue(fileName, out var cached))
+            {
+                return cached;
+            }
+        }
+
+        WavePeakData2? peaks = null;
+        try
+        {
+            // Only WAVs can be read for peaks; cloud engines can hand back mp3 - those rows simply
+            // get no waveform instead of failing the whole build.
+            if (File.Exists(fileName) && fileName.EndsWith(".wav", StringComparison.OrdinalIgnoreCase))
+            {
+                using var generator = new WavePeakGenerator2(fileName);
+                if (generator.IsSupported)
+                {
+                    peaks = generator.GeneratePeaks(0, string.Empty);
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, $"ReviewSpeech: cannot read wave peaks of \"{fileName}\"");
+        }
+
+        lock (_ttsClipPeaksLock)
+        {
+            _ttsClipPeaks[fileName] = peaks;
+        }
+
+        return peaks;
+    }
+
+    // Aligns a cue block with the length of its generated clip.
+    //
+    //   clip longer than the block (diff < 0)      -> extend the block to cover the whole clip
+    //   block much longer than the clip (diff > 1)  -> trim so 0.5 s remains after the clip
+    //   block a little longer (0 < diff <= 1 s)     -> keep exactly the diff (0.3 -> 0.3)
+    //
+    // Makes the block boundaries follow the actual audio instead of the original subtitle timing.
+    private void AlignAllBlocksToAudio()
+    {
+        foreach (var row in Lines)
+        {
+            AlignBlockToAudio(row);
+        }
+    }
+
+    // The per-row version, used after a regenerate so only the changed line moves.
+    private void AlignBlockToAudio(ReviewRow row)
+    {
+        var wp = row.WaveformParagraph;
+        if (wp == null)
+        {
+            return;
+        }
+
+        var seconds = GetGeneratedAudioLengthSeconds(row);
+        if (seconds <= 0)
+        {
+            return;
+        }
+
+        var startSeconds = wp.StartTime.TotalSeconds;
+        var currentEnd = wp.EndTime.TotalSeconds;
+        var clipEnd = startSeconds + seconds;
+
+        // diff > 0: block is longer than the clip; diff < 0: the clip is longer.
+        var diff = currentEnd - clipEnd;
+        double targetEnd;
+        if (diff < 0)
+        {
+            targetEnd = clipEnd; // extend to cover the whole clip
+        }
+        else if (diff > 1.0)
+        {
+            targetEnd = clipEnd + 0.5; // too much trailing silence -> leave 0.5 s
+        }
+        else
+        {
+            targetEnd = currentEnd; // 0.1 / 0.3 ... keep as-is
+        }
+
+        if (Math.Abs(targetEnd - currentEnd) < 0.001)
+        {
+            return;
+        }
+
+        wp.EndTime = TimeSpan.FromSeconds(targetEnd);
+        wp.UpdateDuration();
+    }
+
+    // Rebuilds the generated-speech track from the rows' clips, on a worker thread (reading every
+    // clip can take a moment on a long session). Called on load, after a regenerate, and when cue
+    // times change; the in-memory clip-peak cache keeps the repeated calls cheap.
+    public void ScheduleTtsWaveformRebuild()
+    {
+        if (_isClosing)
+        {
+            return;
+        }
+
+        // NOTE: block alignment is NOT done here - it runs once after generation/regeneration
+        // (AlignAllBlocksToAudio) so a manual resize the user makes afterwards is never undone by
+        // a later rebuild.
+
+        // Snapshot on the UI thread - the background build must not walk the observable rows.
+        var placements = new List<(double StartSeconds, string FileName)>();
+        foreach (var row in Lines)
+        {
+            var waveformParagraph = row.WaveformParagraph;
+            var fileName = row.StepResult.CurrentFileName;
+            if (waveformParagraph != null && !string.IsNullOrEmpty(fileName))
+            {
+                placements.Add((waveformParagraph.StartTime.TotalSeconds, fileName));
+            }
+        }
+
+        // Same peaks-per-second as the original waveform so the two share a time base; a video
+        // length to pad to so scrolling clamps at the same place on both controls.
+        var targetRate = WavePeakData is { SampleRate: > 0 }
+            ? WavePeakData.SampleRate
+            : Se.Settings.Waveform.WaveformMinimumSampleRate;
+        var totalSeconds = WavePeakData?.LengthInSeconds ?? 0;
+
+        // The generated track always has a time base (never a shorter one than the original), so
+        // the shared scroll/zoom and the playhead behave the same on both controls even before any
+        // peaks exist.
+        _ttsTargetSampleRate = targetRate;
+        if (AudioVisualizerTts != null)
+        {
+            AudioVisualizerTts.FallbackSampleRate = targetRate;
+        }
+
+        _ttsWaveformCts?.Cancel();
+        _ttsWaveformCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _ttsWaveformCts = cts;
+
+        _ = Task.Run(() => BuildTtsWaveform(placements, targetRate, totalSeconds, cts.Token));
+    }
+
+    private void BuildTtsWaveform(List<(double StartSeconds, string FileName)> placements, int targetRate, double totalSeconds, CancellationToken token)
+    {
+        try
+        {
+            var clips = new List<(int Offset, WavePeakData2 Peaks)>();
+            foreach (var (startSeconds, fileName) in placements)
+            {
+                if (token.IsCancellationRequested)
+                {
+                    return;
+                }
+
+                var peaks = GetClipPeaks(fileName);
+                if (peaks == null || peaks.Peaks.Count == 0)
+                {
+                    continue;
+                }
+
+                var offset = (int)Math.Round(startSeconds * targetRate);
+                clips.Add((offset, peaks));
+                totalSeconds = Math.Max(totalSeconds, startSeconds + peaks.LengthInSeconds);
+            }
+
+            WavePeakData2? result;
+            if (clips.Count == 0)
+            {
+                // Nothing generated yet: a silent track of the video's length keeps the two
+                // waveforms on the same time axis. A short one is published when even that length
+                // is unknown. The single sentinel peak at the very start keeps HighestPeak > 0 -
+                // the per-pixel draw scales by 1/HighestPeak and an all-zero track would divide by
+                // zero (this mirrors WavePeakGenerator2.GenerateEmptyPeaks).
+                var emptySeconds = Math.Max(totalSeconds, 1.0);
+                var emptyPeaks = new WavePeak2[(int)Math.Ceiling(emptySeconds * targetRate)];
+                if (emptyPeaks.Length > 0)
+                {
+                    emptyPeaks[0] = new WavePeak2(1000, -1000);
+                }
+
+                result = new WavePeakData2(targetRate, emptyPeaks);
+            }
+            else
+            {
+                // Never shorter than the original: the counts below use totalSeconds, which the
+                // loop above has already raised to cover every clip.
+                var count = (int)Math.Ceiling(totalSeconds * targetRate);
+                var peaks = new WavePeak2[count];
+                foreach (var (offset, clip) in clips)
+                {
+                    if (token.IsCancellationRequested)
+                    {
+                        return;
+                    }
+
+                    var clipRate = clip.SampleRate;
+                    var span = clip.AsSpan();
+                    for (var i = 0; i < span.Length; i++)
+                    {
+                        var targetIndex = offset + (int)Math.Round((double)i * targetRate / clipRate);
+                        if (targetIndex < 0 || targetIndex >= count)
+                        {
+                            continue;
+                        }
+
+                        var peak = span[i];
+                        var existing = peaks[targetIndex];
+
+                        // Overlapping cues: keep the louder peak so both are visible.
+                        if (Math.Abs((int)peak.Max) + Math.Abs((int)peak.Min) >
+                            Math.Abs((int)existing.Max) + Math.Abs((int)existing.Min))
+                        {
+                            peaks[targetIndex] = peak;
+                        }
+                    }
+                }
+
+                result = new WavePeakData2(targetRate, peaks);
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                return;
+            }
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (!token.IsCancellationRequested && !_isClosing)
+                {
+                    WavePeakDataTts = result;
+                }
+            });
+        }
+        catch (Exception exception)
+        {
+            SeLogger.Error(exception, "ReviewSpeech: building the generated-speech waveform failed");
+        }
     }
 
     // "Fit duration to generated audio": the cue ends exactly where the speech ends - what the
@@ -579,7 +1853,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         wp.EndTime = wp.StartTime + TimeSpan.FromSeconds(seconds);
         wp.UpdateDuration();
-        AudioVisualizer?.InvalidateVisual();
+        InvalidateWaveforms();
+        ScheduleTtsWaveformRebuild();
     }
 
     // Restores the times the line had when the window opened (waveform drags have no undo).
@@ -596,7 +1871,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
         wp.StartTime = TimeSpan.FromMilliseconds(row.OriginalStartMs);
         wp.EndTime = TimeSpan.FromMilliseconds(row.OriginalEndMs);
         wp.UpdateDuration();
-        AudioVisualizer?.InvalidateVisual();
+        InvalidateWaveforms();
+        ScheduleTtsWaveformRebuild();
     }
 
     // Shifts the selected cue as a whole (duration kept), used by the waveform's keyboard nudge.
@@ -613,7 +1889,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
         wp.StartTime = TimeSpan.FromMilliseconds(start);
         wp.EndTime = TimeSpan.FromMilliseconds(start + duration);
         wp.UpdateDuration();
-        AudioVisualizer?.InvalidateVisual();
+        InvalidateWaveforms();
+        ScheduleTtsWaveformRebuild();
     }
 
     // Right-click on the waveform: the row under the pointer becomes the context-menu target
@@ -663,6 +1940,27 @@ public partial class ReviewSpeechViewModel : ObservableObject
         GoToPosition(result.Time.TotalSeconds - offsetSeconds);
     }
 
+    // Parks the playhead on a row's start and scrolls it into view if needed (2 s lead-in, like
+    // GoToPosition). Called when the table selection changes so Play / Play-selected starts from
+    // the selected block instead of the clip the playhead was left on.
+    private void GoToRowStart(ReviewRow row)
+    {
+        var waveformParagraph = row.WaveformParagraph;
+        var av = AudioVisualizer;
+        if (waveformParagraph == null || av == null)
+        {
+            return;
+        }
+
+        var seconds = waveformParagraph.StartTime.TotalSeconds;
+        if (seconds < av.StartPositionSeconds || seconds > av.EndPositionSeconds)
+        {
+            av.StartPositionSeconds = Math.Max(0, seconds - 2.0);
+        }
+
+        SetWaveformPlayhead(seconds);
+    }
+
     internal void GoToPosition(double seconds)
     {
         var av = AudioVisualizer;
@@ -694,6 +1992,298 @@ public partial class ReviewSpeechViewModel : ObservableObject
         {
             SetWaveformPlayhead(seconds);
         }
+    }
+
+    // The palette's "Pauses" entries. These are the tags that make sense mid-sentence, so they are
+    // inserted at the caret instead of being folded into the leading tag group.
+    private static readonly HashSet<string> PauseTags = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "short pause", "pause", "long pause", "sighs", "exhales", "inhales", "clears throat", "breath",
+    };
+
+    /// <summary>
+    /// Inserts a pause tag at the caret, snapped to the nearest word boundary so it never lands
+    /// inside a word (or inside another "[...]" tag). Clicking the same pause where it already sits
+    /// removes it. Returns false to fall back to the leading-group behaviour (caret at the very
+    /// start, or no text box).
+    /// </summary>
+    private bool TryInsertPauseTagAtCaret(ReviewRow row, string bare)
+    {
+        if (EditTextBox == null)
+        {
+            return false;
+        }
+
+        var text = row.Text ?? string.Empty;
+        var caret = Math.Clamp(EditTextBox.CaretIndex, 0, text.Length);
+        if (caret == 0)
+        {
+            return false; // at the very start - keep the leading-group toggle
+        }
+
+        caret = SnapToWordBoundary(text, caret);
+
+        var tagText = "[" + bare + "]";
+        var before = text.Substring(0, caret).TrimEnd();
+        var after = text.Substring(caret).TrimStart();
+
+        int newCaret;
+        if (before.EndsWith(tagText, StringComparison.OrdinalIgnoreCase))
+        {
+            before = before.Substring(0, before.Length - tagText.Length).TrimEnd();
+            newCaret = before.Length;
+        }
+        else if (after.StartsWith(tagText, StringComparison.OrdinalIgnoreCase))
+        {
+            after = after.Substring(tagText.Length).TrimStart();
+            newCaret = before.Length;
+        }
+        else
+        {
+            before = before.Length == 0 ? tagText : before + " " + tagText;
+            newCaret = before.Length;
+        }
+
+        var newText = before.Length == 0 ? after : after.Length == 0 ? before : before + " " + after;
+
+        row.Text = newText;
+        EditTextBox.Text = newText;
+        if (newCaret < newText.Length && newText[newCaret] == ' ')
+        {
+            newCaret++;
+        }
+
+        EditTextBox.CaretIndex = Math.Clamp(newCaret, 0, newText.Length);
+        EditTextBox.Focus();
+        return true;
+    }
+
+    // Moves an in-text insertion point onto the nearest word boundary, and out of any "[...]" tag,
+    // so a pause tag cannot split a word or corrupt a tag.
+    private static int SnapToWordBoundary(string text, int caret)
+    {
+        caret = Math.Clamp(caret, 0, text.Length);
+
+        // Inside a tag: if the nearest '[' before the caret has no ']' between it and the caret,
+        // jump past that tag's closing ']'.
+        if (caret > 0)
+        {
+            var open = text.LastIndexOf('[', caret - 1);
+            var closeBefore = text.LastIndexOf(']', caret - 1);
+            if (open >= 0 && open > closeBefore)
+            {
+                var closeAfter = text.IndexOf(']', caret);
+                return closeAfter < 0 ? text.Length : closeAfter + 1;
+            }
+        }
+
+        if (caret == 0 || caret == text.Length)
+        {
+            return caret;
+        }
+
+        // Inside a word (no separator on either side): snap to the closer end of that word.
+        if (!IsTagOrSpace(text[caret - 1]) && !IsTagOrSpace(text[caret]))
+        {
+            var start = caret;
+            while (start > 0 && !IsTagOrSpace(text[start - 1]))
+            {
+                start--;
+            }
+
+            var end = caret;
+            while (end < text.Length && !IsTagOrSpace(text[end]))
+            {
+                end++;
+            }
+
+            return caret - start <= end - caret ? start : end;
+        }
+
+        return caret;
+    }
+
+    private static bool IsTagOrSpace(char c)
+    {
+        return char.IsWhiteSpace(c) || c == '[' || c == ']';
+    }
+
+    // Audio-tag palette: pause tags (see PauseTags) go at the caret, snapped to a word boundary.
+    // Every other tag works on the tag group at the START of the line:
+    //   - no group yet          -> insert "[tag] "
+    //   - group without the tag -> add it after the existing tags
+    //   - group already has it  -> remove it
+    //   - removing the last tag -> drop the whole group
+    // Tags are compared as whole strings (so a hand-typed "[American accent]" stays one unit and
+    // is not split at the space).
+    public void InsertTagAtCaret(string tag)
+    {
+        var row = SelectedLine;
+        if (row == null || string.IsNullOrEmpty(tag))
+        {
+            return;
+        }
+
+        var bare = tag.Trim().TrimStart('[').TrimEnd(']').Trim();
+        if (bare.Length == 0)
+        {
+            return;
+        }
+
+        // Pause tags belong between words, wherever the caret is - not only in the leading group.
+        if (PauseTags.Contains(bare) && TryInsertPauseTagAtCaret(row, bare))
+        {
+            RefreshActiveTags();
+            return;
+        }
+
+        var text = row.Text ?? string.Empty;
+        var inner = FindLeadingTagGroupInner(text);
+        var inLeadingGroup = inner != null &&
+            SplitTagGroup(inner).Any(t => string.Equals(t, bare, StringComparison.OrdinalIgnoreCase));
+
+        string newText;
+        if (!inLeadingGroup && TryRemoveMidTextTag(text, bare, out var withoutMidText))
+        {
+            // The tag was typed outside the leading group (mid-line). Turn it off where it is,
+            // instead of adding a second copy to the leading group.
+            newText = withoutMidText;
+        }
+        else if (inner != null)
+        {
+            // Split the group into tags, keeping a hand-typed multi-word tag like "American accent"
+            // together by matching known palette entries greedily; unknown runs stay as one tag.
+            var tags = SplitTagGroup(inner);
+            var existing = tags.FindIndex(t => string.Equals(t, bare, StringComparison.OrdinalIgnoreCase));
+            if (existing >= 0)
+            {
+                tags.RemoveAt(existing);
+                newText = tags.Count == 0
+                    ? StripGroup(text)
+                    : "[" + string.Join(" ", tags) + "] " + StripGroup(text);
+            }
+            else
+            {
+                tags.Add(bare);
+                newText = "[" + string.Join(" ", tags) + "] " + StripGroup(text);
+            }
+        }
+        else
+        {
+            newText = "[" + bare + "] " + text.TrimStart();
+        }
+
+        row.Text = newText;
+        RefreshActiveTags();
+
+        if (EditTextBox != null)
+        {
+            EditTextBox.Text = newText;
+            EditTextBox.CaretIndex = 0;
+            EditTextBox.Focus();
+        }
+    }
+
+    // Removes the first "bare" tag that sits outside the leading group (a tag typed mid-line), so a
+    // palette click turns it off where it is instead of adding a second one. True when it removed one.
+    private static bool TryRemoveMidTextTag(string text, string bare, out string newText)
+    {
+        newText = text;
+        var index = 0;
+        while (index < text.Length)
+        {
+            var open = text.IndexOf('[', index);
+            if (open < 0)
+            {
+                return false;
+            }
+
+            var close = text.IndexOf(']', open + 1);
+            if (close < 0)
+            {
+                return false;
+            }
+
+            var tokens = TtsTagPalette.TokenizeGroup(text.Substring(open + 1, close - open - 1));
+            if (tokens.Any(t => string.Equals(t.Tag, bare, StringComparison.OrdinalIgnoreCase)))
+            {
+                var remaining = tokens
+                    .Where(t => !string.Equals(t.Tag, bare, StringComparison.OrdinalIgnoreCase))
+                    .Select(t => t.Tag)
+                    .ToList();
+
+                var left = text.Substring(0, open);
+                var right = text.Substring(close + 1);
+                newText = remaining.Count == 0
+                    ? TrimOneSpace(left, right)
+                    : left + "[" + string.Join(" ", remaining) + "]" + right;
+                return true;
+            }
+
+            index = close + 1;
+        }
+
+        return false;
+    }
+
+    // Removes the whole leading "[...]" tag group from the selected line, if present.
+    public void RemoveAllTags()
+    {
+        var row = SelectedLine;
+        if (row == null)
+        {
+            return;
+        }
+
+        var text = row.Text ?? string.Empty;
+        if (FindLeadingTagGroupInner(text) == null)
+        {
+            return;
+        }
+
+        var newText = StripGroup(text);
+        row.Text = newText;
+        RefreshActiveTags();
+
+        if (EditTextBox != null)
+        {
+            EditTextBox.Text = newText;
+            EditTextBox.CaretIndex = 0;
+            EditTextBox.Focus();
+        }
+    }
+
+    // The inner text of the leading "[...]" group, or null when the line does not start with one.
+    private static string? FindLeadingTagGroupInner(string text)
+    {
+        if (text.Length == 0 || text[0] != '[')
+        {
+            return null;
+        }
+
+        var close = text.IndexOf(']');
+        return close < 0 ? null : text.Substring(1, close - 1).Trim();
+    }
+
+    // The line without its leading "[...] " group.
+    private static string StripGroup(string text)
+    {
+        var close = text.IndexOf(']');
+        if (close < 0)
+        {
+            return text;
+        }
+
+        var rest = text.Substring(close + 1);
+        return rest.TrimStart();
+    }
+
+    // Splits the inside of a "[...]" group into tags, keeping a known multi-word palette tag (e.g.
+    // "drawn out", "American accent") together as one tag. The palette is the single source of
+    // truth for what counts as a multi-word tag.
+    private static List<string> SplitTagGroup(string inner)
+    {
+        return TtsTagPalette.TokenizeGroup(inner).Select(t => t.Tag).ToList();
     }
 
     // Keys that act on the waveform when it has focus (the grid handles its own Up/Down):
@@ -763,7 +2353,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         try
         {
             SelectedLine = row;
-            LineGrid.ScrollIntoView(row);
+            TableViewExtras.CenterRowAnimated(LineGrid, row);
         }
         finally
         {
@@ -771,12 +2361,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
         }
     }
 
-    // Centers the visualizer on the currently selected paragraph and marks it as selected so the
-    // user can grab its start/end handles. Safe to call before AudioVisualizer is attached.
+    // Centers both visualizers on the currently selected paragraph and marks it as selected so the
+    // user can grab its start/end handles. Safe to call before the visualizers are attached.
     public void RefreshWaveformPosition()
     {
-        var av = AudioVisualizer;
-        if (av == null || WavePeakData == null)
+        if (WavePeakData == null && WavePeakDataTts == null)
         {
             return;
         }
@@ -790,9 +2379,13 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         if (_selectionFromWaveform)
         {
-            av.SelectedParagraph = waveformParagraph;
-            av.AllSelectedParagraphs = new List<SubtitleLineViewModel> { waveformParagraph };
-            av.InvalidateVisual();
+            foreach (var av in WaveformControls())
+            {
+                av.SelectedParagraph = waveformParagraph;
+                av.AllSelectedParagraphs = new List<SubtitleLineViewModel> { waveformParagraph };
+                av.InvalidateVisual();
+            }
+
             return;
         }
 
@@ -804,60 +2397,136 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return;
         }
 
-        var startSeconds = Math.Max(0, waveformParagraph.StartTime.TotalSeconds - 2.0);
-
-        av.SetPosition(
-            startSeconds,
-            WaveformParagraphs,
-            waveformParagraph.StartTime.TotalSeconds,
-            index,
-            new List<SubtitleLineViewModel> { waveformParagraph });
-        av.InvalidateVisual();
+        foreach (var av in WaveformControls())
+        {
+            // Only the paragraph list and the selection are refreshed - NOT the view position.
+            // Snapping StartPositionSeconds here is what made the timeline jerk when a clip ended
+            // and the next row was selected mid-playback; the center-ease in SetWaveformPlayhead
+            // owns the scroll now and glides to wherever the play-head goes.
+            av.SetPosition(
+                av.StartPositionSeconds,
+                WaveformParagraphs,
+                av.CurrentVideoPositionSeconds,
+                index,
+                new List<SubtitleLineViewModel> { waveformParagraph });
+            av.InvalidateVisual();
+        }
     }
 
-    // Hands the visualizer the blocks for wherever it is looking now, without moving the view or
-    // the playhead. It only keeps the blocks around the view it was last given, so the window
-    // calls this whenever the user scrolls, zooms or resizes (#15102).
+    // Hands both visualizers the blocks for wherever they are looking now, without moving the view
+    // or the playhead. They only keep the blocks around the view they were last given, so the
+    // window calls this whenever the user scrolls, zooms or resizes (#15102).
     public void ReloadWaveformParagraphs()
     {
-        var av = AudioVisualizer;
-        if (av == null || WavePeakData == null || WaveformParagraphs.Count == 0)
+        if (WaveformParagraphs.Count == 0)
         {
             return;
         }
 
         var selected = SelectedLine?.WaveformParagraph;
         var index = selected == null ? -1 : WaveformParagraphs.IndexOf(selected);
-        av.SetPosition(
-            av.StartPositionSeconds,
-            WaveformParagraphs,
-            av.CurrentVideoPositionSeconds,
-            index,
-            index < 0 ? new List<SubtitleLineViewModel>() : new List<SubtitleLineViewModel> { selected! });
+        foreach (var av in WaveformControls())
+        {
+            av.SetPosition(
+                av.StartPositionSeconds,
+                WaveformParagraphs,
+                av.CurrentVideoPositionSeconds,
+                index,
+                index < 0 ? new List<SubtitleLineViewModel>() : new List<SubtitleLineViewModel> { selected! });
+        }
+    }
+
+    /// <summary>
+    /// Builds the descriptive export name for a line: "002-bla-bla-bla-00.wav" - the line number
+    /// (3+ digits), the first few words of the spoken text, and the take index (00 for the first
+    /// take of that line, 01 after a regeneration). Take numbering restarts at 00 when the text
+    /// changes, because a changed line is a different utterance. Falls back to the plain line
+    /// number when there is no usable text.
+    /// </summary>
+    internal static string DescriptiveExportName(int lineNumber, string text, int takeIndex, string extension)
+    {
+        var words = CleanWordsForFileName(text, 4);
+        var number = lineNumber.ToString().PadLeft(3, '0');
+        var take = takeIndex.ToString().PadLeft(2, '0');
+        var stem = string.IsNullOrEmpty(words) ? number : $"{number}-{words}";
+        return $"{stem}-{take}{extension}";
+    }
+
+    /// <summary>
+    /// First <paramref name="maxWords"/> words of <paramref name="text"/> made safe for a file
+    /// name: tags stripped, whitespace collapsed to "-", characters Windows forbids removed, and
+    /// the whole thing capped so a long line does not produce a giant name. Diacritics are kept.
+    /// </summary>
+    internal static string CleanWordsForFileName(string text, int maxWords)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Empty;
+        }
+
+        var stripped = HtmlUtil.RemoveHtmlTags(text, true);
+        stripped = stripped.Replace('\r', ' ').Replace('\n', ' ').Trim();
+        var parts = stripped.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length > maxWords)
+        {
+            parts = parts.Take(maxWords).ToArray();
+        }
+
+        var joined = string.Join("-", parts);
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string(joined.Select(c => invalid.Contains(c) ? '-' : c).ToArray());
+        cleaned = cleaned.Trim('-', '.', ' ');
+        if (cleaned.Length > 60)
+        {
+            cleaned = cleaned.Substring(0, 60).TrimEnd('-');
+        }
+
+        return cleaned;
     }
 
     [RelayCommand]
-    private async Task Export()
+    private Task Export() => ExportSessionAsync(forcedFolder: null, isSilent: false);
+
+    /// <summary>
+    /// Writes the session (SubtitleEditTts.json + wav/ clips + refs/) to <paramref name="forcedFolder"/>,
+    /// or to a folder the user picks when it is null. <paramref name="isSilent"/> skips the picker, the
+    /// overwrite prompt and the result dialogs - OK uses it to keep a session next to the subtitle.
+    /// </summary>
+    private async Task ExportSessionAsync(string? forcedFolder, bool isSilent)
     {
         if (Window == null)
         {
             return;
         }
 
-        // Start the picker in the subtitle's own folder (or the video's, for an unsaved
-        // subtitle) - the OS-remembered last picker folder is rarely where this export
-        // belongs (#13881).
-        var suggestedStartFolder = GetFolderName(SubtitleFileName) ?? GetFolderName(_videoFileName);
-        var folder = await _folderHelper.PickFolderAsync(Window!, Se.Language.General.SelectSaveFolder, suggestedStartFolder);
-        if (string.IsNullOrEmpty(folder))
+        string? folder;
+        if (!string.IsNullOrEmpty(forcedFolder))
         {
-            return;
+            folder = forcedFolder;
+        }
+        else
+        {
+            // Start the picker in the subtitle's own folder (or the video's, for an unsaved subtitle), so
+            // the session lands next to the file being worked on - not the folder a previous session used.
+            // LastImportExportFolder is only the fallback when there is no subtitle/video folder.
+            var subtitleFolder = GetFolderName(SubtitleFileName) ?? GetFolderName(_videoFileName);
+            var lastImportExportFolder = Se.Settings.Video.TextToSpeech.LastImportExportFolder is { Length: > 0 } last && Directory.Exists(last)
+                ? last
+                : null;
+            var suggestedStartFolder = subtitleFolder ?? lastImportExportFolder;
+            folder = await _folderHelper.PickFolderAsync(Window!, Se.Language.General.SelectSaveFolder, suggestedStartFolder);
+            if (string.IsNullOrEmpty(folder))
+            {
+                return;
+            }
+
+            Se.Settings.Video.TextToSpeech.LastImportExportFolder = folder;
         }
 
         var jsonFileName = Path.Combine(folder, "SubtitleEditTts.json");
 
         // ask if overwrite if jsonFileName exists
-        if (File.Exists(jsonFileName))
+        if (!isSilent && File.Exists(jsonFileName))
         {
             var answer = await MessageBox.Show(
                 Window,
@@ -871,20 +2540,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 return;
             }
 
-            try
-            {
-                File.Delete(jsonFileName);
-            }
-            catch (Exception e)
-            {
-                await MessageBox.Show(
-                    Window,
-                    Se.Language.General.Error,
-                    $"Could not overwrite the file \"{jsonFileName}" + Environment.NewLine + e.Message,
-                    MessageBoxButtons.OK,
-                    MessageBoxIcon.Error);
-                return;
-            }
+            // Do not File.Delete here: the JSON is often still held by Explorer's preview,
+            // an indexer or the previous import, and a locked file made Delete throw
+            // "used by another process", aborting the whole export. WriteAllTextAsync below
+            // truncates and rewrites the file in place instead, which works on a locked file.
         }
 
         // The audio files go into a "wav" subfolder so they don't flood the folder the user
@@ -923,6 +2582,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         var index = 0;
         var missingAudioCount = 0;
+        var descriptiveNaming = !string.Equals(Se.Settings.Video.TextToSpeech.ExportFileNaming, "numeric", StringComparison.OrdinalIgnoreCase);
         var exportFormat = new TtsImportExport
         {
             VideoFileName = _videoFileName,
@@ -932,15 +2592,28 @@ public partial class ReviewSpeechViewModel : ObservableObject
         {
             index++;
             var sourceFileName = line.StepResult.CurrentFileName;
-            var targetFileName = Path.Combine(audioFolder, index.ToString().PadLeft(4, '0') + Path.GetExtension((string?)sourceFileName));
+            var extension = Path.GetExtension((string?)sourceFileName) ?? string.Empty;
+            string targetFileName;
+            if (descriptiveNaming)
+            {
+                // Take index: a regeneration of the same text raises it (00, 01, ...); editing the
+                // text makes it a different utterance, so it starts again at 00.
+                var textUnchanged = string.Equals(line.Text, line.OriginalText, StringComparison.Ordinal);
+                var takeIndex = textUnchanged && line.HistoryItems.Count > 0 ? line.HistoryItems.Count - 1 : 0;
+                targetFileName = Path.Combine(audioFolder, DescriptiveExportName(line.Number, line.Text, takeIndex, extension));
+            }
+            else
+            {
+                targetFileName = Path.Combine(audioFolder, index.ToString().PadLeft(4, '0') + extension);
+            }
 
             // A row can point at a deleted/moved file (e.g. an imported session whose folder was
             // cleaned). File.Copy used to throw unhandled mid-export, leaving some files copied
             // and no JSON written. Export the row without audio instead and report the count.
-            if (string.IsNullOrEmpty(sourceFileName) || !File.Exists(sourceFileName))
+            if (!TtsAudioFile.HasAudio(sourceFileName))
             {
                 missingAudioCount++;
-                SeLogger.Error($"ReviewSpeech export: audio file missing for line {index}: \"{sourceFileName}\"");
+                SeLogger.Error($"ReviewSpeech export: audio file missing or empty for line {index}: \"{sourceFileName}\"");
                 targetFileName = string.Empty;
             }
 
@@ -959,7 +2632,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 string candidate;
                 do
                 {
-                    candidate = Path.Combine(audioFolder, $"{index.ToString().PadLeft(4, '0')}_{suffix}{Path.GetExtension((string?)sourceFileName)}");
+                    var stem = Path.GetFileNameWithoutExtension(targetFileName);
+                    candidate = Path.Combine(audioFolder, $"{stem}_hist{suffix}{extension}");
                     suffix++;
                 }
                 while (referencedFiles.Contains(Path.GetFullPath(candidate)) || File.Exists(candidate));
@@ -986,7 +2660,18 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
             if (!sourceIsTarget && !string.IsNullOrEmpty(targetFileName))
             {
-                File.Copy(sourceFileName, targetFileName, true);
+                try
+                {
+                    File.Copy(sourceFileName, targetFileName, true);
+                }
+                catch (Exception e)
+                {
+                    // A locked source (a player holding the wav) used to kill the whole export
+                    // half-way: some clips already replaced and no JSON written, so the folder no
+                    // longer matched any session. Count it like a missing file and keep going.
+                    missingAudioCount++;
+                    SeLogger.Error(e, $"ReviewSpeech: could not export the audio file \"{targetFileName}\"");
+                }
             }
 
             exportFormat.Items.Add(new TtsImportExportItem
@@ -1008,26 +2693,104 @@ public partial class ReviewSpeechViewModel : ObservableObject
                 Instruction = line.StepResult.Instruction,
                 VoiceFileName = ExportVoiceReference(line.StepResult.Voice, referenceFolder, exportedReferences),
                 SpeedFactor = line.StepResult.SpeedFactor,
-                Text = line.Text,
+                // Text is the clean subtitle form; TextWithTags keeps the audio-tag/emphasis
+                // markup so a re-import restores exactly what was sent to the engine.
+                Text = Fork.TtsCleanText ? TtsTextCleaner.Clean(line.Text) : line.Text,
+                TextWithTags = line.Text,
                 Include = line.Include,
             });
         }
 
         // Export json
         var json = JsonSerializer.Serialize(exportFormat, new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(jsonFileName, json);
+        var writeError = await WriteJsonWithRetryAsync(jsonFileName, json);
+        if (writeError != null)
+        {
+            await MessageBox.Show(
+                Window,
+                Se.Language.General.Error,
+                $"Could not write \"{jsonFileName}\"." + Environment.NewLine +
+                "Another program (Explorer preview, antivirus, a file manager) is holding the file." +
+                Environment.NewLine + Environment.NewLine + writeError,
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+            return;
+        }
+
+        if (isSilent)
+        {
+            return;
+        }
 
         if (missingAudioCount > 0)
         {
             await MessageBox.Show(
                 Window,
                 Se.Language.General.Warning,
-                $"{missingAudioCount} line(s) had no audio file and were exported without audio - see error-log.txt in the Subtitle Edit data folder.",
+                $"{missingAudioCount} line(s) had no audio (the file is missing, or the clip holds no audio at all) and were exported without audio - see error-log.txt in the Subtitle Edit data folder.",
                 MessageBoxButtons.OK,
                 MessageBoxIcon.Warning);
         }
 
         await _folderHelper.OpenFolder(Window!, folder);
+    }
+
+    /// <summary>
+    /// Writes <paramref name="json"/> to <paramref name="fileName"/>, retrying while the file is
+    /// transiently locked (Explorer preview, antivirus, a file manager). First tries a direct
+    /// overwrite with FileShare.ReadWrite; if the target is held exclusively it falls back to
+    /// writing a sibling temp file and swapping it in with File.Replace/Move. Returns an error
+    /// message on failure instead of throwing, so a locked file cannot crash the UI thread.
+    /// </summary>
+    private static async Task<string?> WriteJsonWithRetryAsync(string fileName, string json)
+    {
+        const int attempts = 6;
+        string? lastError = null;
+        for (var attempt = 1; attempt <= attempts; attempt++)
+        {
+            try
+            {
+                await using var stream = new FileStream(
+                    fileName, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+                await using var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false));
+                await writer.WriteAsync(json);
+                return null;
+            }
+            catch (IOException ex)
+            {
+                lastError = ex.Message;
+                await Task.Delay(150 * attempt);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                lastError = ex.Message;
+                await Task.Delay(150 * attempt);
+            }
+        }
+
+        // Direct overwrite kept failing (the file is held exclusively). Write a sibling temp file
+        // and swap it in - File.Replace/Move often succeeds where opening the target did not.
+        var dir = Path.GetDirectoryName(fileName) ?? ".";
+        var temp = Path.Combine(dir, "SubtitleEditTts." + Guid.NewGuid().ToString("N") + ".tmp");
+        try
+        {
+            await File.WriteAllTextAsync(temp, json, new System.Text.UTF8Encoding(false));
+            if (File.Exists(fileName))
+            {
+                File.Replace(temp, fileName, null, ignoreMetadataErrors: true);
+            }
+            else
+            {
+                File.Move(temp, fileName);
+            }
+
+            return null;
+        }
+        catch (Exception ex)
+        {
+            try { if (File.Exists(temp)) { File.Delete(temp); } } catch { /* best effort */ }
+            return lastError ?? ex.Message;
+        }
     }
 
     /// <summary>
@@ -1333,9 +3096,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
             settings.ElevenLabsStyleeExaggeration = StyleExaggeration;
         }
 
-        var voice = SelectedVoice;
         var line = row ?? SelectedLine;
-        if (engine == null || voice == null || line == null)
+        if (line == null)
         {
             return;
         }
@@ -1359,9 +3121,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
         // can take seconds (process spawn, HTTP), and with the gate applied only after them a
         // second regenerate or a play started in that window swapped the shared cancellation
         // source under this run. The per-row play/regenerate buttons, Ctrl+R and the Space
-        // shortcut all honor IsPlayingEnabled; OK/Export/Escape honor IsRegenerateEnabled.
-        // The outer try/finally guarantees the gate is lifted on every exit, including the
-        // engine-probe early returns.
+        // shortcut all honor IsPlayingEnabled; OK/Export/Escape honor IsRegenerateEnabled. The
+        // outer try/finally guarantees the gate is lifted on every exit, including the early
+        // returns.
         IsRegenerateEnabled = false;
         foreach (var l in Lines)
         {
@@ -1370,175 +3132,31 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         try
         {
-            // Same install/download flow as the main window: this used to be a bare
-            // IsInstalled check that silently returned, so picking a not-yet-downloaded
-            // engine (e.g. CosyVoice3) here made Regenerate do nothing with no prompt.
-            if (!await TtsEngineInstaller.EnsureEngineInstalled(engine, Window, _windowService, SelectedRegion, SelectedModel, null, null, async () => await SelectedEngineChangedAsync()))
+            if (await PrepareEngineAndVoiceAsync(engine, line) is not { } prepared)
             {
                 return;
             }
 
-            // "Clone from video" is a marker, not a voice any engine can speak with: the generate
-            // pipeline swaps it for a real one per paragraph, and this window used to hand it
-            // straight to the engine - which is what an imported session failed on with "Voice is
-            // not an OmniVoice" (#14095).
-            if (PerLineVoiceClone.IsSelected(voice))
-            {
-                // Same one-time gate the TTS window puts in front of cloning; picking this voice
-                // here is a fresh decision to clone whoever speaks in the video.
-                if (Window != null && !await VoiceCloneConsentPrompt.EnsureAsync(
-                        engine,
-                        Window,
-                        () => _windowService.ShowDialogAsync<VoiceCloneConsentWindow, VoiceCloneConsentViewModel>(Window, _ => { })))
-                {
-                    return;
-                }
-
-                var clonedVoice = await ResolvePerLineCloneVoiceAsync(engine, line);
-                if (clonedVoice == null)
-                {
-                    return;
-                }
-
-                voice = clonedVoice;
-            }
-
-            if (!await TtsVoiceInstaller.EnsureVoiceInstalled(engine, voice, Window, _windowService))
+            if (!await RegenerateRowCoreAsync(engine, line, prepared.Voice, prepared.Model,
+                    prepared.Instruction, prepared.Language, prepared.Region, prepared.OldStyle))
             {
                 return;
-            }
-
-            // Capture the *saved* style, not SelectedStyle: capturing the new value made the
-            // finally-block restore a no-op, so a one-line style override silently became the
-            // permanent global Murf style.
-            var oldStyle = Se.Settings.Video.TextToSpeech.MurfStyle;
-            if (engine is Murf && !string.IsNullOrEmpty(SelectedStyle))
-            {
-                Se.Settings.Video.TextToSpeech.MurfStyle = SelectedStyle;
-            }
-
-            var generatingAudioVm = _windowService.ShowWindow<GeneratingAudioWindow, GeneratingAudioViewModel>(Window!);
-            ReplaceCts(generatingAudioVm.CancellationTokenSource);
-
-            // Snapshot the panel state this regenerate runs with: the progress popup is non-modal,
-            // so clicking another row mid-run rewrites SelectedModel/Instruction (via the row-click
-            // panel sync) - reading them after the awaits recorded settings that never produced the
-            // audio into the row snapshot and its history entry.
-            var model = SelectedModel;
-            var instruction = Instruction;
-            var language = SelectedLanguage;
-            var region = SelectedRegion;
-
-            // The row's live StepResult must only change once the whole regenerate pipeline has
-            // succeeded - it used to be mutated right after Speak, so a cancel or a failed
-            // trim/post-process left the row half-updated (raw un-stretched clip with the old
-            // speed/voice display) and OK/Export published that state.
-            var originalFileName = line.StepResult.CurrentFileName;
-            var originalVoice = line.StepResult.Voice;
-
-            try
-            {
-                var speakResult = await TtsInstructionSwap.RunAsync(engine, instruction, () =>
-                    // Strip markup here the way the main generate path does - the row text is
-                    // the subtitle's own text, and engines vocalize "<i>" or garble on tags.
-                    engine.Speak(Utilities.UnbreakLine(HtmlUtil.RemoveHtmlTags(line.Text, alsoSsaTags: true)),
-                        _waveFolder, voice, language, region, model, _cancellationToken));
-
-                if (speakResult.Error || string.IsNullOrEmpty(speakResult.FileName) || !File.Exists(speakResult.FileName))
-                {
-                    if (Window != null)
-                    {
-                        var detail = string.IsNullOrEmpty(speakResult.ErrorMessage)
-                            ? "The engine produced no audio - see error-log.txt in the Subtitle Edit data folder."
-                            : speakResult.ErrorMessage;
-                        await MessageBox.Show(
-                            Window,
-                            Se.Language.General.Error,
-                            "Regenerating audio failed: " + detail,
-                            MessageBoxButtons.OK,
-                            MessageBoxIcon.Error);
-                    }
-
-                    return;
-                }
-
-                line.StepResult.CurrentFileName = speakResult.FileName;
-                line.StepResult.Voice = voice;
-
-                var adjustSpeedStepResult = await TrimAndAdjustSpeed(line);
-                var postProcessedFileName = await TtsPostProcessor.ApplyPostProcessing(adjustSpeedStepResult.CurrentFileName, _waveFolder, _cancellationToken);
-
-                if (_cancellationToken.IsCancellationRequested)
-                {
-                    line.StepResult.CurrentFileName = originalFileName;
-                    line.StepResult.Voice = originalVoice;
-                    return;
-                }
-
-                adjustSpeedStepResult.CurrentFileName = postProcessedFileName;
-                // Record which engine/model/instruction this regenerate used so the row's "click to
-                // sync left panel" feature can restore them later.
-                adjustSpeedStepResult.EngineName = engine.Name;
-                adjustSpeedStepResult.Model = model ?? string.Empty;
-                adjustSpeedStepResult.Instruction = instruction ?? string.Empty;
-                line.Speed = Math.Round(adjustSpeedStepResult.SpeedFactor, 2).ToString(CultureInfo.CurrentCulture);
-                line.Cps = Math.Round(adjustSpeedStepResult.Paragraph.GetCharactersPerSecond(), 2).ToString(CultureInfo.CurrentCulture);
-                line.StepResult = adjustSpeedStepResult;
-                line.Voice = voice.ToString();
-
-                line.AddHistory(voice, line.StepResult.CurrentFileName, engine.Name, model ?? string.Empty, instruction ?? string.Empty);
-            }
-            catch (OperationCanceledException)
-            {
-                // Cancel in the GeneratingAudio popup: Speak and the ffmpeg steps surface it as a
-                // throw (it used to escape as an unhandled exception). Undo the partial row update.
-                line.StepResult.CurrentFileName = originalFileName;
-                line.StepResult.Voice = originalVoice;
-                return;
-            }
-            catch (HttpRequestException ex)
-            {
-                line.StepResult.CurrentFileName = originalFileName;
-                line.StepResult.Voice = originalVoice;
-                SeLogger.Error(ex, "TTS server error during regeneration.");
-                if (Window != null)
-                {
-                    await MessageBox.Show(
-                        Window,
-                        Se.Language.General.Error,
-                        "TTS server error: " + ex.Message,
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-                }
-                return;
-            }
-            catch (Exception ex)
-            {
-                line.StepResult.CurrentFileName = originalFileName;
-                line.StepResult.Voice = originalVoice;
-                SeLogger.Error(ex, "Regenerating audio failed.");
-                if (Window != null)
-                {
-                    await MessageBox.Show(
-                        Window,
-                        Se.Language.General.Error,
-                        "Regenerating audio failed: " + ex.Message,
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-                }
-                return;
-            }
-            finally
-            {
-                generatingAudioVm.Close();
-                if (engine is Murf && oldStyle != null)
-                {
-                    Se.Settings.Video.TextToSpeech.MurfStyle = oldStyle;
-                }
             }
 
             _skipAutoContinue = true;
-            await PlayAudio(line.StepResult.CurrentFileName);
+            if (Fork.ReviewRegeneratePreviewOnly)
+            {
+                // Preview the regenerated clip only - do NOT start the video/play-head. Starting
+                // playback desynced: the video ran from the play-head (mid-block) while the clip ran
+                // from the block start, and the row then advanced mid-word.
+                try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* not ready */ }
+                await StartClipAsync(line.StepResult.CurrentFileName);
+            }
+            else
+            {
+                // Upstream behaviour: the regenerated line plays like any other.
+                await PlayRow(line);
+            }
         }
         finally
         {
@@ -1546,6 +3164,746 @@ public partial class ReviewSpeechViewModel : ObservableObject
             foreach (var l in Lines)
             {
                 l.IsPlayingEnabled = true;
+            }
+        }
+
+        // The regenerate just spent credits - refresh the balance from the account.
+        _ = RefreshElevenLabsCreditsAsync();
+    }
+
+    // Engine/voice preparation shared by the single-row regenerate and the split's two
+    // regenerates: install checks, the clone-from-video consent + reference cut, and the
+    // panel snapshot the run must use. Returns null when the user backed out (or a probe failed).
+    private async Task<PreparedRegenerate?> PrepareEngineAndVoiceAsync(ITtsEngine engine, ReviewRow line)
+    {
+        var voice = SelectedVoice;
+        if (voice == null)
+        {
+            return null;
+        }
+
+        // Same install/download flow as the main window: this used to be a bare IsInstalled check
+        // that silently returned, so picking a not-yet-downloaded engine (e.g. CosyVoice3) here
+        // made Regenerate do nothing with no prompt.
+        if (!await TtsEngineInstaller.EnsureEngineInstalled(engine, Window, _windowService, SelectedRegion, SelectedModel, null, null, async () => await SelectedEngineChangedAsync()))
+        {
+            return null;
+        }
+
+        // "Clone from video" is a marker, not a voice any engine can speak with: the generate
+        // pipeline swaps it for a real one per paragraph, and this window used to hand it straight
+        // to the engine - which is what an imported session failed on with "Voice is not an
+        // OmniVoice" (#14095).
+        if (PerLineVoiceClone.IsSelected(voice))
+        {
+            // Same one-time gate the TTS window puts in front of cloning; picking this voice here
+            // is a fresh decision to clone whoever speaks in the video.
+            if (Window != null && !await VoiceCloneConsentPrompt.EnsureAsync(
+                    engine,
+                    Window,
+                    () => _windowService.ShowDialogAsync<VoiceCloneConsentWindow, VoiceCloneConsentViewModel>(Window, _ => { })))
+            {
+                return null;
+            }
+
+            var clonedVoice = await ResolvePerLineCloneVoiceAsync(engine, line);
+            if (clonedVoice == null)
+            {
+                return null;
+            }
+
+            voice = clonedVoice;
+        }
+
+        if (!await TtsVoiceInstaller.EnsureVoiceInstalled(engine, voice, Window, _windowService))
+        {
+            return null;
+        }
+
+        // Snapshot the panel state this run uses: the progress popup is non-modal, so clicking
+        // another row mid-run rewrites SelectedModel/Instruction (via the row-click panel sync) -
+        // reading them after the awaits recorded settings that never produced the audio into the
+        // row snapshot and its history entry.
+        return new PreparedRegenerate(
+            voice,
+            SelectedModel,
+            Instruction,
+            SelectedLanguage,
+            SelectedRegion,
+            Se.Settings.Video.TextToSpeech.MurfStyle);
+    }
+
+    private sealed record PreparedRegenerate(Voice Voice, string? Model, string? Instruction, TtsLanguage? Language, string? Region, string? OldStyle);
+
+    /// <summary>
+    /// Synthesizes one row and swaps its clip in - the body the single-row regenerate and each
+    /// half of a split share. Returns false when the audio could not be produced (the row is left
+    /// as it was, and the caller must not play it).
+    /// </summary>
+    private async Task<bool> RegenerateRowCoreAsync(ITtsEngine engine, ReviewRow line, Voice voice,
+        string? model, string? instruction, TtsLanguage? language, string? region, string? oldStyle)
+    {
+        // Capture the *saved* style, not SelectedStyle: capturing the new value made the
+        // restore a no-op, so a one-line style override silently became the permanent global Murf style.
+        if (engine is Murf && !string.IsNullOrEmpty(SelectedStyle))
+        {
+            Se.Settings.Video.TextToSpeech.MurfStyle = SelectedStyle;
+        }
+
+        var generatingAudioVm = _windowService.ShowWindow<GeneratingAudioWindow, GeneratingAudioViewModel>(Window!);
+        ReplaceCts(generatingAudioVm.CancellationTokenSource);
+
+        // The row's live StepResult must only change once the whole pipeline has succeeded - it
+        // used to be mutated right after Speak, so a cancel or a failed trim/post-process left the
+        // row half-updated (raw un-stretched clip with the old speed/voice display) and OK/Export
+        // published that state.
+        var originalFileName = line.StepResult.CurrentFileName;
+        var originalVoice = line.StepResult.Voice;
+
+        try
+        {
+            // "Skip general accent": temporarily clear the configured accent so this one regenerate
+            // sends no hidden accent tag. Restored right after, so other lines keep using it.
+            var savedAccent = Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent;
+            if (SkipGeneralAccent)
+            {
+                Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent = string.Empty;
+            }
+
+            TtsResult speakResult;
+            try
+            {
+                speakResult = await TtsInstructionSwap.RunAsync(engine, instruction, () =>
+                    // Strip markup here the way the main generate path does - the row text is the
+                    // subtitle's own text, and engines vocalize "<i>" or garble on tags.
+                    engine.Speak(Utilities.UnbreakLine(HtmlUtil.RemoveHtmlTags(line.Text, alsoSsaTags: true)),
+                        _waveFolder, voice, language, region, model, _cancellationToken));
+            }
+            finally
+            {
+                Se.Settings.Video.TextToSpeech.ElevenLabsGeneralAccent = savedAccent;
+            }
+
+            if (speakResult.Error || string.IsNullOrEmpty(speakResult.FileName) || !File.Exists(speakResult.FileName))
+            {
+                if (Window != null)
+                {
+                    var detail = string.IsNullOrEmpty(speakResult.ErrorMessage)
+                        ? "The engine produced no audio - see error-log.txt in the Subtitle Edit data folder."
+                        : speakResult.ErrorMessage;
+                    await MessageBox.Show(
+                        Window,
+                        Se.Language.General.Error,
+                        "Regenerating audio failed: " + detail,
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+
+                return false;
+            }
+
+            line.StepResult.CurrentFileName = speakResult.FileName;
+            line.StepResult.Voice = voice;
+
+            var adjustSpeedStepResult = await TrimAndAdjustSpeed(line);
+            var postProcessedFileName = await TtsPostProcessor.ApplyPostProcessing(adjustSpeedStepResult.CurrentFileName, _waveFolder, _cancellationToken);
+
+            if (_cancellationToken.IsCancellationRequested)
+            {
+                line.StepResult.CurrentFileName = originalFileName;
+                line.StepResult.Voice = originalVoice;
+                return false;
+            }
+
+            adjustSpeedStepResult.CurrentFileName = postProcessedFileName;
+            // Record which engine/model/instruction this regenerate used so the row's "click to
+            // sync left panel" feature can restore them later.
+            adjustSpeedStepResult.EngineName = engine.Name;
+            adjustSpeedStepResult.Model = model ?? string.Empty;
+            adjustSpeedStepResult.Instruction = instruction ?? string.Empty;
+            line.Speed = Math.Round(adjustSpeedStepResult.SpeedFactor, 2).ToString(CultureInfo.CurrentCulture);
+            line.Cps = Math.Round(adjustSpeedStepResult.Paragraph.GetCharactersPerSecond(), 2).ToString(CultureInfo.CurrentCulture);
+            line.StepResult = adjustSpeedStepResult;
+            line.Voice = voice.ToString();
+
+            line.AddHistory(voice, line.StepResult.CurrentFileName, engine.Name, model ?? string.Empty, instruction ?? string.Empty);
+
+            // A new clip: align this line's block to it once, then refresh the waveform. Aligning
+            // only the regenerated row leaves any manual timing on the other rows untouched.
+            AlignBlockToAudio(line);
+
+            // The row's clip changed - refresh the generated-speech waveform.
+            ScheduleTtsWaveformRebuild();
+            return true;
+        }
+        catch (OperationCanceledException)
+        {
+            // Cancel in the GeneratingAudio popup: Speak and the ffmpeg steps surface it as a
+            // throw (it used to escape as an unhandled exception). Undo the partial row update.
+            line.StepResult.CurrentFileName = originalFileName;
+            line.StepResult.Voice = originalVoice;
+            return false;
+        }
+        catch (HttpRequestException ex)
+        {
+            line.StepResult.CurrentFileName = originalFileName;
+            line.StepResult.Voice = originalVoice;
+            SeLogger.Error(ex, "TTS server error during regeneration.");
+            if (Window != null)
+            {
+                await MessageBox.Show(
+                    Window,
+                    Se.Language.General.Error,
+                    "TTS server error: " + ex.Message,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            return false;
+        }
+        catch (Exception ex)
+        {
+            line.StepResult.CurrentFileName = originalFileName;
+            line.StepResult.Voice = originalVoice;
+            SeLogger.Error(ex, "Regenerating audio failed.");
+            if (Window != null)
+            {
+                await MessageBox.Show(
+                    Window,
+                    Se.Language.General.Error,
+                    "Regenerating audio failed: " + ex.Message,
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            return false;
+        }
+        finally
+        {
+            generatingAudioVm.Close();
+            if (engine is Murf && oldStyle != null)
+            {
+                Se.Settings.Video.TextToSpeech.MurfStyle = oldStyle;
+            }
+        }
+    }
+
+    // One entry per reversible structural edit (currently: split). Holds the row list as it was,
+    // so Undo can put it back exactly - text, times, clips, history and Include flags included.
+    private sealed record ReviewUndoEntry(string Description, List<ReviewRow> Rows, int SelectedIndex);
+
+    private readonly Stack<ReviewUndoEntry> _undoStack = new();
+
+    [ObservableProperty] private bool _canUndo;
+
+    private void PushUndoSnapshot(string description)
+    {
+        // Deep copy of every row (see ReviewRow.Clone): the edit that follows (text, regenerate,
+        // split, drag, include toggle, delete) mutates the live rows in place, so a snapshot of the
+        // same instances would not capture the "before" state.
+        var clones = new List<ReviewRow>(Lines.Count);
+        foreach (var row in Lines)
+        {
+            clones.Add(row.Clone());
+        }
+
+        _undoStack.Push(new ReviewUndoEntry(description, clones, Lines.IndexOf(SelectedLine)));
+        CanUndo = _undoStack.Count > 0;
+    }
+
+    [RelayCommand]
+    private void Undo()
+    {
+        if (_undoStack.Count == 0)
+        {
+            return;
+        }
+
+        var entry = _undoStack.Pop();
+        CanUndo = _undoStack.Count > 0;
+
+        // The split's halves may be the rows currently playing/selected; stop playback first so
+        // the cursor timer does not keep chasing a row that is about to leave the list.
+        _skipAutoContinue = true;
+        ResetPlaybackUiState();
+
+        Lines.Clear();
+        foreach (var row in entry.Rows)
+        {
+            // Clone() does not copy IsPlayingEnabled, and ResetPlaybackUiState above ran on the old
+            // rows - without this every restored row's Play/Regenerate/Split button is dead.
+            row.IsPlayingEnabled = true;
+            Lines.Add(row);
+        }
+
+        RenumberRows();
+        RebuildWaveformParagraphs();
+
+        var restored = entry.SelectedIndex >= 0 && entry.SelectedIndex < Lines.Count ? Lines[entry.SelectedIndex] : Lines.FirstOrDefault();
+        SelectedLine = restored;
+        if (SelectedLine != null)
+        {
+            LineGrid.SelectedItem = SelectedLine;
+            LineGrid.ScrollIntoView(SelectedLine);
+        }
+
+        foreach (var av in WaveformControls())
+        {
+            var selected = SelectedLine?.WaveformParagraph;
+            av.SetPosition(
+                av.StartPositionSeconds,
+                WaveformParagraphs,
+                av.CurrentVideoPositionSeconds,
+                selected == null ? -1 : WaveformParagraphs.IndexOf(selected),
+                selected == null ? new List<SubtitleLineViewModel>() : new List<SubtitleLineViewModel> { selected });
+            av.InvalidateVisual();
+        }
+
+        ScheduleTtsWaveformRebuild();
+    }
+
+    // Split the selected line into two at the waveform play-head (audio) and the text box caret
+    // (text). Both halves become rows of their own and both are re-synthesized from their text, so
+    // the two clips always match what the two lines say.
+    [RelayCommand]
+    private async Task SplitLine(ReviewRow? row)
+    {
+        var engine = SelectedEngine;
+        var line = row ?? SelectedLine;
+        if (engine == null || line == null || string.IsNullOrWhiteSpace(line.Text))
+        {
+            return;
+        }
+
+        // Audio split point: the play-head, when it sits inside this line; otherwise the middle.
+        var paragraph = line.StepResult.Paragraph;
+        var startSeconds = paragraph.StartTime.TotalSeconds;
+        var endSeconds = paragraph.EndTime.TotalSeconds;
+        var playheadSeconds = AudioVisualizer?.CurrentVideoPositionSeconds ?? 0;
+        if (playheadSeconds <= startSeconds || playheadSeconds >= endSeconds)
+        {
+            playheadSeconds = (startSeconds + endSeconds) / 2.0;
+        }
+
+        // Text split point: the caret, when it sits inside the line's text; otherwise -1, which
+        // makes the text split fall back to the line break / auto-break (SplitManager's rules).
+        // Not gated on IsFocused: opening the context menu moves focus to the flyout, so by the
+        // time the command runs the box is no longer focused - the caret it holds is still the one
+        // the user placed, so use it whenever it is a position inside the text.
+        var caret = -1;
+        if (EditTextBox != null)
+        {
+            var selectionStart = EditTextBox.SelectionStart;
+            if (selectionStart > 0 && selectionStart < line.Text.Length &&
+                !string.IsNullOrWhiteSpace(line.Text.Substring(0, selectionStart)) &&
+                !string.IsNullOrWhiteSpace(line.Text.Substring(selectionStart)))
+            {
+                caret = selectionStart;
+            }
+        }
+
+        var language = LanguageAutoDetect.AutoDetectGoogleLanguage(
+            new Subtitle(new List<Paragraph> { paragraph }));
+
+        // Split the text with the same rules as the main window's "split line at position" so a
+        // formatted or two-line cue is handled identically. Reuse SplitManager on a throwaway
+        // SubtitleLineViewModel, then read the two halves back out.
+        var carrier = new SubtitleLineViewModel
+        {
+            Text = line.Text,
+            StartTime = TimeSpan.FromMilliseconds(paragraph.StartTime.TotalMilliseconds),
+            EndTime = TimeSpan.FromMilliseconds(paragraph.EndTime.TotalMilliseconds),
+        };
+        var list = new ObservableCollection<SubtitleLineViewModel> { carrier };
+        new SplitManager().Split(list, carrier, playheadSeconds, caret, language);
+
+        // Re-wrap both halves the way the main window's split does - the cursor cut can leave a
+        // line wider than the configured max, or two short lines that fit on one.
+        var firstText = RebalanceSplitText(list[0].Text, language);
+        var secondText = RebalanceSplitText(list[1].Text, language);
+        if (string.IsNullOrWhiteSpace(firstText) || string.IsNullOrWhiteSpace(secondText))
+        {
+            // Nothing to split into (a single unbreakable word): leave the line alone instead of
+            // inserting a blank row and asking the engine to speak an empty string.
+            return;
+        }
+
+        var gapMs = Se.Settings.General.MinimumBetweenLines.GetMilliseconds();
+        var splitMs = playheadSeconds * 1000.0;
+        var firstEndMs = Math.Max(startSeconds * 1000.0 + 1, splitMs - gapMs / 2.0);
+        var secondStartMs = Math.Min(endSeconds * 1000.0 - 1, splitMs + gapMs / 2.0);
+        if (firstEndMs > secondStartMs)
+        {
+            var middle = (firstEndMs + secondStartMs) / 2.0;
+            firstEndMs = middle;
+            secondStartMs = middle;
+        }
+
+        var first = CreateSplitRow(line, firstText, startSeconds * 1000.0, firstEndMs);
+        var second = CreateSplitRow(line, secondText, secondStartMs, endSeconds * 1000.0);
+
+        // Replace the original row with the two halves, then re-regenerate each from its own text.
+        var index = Lines.IndexOf(line);
+        if (index < 0)
+        {
+            return;
+        }
+
+        IsRegenerateEnabled = false;
+        foreach (var l in Lines)
+        {
+            l.IsPlayingEnabled = false;
+        }
+
+        try
+        {
+            // Both halves keep the row's engine/voice/model/instruction; gate the split on the
+            // engine install once (PrepareEngineAndVoiceAsync) and reuse it for both rows so the
+            // user is not asked twice.
+            var prepared = await PrepareEngineAndVoiceAsync(engine, line);
+            if (prepared == null)
+            {
+                return;
+            }
+
+            // Undo point: the whole row list as it stands now. The split replaces one row with two
+            // regenerated ones and cannot be reversed by editing, so keep the before-image.
+            PushUndoSnapshot($"split \"{line.Text}\"");
+
+            // Detach the replaced row's mirror, splice the two halves in, then rebuild every
+            // mirror in Lines order - appending them instead left WaveformParagraphs unsorted,
+            // and the visualizer's window scan assumes it is sorted by start time.
+            if (line.WaveformParagraph != null)
+            {
+                line.WaveformParagraph.PropertyChanged -= OnWaveformParagraphChanged;
+                _waveformParagraphToRow.Remove(line.WaveformParagraph);
+            }
+
+            Lines.RemoveAt(index);
+            Lines.Insert(index, first);
+            Lines.Insert(index + 1, second);
+
+            RenumberRows();
+            RebuildWaveformParagraphs();
+
+            // Synthesize both halves. A failure on one half leaves the other in place - the row is
+            // still editable and can be regenerated by hand.
+            await RegenerateRowCoreAsync(engine, first, prepared.Voice, prepared.Model,
+                prepared.Instruction, prepared.Language, prepared.Region, prepared.OldStyle);
+            await RegenerateRowCoreAsync(engine, second, prepared.Voice, prepared.Model,
+                prepared.Instruction, prepared.Language, prepared.Region, prepared.OldStyle);
+
+            SelectedLine = first;
+            LineGrid.SelectedItem = first;
+            LineGrid.ScrollIntoView(first);
+
+            // Force the blocks onto the visualizers: ReloadWaveformParagraphs is a no-op if the
+            // view is at the same place (NeedsParagraphReload), so hand the list over directly.
+            foreach (var av in WaveformControls())
+            {
+                av.SetPosition(
+                    av.StartPositionSeconds,
+                    WaveformParagraphs,
+                    av.CurrentVideoPositionSeconds,
+                    WaveformParagraphs.IndexOf(first.WaveformParagraph!),
+                    new List<SubtitleLineViewModel> { first.WaveformParagraph! });
+                av.InvalidateVisual();
+            }
+
+            ScheduleTtsWaveformRebuild();
+        }
+        finally
+        {
+            IsRegenerateEnabled = true;
+            foreach (var l in Lines)
+            {
+                l.IsPlayingEnabled = true;
+            }
+        }
+
+        // The two halves just spent credits - refresh the balance from the account.
+        _ = RefreshElevenLabsCreditsAsync();
+    }
+
+    // Re-wraps one half of a split with the same algorithm/settings as the main window's
+    // "split/rebalance long lines" (RebalanceAfterSplit), so a re-wrapped half matches what the
+    // same split produces in the editor.
+    private static string RebalanceSplitText(string text, string language)
+    {
+        if (string.IsNullOrEmpty(text))
+        {
+            return text;
+        }
+
+        var singleLineMaxLength = Se.Settings.Tools.SplitRebalanceLongLinesSingleLineMaxLength > 0
+            ? Se.Settings.Tools.SplitRebalanceLongLinesSingleLineMaxLength
+            : Se.Settings.General.SubtitleLineMaximumLength;
+        var unbreakLinesShorterThan = Se.Settings.Tools.SplitRebalanceLongLinesUnbreakShorterThan > 0
+            ? Se.Settings.Tools.SplitRebalanceLongLinesUnbreakShorterThan
+            : Se.Settings.General.UnbreakLinesShorterThan;
+
+        var mergeLinesShorterThan = unbreakLinesShorterThan >= singleLineMaxLength
+            ? singleLineMaxLength + 1
+            : unbreakLinesShorterThan;
+
+        return Utilities.AutoBreakLine(text, singleLineMaxLength, mergeLinesShorterThan, language);
+    }
+
+    // Builds one half of a split: a fresh row carrying the original row's engine/voice/model,
+    // history and original-text snapshot, with the given text and time codes. The audio is
+    // regenerated later, so the clip starts empty.
+    private ReviewRow CreateSplitRow(ReviewRow source, string text, double startMs, double endMs)
+    {
+        var paragraph = new Paragraph
+        {
+            Number = source.StepResult.Paragraph.Number,
+            Text = text,
+            StartTime = new TimeCode(TimeSpan.FromMilliseconds(startMs)),
+            EndTime = new TimeCode(TimeSpan.FromMilliseconds(endMs)),
+        };
+
+        var result = new TtsStepResult
+        {
+            Paragraph = paragraph,
+            Text = text,
+            CurrentFileName = string.Empty,
+            SpeedFactor = source.StepResult.SpeedFactor,
+            Voice = source.StepResult.Voice,
+            EngineName = source.StepResult.EngineName,
+            Model = source.StepResult.Model,
+            Instruction = source.StepResult.Instruction,
+            Include = source.Include,
+        };
+
+        var row = new ReviewRow
+        {
+            Include = source.Include,
+            Number = paragraph.Number,
+            Text = text,
+            Voice = source.Voice,
+            Speed = source.Speed,
+            Cps = Math.Round(paragraph.GetCharactersPerSecond(), 2).ToString(CultureInfo.CurrentCulture),
+            StepResult = result,
+            // Snapshots are compared against the main subtitle on OK to publish text edits, so the
+            // halves carry the *original* time codes they were born from (unchanged by the split).
+            OriginalText = text,
+            OriginalStartMs = source.OriginalStartMs,
+            OriginalEndMs = source.OriginalEndMs,
+            FromSplitOrMerge = true,
+        };
+        row.StartHistory();
+        return row;
+    }
+
+    // --- Merge two adjacent lines (the inverse of Split) -------------------------------------
+
+    // Rows selected in the grid (shift+click). "Merge lines" needs exactly two adjacent ones.
+    public ObservableCollection<ReviewRow> SelectedRows { get; } = new();
+
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(MergeLinesCommand))]
+    private bool _canMergeLines;
+
+    // Called from the grid's SelectionChanged with the control's SelectedItems.
+    public void SetSelectedRows(IEnumerable<ReviewRow> rows)
+    {
+        SelectedRows.Clear();
+        foreach (var row in rows)
+        {
+            SelectedRows.Add(row);
+        }
+
+        CanMergeLines = IsMergeableSelection();
+    }
+
+    private bool IsMergeableSelection()
+    {
+        if (SelectedRows.Count != 2)
+        {
+            return false;
+        }
+
+        var a = Lines.IndexOf(SelectedRows[0]);
+        var b = Lines.IndexOf(SelectedRows[1]);
+        return a >= 0 && b >= 0 && Math.Abs(a - b) == 1;
+    }
+
+    // Merges the two selected adjacent rows into one (joined text, first start -> second end) and
+    // regenerates it - the inverse of SplitLine.
+    [RelayCommand(CanExecute = nameof(CanMergeLines))]
+    private async Task MergeLines()
+    {
+        var engine = SelectedEngine;
+        if (engine == null || !IsMergeableSelection())
+        {
+            return;
+        }
+
+        var ordered = SelectedRows.OrderBy(row => Lines.IndexOf(row)).ToList();
+        var first = ordered[0];
+        var second = ordered[1];
+        if (first.StepResult.Paragraph == null || second.StepResult.Paragraph == null)
+        {
+            return;
+        }
+
+        var mergedText = (first.Text + " " + second.Text).Trim();
+        if (string.IsNullOrWhiteSpace(mergedText))
+        {
+            return;
+        }
+
+        var index = Lines.IndexOf(first);
+        if (index < 0)
+        {
+            return;
+        }
+
+        var startMs = first.StepResult.Paragraph.StartTime.TotalMilliseconds;
+        var endMs = second.StepResult.Paragraph.EndTime.TotalMilliseconds;
+
+        IsRegenerateEnabled = false;
+        foreach (var l in Lines)
+        {
+            l.IsPlayingEnabled = false;
+        }
+
+        try
+        {
+            var prepared = await PrepareEngineAndVoiceAsync(engine, first);
+            if (prepared == null)
+            {
+                return;
+            }
+
+            // Undo point: the whole row list before the two rows are replaced by one.
+            PushUndoSnapshot($"merge \"{first.Text}\" + \"{second.Text}\"");
+
+            var merged = CreateSplitRow(first, mergedText, startMs, endMs);
+
+            foreach (var row in new[] { first, second })
+            {
+                if (row.WaveformParagraph != null)
+                {
+                    row.WaveformParagraph.PropertyChanged -= OnWaveformParagraphChanged;
+                    _waveformParagraphToRow.Remove(row.WaveformParagraph);
+                }
+            }
+
+            Lines.Remove(second);
+            Lines.Remove(first);
+            Lines.Insert(index, merged);
+
+            RenumberRows();
+            RebuildWaveformParagraphs();
+
+            await RegenerateRowCoreAsync(engine, merged, prepared.Voice, prepared.Model,
+                prepared.Instruction, prepared.Language, prepared.Region, prepared.OldStyle);
+
+            SelectedLine = merged;
+            LineGrid.SelectedItem = merged;
+            LineGrid.ScrollIntoView(merged);
+
+            foreach (var av in WaveformControls())
+            {
+                av.SetPosition(
+                    av.StartPositionSeconds,
+                    WaveformParagraphs,
+                    av.CurrentVideoPositionSeconds,
+                    WaveformParagraphs.IndexOf(merged.WaveformParagraph!),
+                    new List<SubtitleLineViewModel> { merged.WaveformParagraph! });
+                av.InvalidateVisual();
+            }
+
+            ScheduleTtsWaveformRebuild();
+        }
+        finally
+        {
+            IsRegenerateEnabled = true;
+            foreach (var l in Lines)
+            {
+                l.IsPlayingEnabled = true;
+            }
+        }
+
+        SetSelectedRows(Array.Empty<ReviewRow>());
+        _ = RefreshElevenLabsCreditsAsync();
+    }
+
+    // Rebuilds the visualizer's mirror list from the rows, in Lines order. Called after a split:
+    // the two halves replace the row in place, so the sorted-by-start-time invariant the
+    // visualizer relies on must be re-established from scratch.
+    private void RebuildWaveformParagraphs()
+    {
+        foreach (var wp in WaveformParagraphs)
+        {
+            wp.PropertyChanged -= OnWaveformParagraphChanged;
+        }
+
+        WaveformParagraphs.Clear();
+        _waveformParagraphToRow.Clear();
+
+        foreach (var row in Lines)
+        {
+            AttachWaveformMirror(row);
+        }
+    }
+
+    // Builds the visualizer mirror for a row and wires both feedback directions:
+    //  - drag/edit on the waveform mutates the mirror's times  -> OnWaveformParagraphChanged writes
+    //    them back to StepResult.Paragraph;
+    //  - editing the row's text in the grid/text box             -> OnRowPropertyChanged writes it to
+    //    the mirror, so the text drawn inside the block follows the edit immediately.
+    // The mirror's Text starts from the row's live text (which may already differ from
+    // StepResult.Text after an edit).
+    private void AttachWaveformMirror(ReviewRow row)
+    {
+        var paragraph = row.StepResult.Paragraph;
+        var waveformParagraph = new SubtitleLineViewModel
+        {
+            Number = paragraph.Number,
+            Text = row.Text,
+            StartTime = TimeSpan.FromMilliseconds(paragraph.StartTime.TotalMilliseconds),
+            EndTime = TimeSpan.FromMilliseconds(paragraph.EndTime.TotalMilliseconds),
+        };
+        waveformParagraph.UpdateDuration();
+        waveformParagraph.PropertyChanged += OnWaveformParagraphChanged;
+
+        // Subscribe once per row - a re-attach (rebuild) must not stack handlers.
+        row.PropertyChanged -= OnRowPropertyChanged;
+        row.PropertyChanged += OnRowPropertyChanged;
+
+        row.WaveformParagraph = waveformParagraph;
+        WaveformParagraphs.Add(waveformParagraph);
+        _waveformParagraphToRow[waveformParagraph] = row;
+    }
+
+    // Keeps the waveform block's drawn text in step with the row's text: editing a line in the
+    // review window used to leave the text inside the block showing the old wording forever.
+    private void OnRowPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (sender is not ReviewRow row || e.PropertyName != nameof(ReviewRow.Text))
+        {
+            return;
+        }
+
+        var waveformParagraph = row.WaveformParagraph;
+        if (waveformParagraph == null || waveformParagraph.Text == row.Text)
+        {
+            return;
+        }
+
+        waveformParagraph.Text = row.Text;
+        InvalidateWaveforms();
+    }
+
+    private void RenumberRows()
+    {
+        for (var i = 0; i < Lines.Count; i++)
+        {
+            Lines[i].Number = i + 1;
+            Lines[i].StepResult.Paragraph.Number = i + 1;
+            if (Lines[i].WaveformParagraph != null)
+            {
+                Lines[i].WaveformParagraph!.Number = i + 1;
             }
         }
     }
@@ -1562,12 +3920,16 @@ public partial class ReviewSpeechViewModel : ObservableObject
         _skipAutoContinue = false;
         _startPlayTicks = DateTime.UtcNow.Ticks;
 
+        // Set the playing row BEFORE selecting it: OnSelectedLineChanged now starts playback for a
+        // newly selected row while audio is running, and it checks _playingRow to skip the row we
+        // are already starting - leaving the old order here would make this re-enter PlayRow.
+        line.IsPlaying = true;
+        _playingRow = line;
+
         // Playing a row selects it, so the keyboard (Space to replay, R to regenerate) always
         // targets the line just heard - previously selection stayed on the old row (#12093).
         SelectedLine = line;
 
-        line.IsPlaying = true;
-        _playingRow = line;
         foreach (var l in Lines)
         {
             l.IsPlayingEnabled = false;
@@ -1577,10 +3939,71 @@ public partial class ReviewSpeechViewModel : ObservableObject
     }
 
 
+    // The row to play from the play-head: the clip under it, or the next clip to its right when
+    // it sits in a gap (play must never walk back into the clip the play-head already passed).
+    // Null when the play-head is at/after the end of the last clip.
+    private ReviewRow? FindRowToPlayFromPlayhead()
+    {
+        var seconds = AudioVisualizer?.CurrentVideoPositionSeconds ?? double.NaN;
+        if (double.IsNaN(seconds))
+        {
+            return SelectedLine;
+        }
+
+        // Lines are in start-time order; the first row that has not ended by the play-head is the
+        // one the play-head is inside or about to enter.
+        ReviewRow? next = null;
+        foreach (var row in Lines)
+        {
+            var paragraph = row.StepResult.Paragraph;
+            if (paragraph.EndTime.TotalSeconds > seconds)
+            {
+                next = row;
+                break;
+            }
+        }
+
+        return next;
+    }
+
+    // True while the play-head still sits on this row's block. The parked play-head is written
+    // exactly to the block start, so a small epsilon keeps that "on the block".
+    private bool IsPlayheadOnRow(ReviewRow row)
+    {
+        var seconds = AudioVisualizer?.CurrentVideoPositionSeconds ?? double.NaN;
+        if (double.IsNaN(seconds))
+        {
+            return false;
+        }
+
+        var start = row.WaveformParagraph?.StartTime.TotalSeconds ?? row.StepResult.Paragraph.StartTime.TotalSeconds;
+        var end = row.WaveformParagraph?.EndTime.TotalSeconds ?? row.StepResult.Paragraph.EndTime.TotalSeconds;
+        return seconds >= start - 0.001 && seconds < end;
+    }
+
+    // The block Play should start from: the selected one while the play-head is on it, otherwise
+    // the clip at the play-head (the first block to its right when it sits in a gap). The selection
+    // is the fallback when the play-head is unknown or past the last clip, matching the old
+    // behaviour in those cases.
+    private ReviewRow? ResolvePlayRow()
+    {
+        var selected = SelectedLine;
+        if (selected != null && IsPlayheadOnRow(selected))
+        {
+            return selected;
+        }
+
+        return FindRowToPlayFromPlayhead() ?? selected;
+    }
+
     [RelayCommand]
     private async Task Play()
     {
-        var line = SelectedLine;
+        // Start from the selected block while the play-head is still on it (clicking a block parks
+        // the play-head on its start). Once the play-head is moved off the selection - e.g. clicking
+        // empty waveform to its left - start from the clip at the play-head instead of replaying the
+        // selection.
+        var line = ResolvePlayRow();
         if (line == null)
         {
             return;
@@ -1590,6 +4013,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         _skipAutoContinue = false;
         _startPlayTicks = DateTime.UtcNow.Ticks;
         _playingRow = line;
+        SelectedLine = line;
         await PlayAudio(line.StepResult.CurrentFileName);
     }
 
@@ -1605,17 +4029,60 @@ public partial class ReviewSpeechViewModel : ObservableObject
         DisposePlayerOffThread();
 
         _playingRow = null;
+        _activeClipRow = null;
+        // Stop can leave the play-head away from the marker: start the glide to the anchor (the ease
+        // starts the cursor tick itself, and the tick stops itself once it has landed).
+        SetWaveformPlayhead(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+        try { VideoPlayerControl?.VideoPlayer.Pause(); } catch { /* not ready */ }
         IsPlayVisible = true;
         IsStopVisible = false;
     }
 
     [RelayCommand]
-    private void Ok()
+    private async Task Ok()
     {
         Se.WriteToolsLog("TTS review: OK clicked - closing");
 
+        // Blocks without audio (a failed generation, or a clip whose cut/trim produced a header-only
+        // file) would otherwise be published silently and end up as gaps in the merged audio.
+        var rowsWithoutAudio = Lines.Count(row => row.Include && !TtsAudioFile.HasAudio(row.StepResult.CurrentFileName));
+        if (rowsWithoutAudio > 0)
+        {
+            var answer = await MessageBox.Show(
+                Window,
+                Se.Language.General.Warning,
+                $"{rowsWithoutAudio} included block(s) have no generated audio (the generation failed or produced an empty clip)." +
+                Environment.NewLine + Environment.NewLine + "Publish anyway?",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Warning);
+            if (answer != MessageBoxResult.Yes)
+            {
+                return;
+            }
+        }
+
+        // Optionally keep a session next to the subtitle being worked on first - the same export the
+        // Export button writes, but silently (no picker, no prompts). Enabled in Settings > cvrle77.
+        if (Se.Settings.Video.TextToSpeech.ReviewOkAlsoExports)
+        {
+            var exportFolder = GetFolderName(SubtitleFileName) ?? GetFolderName(_videoFileName);
+            if (!string.IsNullOrEmpty(exportFolder))
+            {
+                try
+                {
+                    await ExportSessionAsync(exportFolder, isSilent: true);
+                }
+                catch (Exception ex)
+                {
+                    SeLogger.Error(ex, "TTS review: silent export on OK failed");
+                }
+            }
+        }
+
         // Push any edits the user made to row.Text back into the step results so
         // the caller sees them, then publish the included rows as StepResults.
+        // StepResults keep the original text (with audio tags / CAPS emphasis) because they feed
+        // the TTS merge - that is where the emotion lives.
         foreach (var row in Lines)
         {
             row.StepResult.Text = row.Text;
@@ -1623,11 +4090,23 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         StepResults = Lines.Where(p => p.Include).Select(p => p.StepResult).ToArray();
 
-        // All rows, not just included ones - excluding a row only skips its audio in the merge,
-        // while a text edit was still made deliberately and should reach the main subtitle.
+        // The copy that reaches the main subtitle is cleaned of TTS-only markup (audio tags,
+        // (,,,) pauses, CAPS emphasis) while keeping every real edit the user made.
+        // One change per original subtitle line. Rows born from Split share their original line's
+        // time codes, so publishing each half separately made the consumer keep one of the two
+        // changes (same range) and the line lost the other half's text - join them instead. A row
+        // born from Merge spans TWO original lines and has no single range to map back to, so it
+        // publishes nothing (the main subtitle keeps its two lines).
         TextChanges = Lines
-            .Where(row => row.Text != row.OriginalText)
-            .Select(row => new ReviewTextChange(row.OriginalStartMs, row.OriginalEndMs, row.Text))
+            .GroupBy(row => (row.OriginalStartMs, row.OriginalEndMs))
+            .Where(g => g.Any(row => row.Text != row.OriginalText))
+            .Where(g => !g.First().FromSplitOrMerge || g.Count() > 1)
+            .Select(g =>
+            {
+                var text = string.Join(" ", g.Select(row => row.Text));
+                return new ReviewTextChange(g.Key.OriginalStartMs, g.Key.OriginalEndMs,
+                    Fork.TtsCleanText ? TtsTextCleaner.Clean(text) : text);
+            })
             .ToList();
 
         Se.SaveSettings();
@@ -1668,7 +4147,9 @@ public partial class ReviewSpeechViewModel : ObservableObject
         var trimProcess = FfmpegGenerator.TrimSilenceStartAndEnd(item.CurrentFileName, outputFileNameTrim, TtsSilenceThreshold.Amplitude(peakDbfs));
         await trimProcess.StartAndWaitAsync(_cancellationToken);
 
-        var currentFile = File.Exists(outputFileNameTrim) && new FileInfo(outputFileNameTrim).Length > 0
+        // HasAudio, not "longer than 0 bytes": a WAV with a header and no samples is ~78 bytes and
+        // used to pass, so a clip the trim had emptied became the row's audio.
+        var currentFile = TtsAudioFile.HasAudio(outputFileNameTrim)
             ? outputFileNameTrim
             : item.CurrentFileName;
 
@@ -1680,7 +4161,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
             var vadProcess = FfmpegGenerator.CompressInternalSilence(currentFile, vadOutput, vadMaxSilence, TtsSilenceThreshold.DbLiteral(peakDbfs));
             await vadProcess.StartAndWaitAsync(_cancellationToken);
 
-            if (File.Exists(vadOutput) && new FileInfo(vadOutput).Length > 0)
+            if (TtsAudioFile.HasAudio(vadOutput))
             {
                 currentFile = vadOutput;
             }
@@ -1755,10 +4236,28 @@ public partial class ReviewSpeechViewModel : ObservableObject
         await speedProcess.StartAndWaitAsync(_cancellationToken);
 
         // Fallback: if rubberband failed, retry with atempo
-        if (doHighQualityStretch && (!File.Exists(outputFileName2) || new FileInfo(outputFileName2).Length == 0))
+        if (doHighQualityStretch && !TtsAudioFile.HasAudio(outputFileName2))
         {
             var fallbackProcess = FfmpegGenerator.ChangeSpeed(currentFile, outputFileName2, (float)factor);
             await fallbackProcess.StartAndWaitAsync(_cancellationToken);
+        }
+
+        // A stretch that produced no audio (or only a header) must not become the row's clip: keep
+        // the un-stretched audio, the same fallback the main TTS pipeline uses.
+        if (!TtsAudioFile.HasAudio(outputFileName2))
+        {
+            Se.WriteToolsLog($"TTS review: speed change (factor {factor:0.###}) produced no audio for line {index + 1} - keeping the original speed", true);
+            return new TtsStepResult
+            {
+                Paragraph = p,
+                Text = item.Text,
+                CurrentFileName = currentFile,
+                SpeedFactor = 1.0f,
+                Voice = item.Voice,
+                EngineName = item.EngineName,
+                Model = item.Model,
+                Instruction = item.Instruction,
+            };
         }
 
         return new TtsStepResult
@@ -1827,12 +4326,26 @@ public partial class ReviewSpeechViewModel : ObservableObject
             e.Handled = true;
             _ = ShowGoToPosition();
         }
-        else if (e.Key == Key.R && e.KeyModifiers == KeyModifiers.None && !isTextBoxFocused)
+        else if (e.Key == Key.R && e.KeyModifiers == KeyModifiers.None &&
+                 (!isTextBoxFocused || TagPalette?.IsPointerOver == true))
         {
             // Bare R = regenerate the selected line: pairs with Space for fast keyboard-only
-            // review (space to listen, R to redo), as requested in #12093.
+            // review (space to listen, R to redo), as requested in #12093. It also fires while the
+            // mouse hovers the tag palette - a tag click moves focus to the text box, and R there
+            // should redo, not type a letter.
             e.Handled = true;
             RegenerateSelectedLine();
+        }
+        else if (e.Key == Key.Z && e.KeyModifiers.HasFlag(KeyModifiers.Control) &&
+                 (!isTextBoxFocused || !CanUndo))
+        {
+            // Undo a structural edit (a split). Left to the text box while it is focused and there
+            // is no split to undo, so Ctrl+Z still undoes typing there.
+            e.Handled = true;
+            if (UndoCommand.CanExecute(null))
+            {
+                UndoCommand.Execute(null);
+            }
         }
     }
 
@@ -1855,7 +4368,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
             e.Handled = true;
         }
-        else if (e.Key == Key.R && e.KeyModifiers == KeyModifiers.None && !isTextBoxFocused)
+        else if (e.Key == Key.R && e.KeyModifiers == KeyModifiers.None &&
+                 (!isTextBoxFocused || TagPalette?.IsPointerOver == true))
         {
             e.Handled = true;
         }
@@ -1876,14 +4390,17 @@ public partial class ReviewSpeechViewModel : ObservableObject
     }
 
     /// <summary>
-    /// True when the pressed keys match the user's main-window play/pause bindings
-    /// (TogglePlayPause / TogglePlayPause2; defaults Space and Ctrl/Cmd+Space), so the review
-    /// window plays with the same keys as the rest of the app (#12093).
+    /// True when the pressed keys are this window's play/pause keys. Fixed to Space / Ctrl+Space
+    /// here, not the user's main-window bindings: if the main window's play/pause was remapped
+    /// (e.g. Space moved to "play selected lines" and F5 to play/pause), following it left this
+    /// window with no Space to play the selected segment.
     /// </summary>
     private static bool MatchesPlayPauseShortcut(KeyEventArgs e)
     {
-        return MainShortcutKeys.Matches(e, nameof(MainViewModel.TogglePlayPauseCommand), [nameof(Key.Space)]) ||
-               MainShortcutKeys.Matches(e, nameof(MainViewModel.TogglePlayPause2Command), [MainShortcutKeys.CtrlOrCmd, nameof(Key.Space)]);
+        return e.Key == Key.Space &&
+               (e.KeyModifiers == KeyModifiers.None ||
+                e.KeyModifiers == KeyModifiers.Control ||
+                e.KeyModifiers == KeyModifiers.Meta);
     }
 
     private void TogglePlayPauseSelectedRow()
@@ -1894,7 +4411,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
             return;
         }
 
-        var line = SelectedLine;
+        // Same rule as Play: the selected block wins only while the play-head is still on it.
+        var line = ResolvePlayRow();
         if (line is { IsPlayingEnabled: true } && PlayRowCommand.CanExecute(line))
         {
             PlayRowCommand.Execute(line);
@@ -2028,6 +4546,13 @@ public partial class ReviewSpeechViewModel : ObservableObject
             {
                 SelectedModel = Models.First();
             }
+
+            // Apply the v3/v4 UI (only Stability + Similarity visible) right away for an imported
+            // session too - previously this flag was only set in SelectedModelChanged, so a session
+            // imported with eleven_v4 still showed the v2 sliders until the model was toggled away
+            // and back.
+            IsElevenLabsV3OrV4Selected = SelectedModel is "eleven_v3" or "eleven_v4" or "eleven_v4_turbo";
+            IsElevenLabsEngineV3Selected = IsElevenLabsV3OrV4Selected;
         }
         else if (engine is Qwen3TtsCpp)
         {
@@ -2123,6 +4648,7 @@ public partial class ReviewSpeechViewModel : ObservableObject
         var voice = SelectedVoice;
         var model = SelectedModel;
         IsElevenLabsEngineV3Selected = false;
+        IsElevenLabsV3OrV4Selected = false;
         UpdateInstructionVisibility();
         if (engine == null || voice == null || model == null)
         {
@@ -2131,10 +4657,12 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
         Dispatcher.UIThread.PostSafe(async () =>
         {
-            // v4 / v4 Turbo honor the same audio tags as v3 ([whispers], [laughs], [pause]...)
+            // Shown for the models that use audio tags instead of SSML (v3 and the v4 family),
+            // so the help/audio-tags link appears for them too.
             if (engine is ElevenLabs && model is "eleven_v3" or "eleven_v4" or "eleven_v4_turbo")
             {
                 IsElevenLabsEngineV3Selected = true;
+                IsElevenLabsV3OrV4Selected = true;
             }
 
             if (engine.HasLanguageParameter)
@@ -2181,8 +4709,48 @@ public partial class ReviewSpeechViewModel : ObservableObject
         // state — the visual cue should follow the user's click immediately.
         RefreshWaveformPosition();
 
+        // Highlight the tag buttons that are on for this line.
+        RefreshActiveTags();
+
         if (value == null)
         {
+            return;
+        }
+
+        // Park the playhead on the selected block too, so Play / Play-selected starts from the row
+        // the user clicked, not from the clip the playhead was left on. A selection that came from
+        // a waveform click, or the automatic advance during playback, must not move the playhead.
+        if (!_selectionFromWaveform && _playingRow == null)
+        {
+            GoToRowStart(value);
+        }
+
+        // While a clip is playing, selecting a DIFFERENT row - from the grid or the waveform -
+        // starts playing that row immediately instead of leaving the old clip running.
+        if (_playingRow != null && !ReferenceEquals(value, _playingRow))
+        {
+            // The video is the master clock: jump it to the clicked row and keep playing (the next
+            // cursor tick marks and centers the row). Otherwise fall back to the clip playback.
+            if (VideoPlayerControl?.VideoPlayer.IsPlaying == true)
+            {
+                var start = value.StepResult.Paragraph?.StartTime.TotalSeconds;
+                if (start.HasValue)
+                {
+                    _lastVideoSeekSeconds = start.Value;
+                    _lastSeekTicks = Stopwatch.GetTimestamp();
+                    // Move the play-head immediately, then seek the video: the mpv seek is async, so
+                    // without this the play-head briefly showed the old row (the "from the play-head
+                    // or from the start" race).
+                    SetWaveformPlayhead(start.Value);
+                    try { VideoPlayerControl.SeekTo(start.Value); } catch { /* not ready */ }
+                }
+
+                TableViewExtras.CenterRowAnimated(LineGrid, value);
+                _activeClipRow = null;
+                return;
+            }
+
+            _ = PlayRow(value);
             return;
         }
 
@@ -2435,6 +5003,11 @@ public partial class ReviewSpeechViewModel : ObservableObject
 
     internal void OnClosing(WindowClosingEventArgs e)
     {
+        // The video surface must be torn down on the UI thread: CloseAndDisposePlayer touches
+        // dispatcher-owned controls (ProgressText), so running it off-thread throws.
+        var video = VideoPlayerControl;
+        VideoPlayerControl = null;
+        video?.CloseAndDisposePlayer();
         // Title-bar X / Alt+F4 bypass the Escape guard, so a regenerate can still be in flight
         // here. Cancel it, but leave its popup-owned CTS undisposed (the popup's Cancel button
         // still holds it) and skip the temp-file sweep below - the unwinding pipeline may still
@@ -2445,7 +5018,10 @@ public partial class ReviewSpeechViewModel : ObservableObject
         _skipAutoContinue = true;
         _isClosing = true;
         _timer.StopAndDispose(OnTimerOnElapsed);
+        _cursorTimer?.Dispose();
+        _cursorTimer = null;
         try { _cancellationTokenSource.Cancel(); } catch (ObjectDisposedException) { }
+        try { _ttsWaveformCts?.Cancel(); } catch (ObjectDisposedException) { }
         if (!regenerateInFlight)
         {
             try { _cancellationTokenSource.Dispose(); } catch (ObjectDisposedException) { }
@@ -2493,9 +5069,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
         UiUtil.SaveWindowPosition(Window);
     }
 
-    internal void LineGridDoubleClicked()
+    internal void LineGridDoubleClicked(ReviewRow? line)
     {
-        var line = SelectedLine;
         if (line == null || line.IsPlaying || !line.IsPlayingEnabled)
         {
             return;
@@ -2508,5 +5083,8 @@ public partial class ReviewSpeechViewModel : ObservableObject
     {
         UiUtil.RestoreWindowPosition(Window);
         RefreshWaveformPosition();
+        // Honour the anchor straight away: an imported session used to centre the selected block, so
+        // the marker ended up in the middle of it instead of over the play-head.
+        SetWaveformPlayhead(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
     }
 }

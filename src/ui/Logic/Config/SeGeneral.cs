@@ -22,6 +22,10 @@ public class SeGeneral
     public int SubtitleLineMaximumLength { get; set; } = 43;
     public int MaxNumberOfLines { get; set; }
     public bool SubtitleTextBoxLimitNewLines { get; set; } = true;
+
+    // Master switch for every cvrle77 fork feature. Off = upstream Subtitle Edit behaviour: each
+    // fork feature also checks this (see Logic.Config.Fork), so this one switch reverts them all.
+    public bool ForkFeatures { get; set; } = true;
     public bool SubtitleTextBoxAutoWrapWhileTyping { get; set; }
     public double SubtitleMaximumCharactersPerSeconds { get; set; }
     public double SubtitleOptimalCharactersPerSeconds { get; set; }
@@ -131,6 +135,57 @@ public class SeGeneral
     public bool LockTimeCodes { get; set; }
 
     /// <summary>
+    /// Show only a handful of the commands that are actually used in the three right-click menus
+    /// (subtitle text box, subtitle grid, waveform) and hide the rest. Configurable in Settings.
+    /// </summary>
+    public bool MinimalContextMenus { get; set; }
+
+    /// <summary>
+    /// Per-menu list of hidden item headers for the three right-click menus. Keyed by menu
+    /// ("textbox", "grid", "waveform"); the value is the set of item headers the user chose to
+    /// hide. Empty means the menu is shown in full. This is the fine-grained successor of
+    /// <see cref="MinimalContextMenus"/> and the two are independent: a header listed here stays
+    /// hidden even when the minimal preset is off. Configurable in Settings via the
+    /// "Customize right-click menus" dialog.
+    /// </summary>
+    public Dictionary<string, List<string>> HiddenContextMenuItems { get; set; }
+
+    /// <summary>
+    /// After "split line at video and text box position", move the right half's start forward to
+    /// the next speech, trimming the silence the cut left at its front. Uses the "seek silence"
+    /// volume; a cut inside speech (no silence in front) leaves the line untouched. Configurable
+    /// in Settings.
+    /// </summary>
+    public bool TrimSilenceAfterSplit { get; set; }
+
+    /// <summary>
+    /// Use the Silero VAD voice detection (instead of the amplitude waveform) to trim the leading
+    /// silence after a split, so a non-voice sound (a spoon, a clink) is not taken for the speech.
+    /// Needs the model installed from Settings; falls back to the amplitude method when missing.
+    /// </summary>
+    public bool SplitTrimUseVoiceDetection { get; set; }
+
+    /// <summary>Silero VAD speech threshold (probability, 0-1). Frames at or above it count as speech.</summary>
+    public double VadThreshold { get; set; }
+
+    /// <summary>Shortest run of speech the VAD keeps, in seconds - anything shorter is dropped as noise.</summary>
+    public double VadMinSpeechSeconds { get; set; }
+
+    /// <summary>Pauses shorter than this (seconds) are merged into one speech segment.</summary>
+    public double VadMinSilenceSeconds { get; set; }
+
+    /// <summary>
+    /// When a split puts a sentence end (a ".") at the end of the left half and the right half then
+    /// starts with a lower case letter, upper case that letter - a sentence starts with a capital.
+    /// Applies to the main window and to the text-to-speech review split. Configurable in Settings.
+    /// </summary>
+    public bool CapitalizeAfterSplit { get; set; } = true;
+
+    /// <summary>
+    /// Draw the "end of video" line on the waveform (green while every cue fits inside the video,
+    /// red when a cue runs past it). Applies to the main window and the text-to-speech review.
+    /// </summary>
+    public bool ShowVideoEndLine { get; set; } = true;
     /// Whether retiming a translation line moves the original line it shows by the same amounts,
     /// keeping any offset between the two. Off lets the original's time codes be edited on their own.
     /// </summary>
@@ -281,6 +336,7 @@ public class SeGeneral
     {
         Version = Se.Version;
         Language = "English";
+        HiddenContextMenuItems = new Dictionary<string, List<string>>();
         LayoutNumber = 0;
         SubtitleLineMaximumLength = 43;
         MaxNumberOfLines = 2;
@@ -350,6 +406,9 @@ public class SeGeneral
         MoveAllLinesCustom1Ms = 10;
         MoveAllLinesCustom2Ms = 1000;
         PromptBeforeDelete = true;
+        VadThreshold = 0.5;
+        VadMinSpeechSeconds = 0.25;
+        VadMinSilenceSeconds = 0.1;
         LockOriginalToTranslation = true;
         CheckSubtitleFileChangedOutside = true;
         ConfirmOverwriteSubtitleFileChangedOutside = true;

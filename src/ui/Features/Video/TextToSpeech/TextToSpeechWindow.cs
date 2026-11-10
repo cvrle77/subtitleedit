@@ -1,4 +1,4 @@
-using Avalonia;
+﻿using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -8,28 +8,22 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Styling;
 using System.Collections.ObjectModel;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Engines;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech.Voices;
+using Optris.Icons.Avalonia;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Platform.Progress;
 
 namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech;
 
-/// <summary>
-/// Text to speech, in the editor look (see <see cref="EditorChrome"/>): import/cast actions on
-/// top, engine and voice on the left, output options on the right, progress and Generate at
-/// the bottom.
-/// </summary>
 public class TextToSpeechWindow : Window
 {
     private readonly TextToSpeechViewModel _vm;
     private ComboBox? _comboBoxEngines;
     private ComboBox? _comboBoxModels;
-
-    private const double LabelWidth = 92;
-    private const double ComboWidth = 250;
 
     public TextToSpeechWindow(TextToSpeechViewModel vm)
     {
@@ -37,12 +31,59 @@ public class TextToSpeechWindow : Window
         Title = UiUtil.MakeWindowTitle(Se.Language.Video.TextToSpeech.Title);
         SizeToContent = SizeToContent.WidthAndHeight;
         CanResize = false;
-        EditorChrome.ApplyWindow(this, EditorWindowStyles.TextFieldsBare | EditorWindowStyles.MuteDisabledPrimary);
 
         _vm = vm;
         vm.Window = this;
         vm.RefreshDownloadDots = RefreshDownloadDots;
         DataContext = vm;
+
+        // Context line: what is about to be spoken + whether a video is loaded. Before this the
+        // window only revealed the line count via the progress text after Generate was clicked.
+        var contextIcon = new ContentControl { VerticalAlignment = VerticalAlignment.Center };
+        Attached.SetIcon(contextIcon, IconNames.ClosedCaption);
+        var contextText = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            Opacity = 0.75,
+            [!TextBlock.TextProperty] = new Binding(nameof(vm.LinesInfo)) { Mode = BindingMode.OneWay },
+        };
+        // A movie icon stands in for a "Video:" label inside the chip.
+        var videoChipIcon = new ContentControl { VerticalAlignment = VerticalAlignment.Center, Opacity = 0.8 };
+        Attached.SetIcon(videoChipIcon, IconNames.MovieOpenOutline);
+        var videoChip = new Border
+        {
+            CornerRadius = new CornerRadius(10),
+            Padding = new Thickness(9, 1, 9, 2),
+            VerticalAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(Color.FromArgb(28, 128, 128, 128)),
+            Child = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 5,
+                Children =
+                {
+                    videoChipIcon,
+                    new TextBlock
+                    {
+                        FontSize = UiUtil.ScaledFontSize(11.5),
+                        Opacity = 0.8,
+                        VerticalAlignment = VerticalAlignment.Center,
+                        [!TextBlock.TextProperty] = new Binding(nameof(vm.VideoInfo)) { Mode = BindingMode.OneWay },
+                    },
+                },
+            },
+            [!Border.IsVisibleProperty] = new Binding(nameof(vm.HasVideoFile)) { Mode = BindingMode.OneWay },
+        };
+        var panelContext = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Margin = new Thickness(2, 0, 0, 12),
+            Children = { contextIcon, contextText, videoChip },
+        };
+
+        var labelEngine = MakeSectionHeader(IconNames.AccountVoice, Se.Language.Video.TextToSpeech.EngineAndVoice);
+        var labelSettings = MakeSectionHeader(IconNames.Settings, Se.Language.Video.TextToSpeech.Output);
 
         // Frozen while generating: the pipeline reads SelectedLanguage/Region/Model live per
         // segment, so changing engine/model/language mid-run made the remaining segments use
@@ -54,174 +95,87 @@ public class TextToSpeechWindow : Window
         engineLayout.Bind(InputElement.IsEnabledProperty, new Binding("!" + nameof(vm.IsGenerating)));
 
         var settingsLayout = MakeSettingsControls(vm);
-        settingsLayout.BorderBrush = EditorChrome.LineBrush;
-        settingsLayout.BorderThickness = new Thickness(1, 0, 0, 0);
 
-        var settings = new Grid
-        {
-            ColumnDefinitions =
-            {
-                new ColumnDefinition(GridLength.Auto), // engine and voice
-                new ColumnDefinition(new GridLength(1, GridUnitType.Star)), // output
-            },
-        };
-        settings.Add(engineLayout, 0, 0);
-        settings.Add(settingsLayout, 0, 1);
+        // Wrap the progress bar layout in WidthIgnoringPanel so its measured width never feeds
+        // back up into the outer grid's column sizing. See the panel's class comment for why.
+        var progressBarLayout = new WidthIgnoringPanel { Children = { MakeProgressBarControls(vm) } };
 
-        // The settings scroll on their own, so progress and the buttons stay reachable when the
-        // window is taller than the screen (e.g. an engine with instruction + API key rows).
-        var settingsPanel = new Border
-        {
-            Background = EditorChrome.PanelBrush,
-            Child = new ScrollViewer
-            {
-                Content = settings,
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            },
-        };
-
-        var root = new Grid
-        {
-            RowDefinitions =
-            {
-                new RowDefinition(GridLength.Auto), // import / cast
-                new RowDefinition(new GridLength(1, GridUnitType.Star)), // settings
-                new RowDefinition(GridLength.Auto), // progress, while generating
-                new RowDefinition(GridLength.Auto), // context + buttons
-            },
-        };
-        root.Add(MakeToolbar(vm), 0, 0);
-        root.Add(settingsPanel, 1, 0);
-        root.Add(MakeProgressView(vm), 2, 0);
-        root.Add(MakeButtonBar(vm), 3, 0);
-
-        Content = root;
-
-        UiUtil.FocusOnFirstActivation(this, () => { _comboBoxEngines?.Focus(); }); // initial focus on an input, not an action button - a focused button clicks on bare Space
-    }
-
-    /// <summary>
-    /// Import a session, and set up the cast when the subtitle has several actors.
-    /// </summary>
-    private static Border MakeToolbar(TextToSpeechViewModel vm)
-    {
-        var buttonImport = EditorChrome.MakeActionButton("fa-solid fa-file-import", Se.Language.General.ImportDotDotDot, vm.ImportCommand)
-            .WithBindIsEnabled("!" + nameof(vm.IsGenerating));
-        var buttonCast = EditorChrome.MakeActionButton("fa-solid fa-users", null, vm.ShowCastCommand, nameof(vm.CastButtonText))
+        // OK accepts the session (the main window applies merged lines and review text edits);
+        // Cancel stops a running generation, or - when idle - closes discarding those changes.
+        var buttonOk = UiUtil.MakeButtonOk(vm.OkCommand).WithBindIsVisible("!" + nameof(vm.IsGenerating));
+        var buttonCancel = UiUtil.MakeButtonCancel(vm.CancelCommand);
+        var buttonCast = UiUtil.MakeButton(string.Empty, vm.ShowCastCommand)
+            .WithIconLeftBindText(IconNames.PoliceBadge, nameof(vm.CastButtonText))
             .WithBindIsVisible(nameof(vm.HasCast))
             .WithBindIsEnabled("!" + nameof(vm.IsGenerating));
         if (Se.Settings.Appearance.ShowHints)
         {
             ToolTip.SetTip(buttonCast, Se.Language.Video.TextToSpeech.SetupCastHint);
         }
-
-        var panel = TtsMainEditorLook.Horizontal(buttonImport, buttonCast);
-        panel.Spacing = 2;
-        return new Border
-        {
-            Child = panel,
-            Background = EditorChrome.PanelBrush,
-            BorderBrush = EditorChrome.LineBrush,
-            BorderThickness = new Thickness(0, 0, 0, 1),
-            Padding = new Thickness(10, 6),
-        };
-    }
-
-    /// <summary>
-    /// Context on its own line - what is about to be spoken and whether a video is loaded - with
-    /// Cancel, OK and Generate right-aligned below it.
-    /// </summary>
-    private static Border MakeButtonBar(TextToSpeechViewModel vm)
-    {
-        // Context line: what is about to be spoken + whether a video is loaded. Before this the
-        // window only revealed the line count via the progress text after Generate was clicked.
-        var contextIcon = new Optris.Icons.Avalonia.Icon
-        {
-            Value = "fa-solid fa-closed-captioning",
-            FontSize = 12,
-            Foreground = EditorChrome.FaintTextBrush,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        var contextText = new TextBlock
-        {
-            FontSize = EditorChrome.FieldFontSize,
-            Foreground = EditorChrome.DimTextBrush,
-            VerticalAlignment = VerticalAlignment.Center,
-            TextTrimming = TextTrimming.CharacterEllipsis,
-            MaxWidth = 320,
-            [!TextBlock.TextProperty] = new Binding(nameof(vm.LinesInfo)) { Mode = BindingMode.OneWay },
-        };
-        // A movie icon stands in for a "Video:" label inside the chip. DockPanel/Grid rather than
-        // horizontal StackPanels: a StackPanel measures its children with infinite width, so the
-        // text never trimmed and a long video name ran under the Cancel button.
-        var videoIcon = new Optris.Icons.Avalonia.Icon
-        {
-            Value = "fa-solid fa-film",
-            FontSize = 11,
-            Foreground = EditorChrome.FaintTextBrush,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 6, 0),
-        };
-        DockPanel.SetDock(videoIcon, Dock.Left);
-        var videoChip = TtsMainEditorLook.MakeChip(new DockPanel
-        {
-            Children =
-            {
-                videoIcon,
-                new TextBlock
-                {
-                    FontSize = EditorChrome.ScaledFont(11.5),
-                    Foreground = EditorChrome.DimTextBrush,
-                    VerticalAlignment = VerticalAlignment.Center,
-                    TextTrimming = TextTrimming.CharacterEllipsis,
-                    MaxWidth = 240,
-                    [!TextBlock.TextProperty] = new Binding(nameof(vm.VideoInfo)) { Mode = BindingMode.OneWay },
-                },
-            },
-        });
-        videoChip.HorizontalAlignment = HorizontalAlignment.Left;
-        videoChip.Bind(IsVisibleProperty, new Binding(nameof(vm.HasVideoFile)) { Mode = BindingMode.OneWay });
-
-        var context = new Grid
-        {
-            ColumnSpacing = 8,
-            ColumnDefinitions = { new ColumnDefinition(GridLength.Auto), new ColumnDefinition(GridLength.Auto), new ColumnDefinition(new GridLength(1, GridUnitType.Star)) },
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        context.Add(contextIcon, 0, 0);
-        context.Add(contextText, 0, 1);
-        context.Add(videoChip, 0, 2);
-
-        // OK accepts the session (the main window applies merged lines and review text edits);
-        // Cancel stops a running generation, or - when idle - closes discarding those changes.
-        var buttonOk = UiUtil.MakeButtonOk(vm.OkCommand).WithBindIsVisible("!" + nameof(vm.IsGenerating));
-        var buttonCancel = UiUtil.MakeButtonCancel(vm.CancelCommand);
         // Generate is the window's primary action: accent-filled, icon, far right - previously
         // all buttons had identical weight and Generate sat first in the row.
         var buttonGenerate = UiUtil.MakeButton(Se.Language.Video.TextToSpeech.GenerateSpeechFromText, vm.GenerateTtsCommand)
             .WithIconLeft(IconNames.Waveform)
             .WithBindIsEnabled("!" + nameof(vm.IsGenerating));
-        EditorChrome.AsPrimary(buttonGenerate);
+        buttonGenerate.Classes.Add("accent");
 
-        // The context sits on its own line above the buttons - beside them a long video name ran
-        // under Cancel. It is trimmed to the window width and never widens the window - see
-        // WidthIgnoringPanel.
-        var buttons = new StackPanel
+        // Re-run the adjust-speed/post-process/merge stages on the last generated or imported clips,
+        // with no engine call - so the speed settings can be tested without spending API credits.
+        // Hidden unless "show testing tools" is on in Settings > cvrle77.
+        var buttonReRunAdjustSpeed = UiUtil.MakeButton(vm.ReRunAdjustSpeedCommand, IconNames.Restore, "Re-run adjust speed")
+            .WithBindIsEnabled("!" + nameof(vm.IsGenerating));
+        buttonReRunAdjustSpeed.IsVisible = Se.Settings.Video.TextToSpeech.ShowTestingTools;
+        if (Se.Settings.Appearance.ShowHints)
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 10,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Children = { buttonCancel, buttonOk, buttonGenerate },
-        };
-        var bar = new Grid
+            ToolTip.SetTip(buttonReRunAdjustSpeed, "Re-run \"adjust speed\" + merge on the last clips, without calling the engine");
+        }
+
+        var buttonPanel = UiUtil.MakeButtonBar(
+            buttonCast,
+            UiUtil.MakeButton(Se.Language.General.ImportDotDotDot, vm.ImportCommand).WithBindIsEnabled("!" + nameof(vm.IsGenerating)),
+            buttonReRunAdjustSpeed,
+            buttonOk,
+            buttonCancel,
+            buttonGenerate
+        ).WithMarginTop(0);
+
+        var grid = new Grid
         {
-            RowSpacing = 8,
-            RowDefinitions = { new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto) },
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Margin = UiUtil.MakeWindowMargin(),
+            ColumnSpacing = 10,
+            RowSpacing = 0,
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
         };
-        bar.Add(new WidthIgnoringPanel { ClipToBounds = true, Children = { context } }, 0, 0);
-        bar.Add(buttons, 1, 0);
-        return EditorChrome.WrapButtonBar(bar);
+
+        grid.Add(panelContext, 0, 0, 1, 2);
+
+        grid.Add(labelEngine, 1, 0);
+        grid.Add(labelSettings, 1, 1);
+
+        grid.Add(engineLayout, 2, 0);
+        grid.Add(settingsLayout, 2, 1);
+
+        grid.Add(progressBarLayout, 3, 0, 1, 2);
+
+        grid.Add(buttonPanel, 4, 0, 1, 2);
+
+        Content = grid;
+
+        UiUtil.FocusOnFirstActivation(this, () => { _comboBoxEngines?.Focus(); }); // initial focus on an input, not an action button - a focused button clicks on bare Space
     }
 
     // Install-status dot for the engine combo: green = ready, amber = a newer build is available,
@@ -263,8 +217,6 @@ public class TextToSpeechWindow : Window
                 return StatusDots.From(engine.IsInstalled(null).Result, BreezeTtsAudioCpp.GetEngineUpdateStatus());
             case KugelAudioAudioCpp:
                 return StatusDots.From(engine.IsInstalled(null).Result, KugelAudioAudioCpp.GetEngineUpdateStatus());
-            case VoxtralTtsAudioCpp:
-                return StatusDots.From(engine.IsInstalled(null).Result, VoxtralTtsAudioCpp.GetEngineUpdateStatus());
             case CosyVoice3CrispAsr:
                 return StatusDots.From(engine.IsInstalled(null).Result, CosyVoice3CrispAsr.GetEngineUpdateStatus());
             case F5TtsCrispAsr:
@@ -321,44 +273,94 @@ public class TextToSpeechWindow : Window
         }
     }
 
-    private static Grid Row(string? label, Control content, string? labelBinding = null) => EditorChrome.MakeLabeledRow(label, content, LabelWidth, spacing: 6, labelBinding: labelBinding);
-
-    private static ComboBox Combo<T>(ObservableCollection<T> items, TextToSpeechViewModel vm, string property, string name, double width = ComboWidth)
+    // Checkbox (or checkbox row) with a muted one-line explanation below, indented to align
+    // with the checkbox text.
+    private static StackPanel WithCheckBoxHint(Control checkBoxOrPanel, string hint)
     {
-        var comboBox = UiUtil.MakeComboBox(items, vm, property).WithWidth(width);
-        comboBox.HorizontalAlignment = HorizontalAlignment.Left;
-        AutomationProperties.SetName(comboBox, name);
-        return comboBox;
+        return new StackPanel
+        {
+            Orientation = Orientation.Vertical,
+            Children =
+            {
+                checkBoxOrPanel,
+                new TextBlock
+                {
+                    Text = hint,
+                    FontSize = UiUtil.ScaledFontSize(11.5),
+                    Opacity = 0.65,
+                    Margin = new Thickness(28, 0, 0, 10),
+                    TextWrapping = TextWrapping.Wrap,
+                    MaxWidth = 260,
+                    HorizontalAlignment = HorizontalAlignment.Left,
+                },
+            },
+        };
+    }
+
+    private static StackPanel MakeSectionHeader(string iconName, string text)
+    {
+        var icon = new ContentControl { VerticalAlignment = VerticalAlignment.Center, Opacity = 0.7 };
+        Attached.SetIcon(icon, iconName);
+        return new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 7,
+            VerticalAlignment = VerticalAlignment.Bottom,
+            Margin = new Thickness(2, 4, 0, 4),
+            Children =
+            {
+                icon,
+                new TextBlock { Text = text, FontWeight = FontWeight.SemiBold, VerticalAlignment = VerticalAlignment.Center },
+            },
+        };
     }
 
     private Border MakeEngineControls(TextToSpeechViewModel vm)
     {
-        var comboBoxEngines = Combo(vm.Engines, vm, nameof(vm.SelectedEngine), Se.Language.General.Engine);
+        var labelMinWidth = 100;
+        var controlMinWidth = 200;
+
+        var comboBoxEngines = UiUtil.MakeComboBox(vm.Engines, vm, nameof(vm.SelectedEngine)).WithWidth(controlMinWidth);
         comboBoxEngines.ItemTemplate = BuildEngineItemTemplate();
         comboBoxEngines.SelectionChanged += vm.SelectedEngineChanged;
         _comboBoxEngines = comboBoxEngines;
 
-        var buttonEngineSettings = EditorChrome.CreateToolButton("fa-solid fa-gear", TtsMainEditorLook.SettingsName(Se.Language.General.Engine), vm.ShowEngineSettingsCommand, 28)
-            .WithBindIsVisible(nameof(vm.IsEngineSettingsVisible));
-        var panelEngine = Row(Se.Language.General.Engine, TtsMainEditorLook.Horizontal(comboBoxEngines, buttonEngineSettings));
+        var panelEngine = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children =
+            {
+                new Label
+                {
+                    Content = Se.Language.General.Engine,
+                    MinWidth = labelMinWidth,
+                },
+                comboBoxEngines,
+                UiUtil.MakeButton(vm.ShowEngineSettingsCommand, IconNames.Settings, $"{Se.Language.General.Engine} - {Se.Language.General.Settings}")
+                    .WithMarginLeft(5)
+                    .WithBindIsVisible(nameof(vm.IsEngineSettingsVisible)),
+            }
+        };
 
         // One line about the selected engine (cost/speed/quality or the engine's own blurb) -
         // every engine carries a description that was previously shown nowhere.
-        var labelEngineDescription = TtsMainEditorLook.Hint(binding: nameof(vm.EngineDescription));
-        labelEngineDescription.TextWrapping = TextWrapping.NoWrap;
-        labelEngineDescription.TextTrimming = TextTrimming.CharacterEllipsis;
-        labelEngineDescription.MaxWidth = ComboWidth + 40;
-        labelEngineDescription.HorizontalAlignment = HorizontalAlignment.Left;
-        labelEngineDescription.Margin = new Thickness(0, -3, 0, 0);
-        var panelEngineDescription = Row(null, labelEngineDescription);
-        panelEngineDescription.Bind(IsVisibleProperty, new Binding(nameof(vm.HasEngineDescription)) { Mode = BindingMode.OneWay });
+        var labelEngineDescription = new TextBlock
+        {
+            FontSize = UiUtil.ScaledFontSize(11.5),
+            Opacity = 0.65,
+            Margin = new Thickness(labelMinWidth + 5, 2, 0, 0),
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            [!TextBlock.TextProperty] = new Binding(nameof(vm.EngineDescription)) { Mode = BindingMode.OneWay },
+            [!TextBlock.IsVisibleProperty] = new Binding(nameof(vm.HasEngineDescription)) { Mode = BindingMode.OneWay },
+        };
 
-        var buttonTestVoice = EditorChrome.MakeActionButton("fa-solid fa-play", Se.Language.Video.TextToSpeech.TestVoice, vm.TestVoiceCommand)
+        var buttonTestVoice = UiUtil.MakeButton(Se.Language.Video.TextToSpeech.TestVoice, vm.TestVoiceCommand)
+            .WithIconLeft(IconNames.Play)
             .WithBindIsEnabled(nameof(vm.IsVoiceTestEnabled));
-        buttonTestVoice.Height = 28;
 
         // The Qwen3 VoiceDesign model has no speaker encoder - the combo is locked to "Default".
-        var comboBoxVoices = Combo(vm.Voices, vm, nameof(vm.SelectedVoice), Se.Language.General.Voice);
+        var comboBoxVoices = UiUtil.MakeComboBox(vm.Voices, vm, nameof(vm.SelectedVoice)).WithWidth(controlMinWidth);
         comboBoxVoices.Bind(ComboBox.IsEnabledProperty, new Binding(nameof(vm.IsVoiceComboEnabled)) { Mode = BindingMode.OneWay });
         // Show Voice.DisplayName rather than the default ToString(): engines whose list mixes
         // several kinds of voice label them there (CosyVoice3's "Preset: ..." / "Clone: ...",
@@ -399,74 +401,171 @@ public class TextToSpeechWindow : Window
         comboBoxVoices.ContextFlyout = voiceFlyout;
         UiUtil.AttachMacContextFlyoutHandler(comboBoxVoices);
 
-        var voiceCount = TtsMainEditorLook.MakeChip(new TextBlock
+        var panelVoice = new StackPanel
         {
-            FontSize = EditorChrome.ScaledFont(11.5),
-            Foreground = EditorChrome.DimTextBrush,
-            [!TextBlock.TextProperty] = new Binding($"{nameof(vm.Voices)}.{nameof(vm.Voices.Count)}")
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children =
             {
-                Mode = BindingMode.OneWay,
-                StringFormat = Se.Language.Video.TextToSpeech.XVoices,
-            },
-        });
-        voiceCount.Margin = new Thickness(2, 0);
-        voiceCount.Bind(IsVisibleProperty, new Binding(nameof(vm.IsVoiceCountVisible)) { Mode = BindingMode.OneWay });
+                new Label
+                {
+                    Content = Se.Language.General.Voice,
+                    MinWidth = labelMinWidth,
+                },
+                comboBoxVoices,
+                new Border
+                {
+                    CornerRadius = new CornerRadius(10),
+                    Padding = new Thickness(9, 1, 9, 2),
+                    Margin = new Thickness(6, 0, 2, 0),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Background = new SolidColorBrush(Color.FromArgb(28, 128, 128, 128)),
+                    Child = new TextBlock
+                    {
+                        FontSize = UiUtil.ScaledFontSize(11.5),
+                        Opacity = 0.8,
+                        [!TextBlock.TextProperty] = new Binding($"{nameof(vm.Voices)}.{nameof(vm.Voices.Count)}")
+                        {
+                            Mode = BindingMode.OneWay,
+                            StringFormat = Se.Language.Video.TextToSpeech.XVoices,
+                        },
+                    },
+                    [!Border.IsVisibleProperty] = new Binding(nameof(vm.IsVoiceCountVisible)) { Mode = BindingMode.OneWay },
+                },
+                buttonTestVoice,
+                UiUtil.MakeButton(vm.ShowTestVoiceSettingsCommand, IconNames.Settings, $"{Se.Language.Video.TextToSpeech.TestVoice} - {Se.Language.General.Settings}"),
+                UiUtil.MakeButton(vm.ShowVoiceManagerCommand, IconNames.AccountVoice, Se.Language.Video.TextToSpeech.VoiceManagerDotDotDot),
+            }
+        };
 
-        var buttonVoiceManager = EditorChrome.CreateToolButton("fa-solid fa-address-book", Se.Language.Video.TextToSpeech.VoiceManagerDotDotDot, vm.ShowVoiceManagerCommand, 28);
-        var panelVoice = Row(Se.Language.General.Voice, TtsMainEditorLook.Horizontal(comboBoxVoices, voiceCount, buttonVoiceManager));
-
-        // Test the voice on its own row: the voice row has the count and the voice manager.
-        var buttonTestVoiceSettings = EditorChrome.CreateToolButton("fa-solid fa-gear", TtsMainEditorLook.SettingsName(Se.Language.Video.TextToSpeech.TestVoice), vm.ShowTestVoiceSettingsCommand, 28);
-        var panelTestVoice = Row(null, TtsMainEditorLook.Horizontal(buttonTestVoice, buttonTestVoiceSettings));
-        panelTestVoice.Margin = new Thickness(-10, -4, 0, 0); // line the play icon up with the combo text
-
-        var comboBoxModels = Combo(vm.Models, vm, nameof(vm.SelectedModel), Se.Language.General.Model);
+        var comboBoxModels = UiUtil.MakeComboBox(vm.Models, vm, nameof(vm.SelectedModel)).WithWidth(controlMinWidth);
         comboBoxModels.ItemTemplate = BuildModelItemTemplate(vm);
         _comboBoxModels = comboBoxModels;
 
-        var buttonDownloadModel = EditorChrome.CreateToolButton("fa-solid fa-download", Se.Language.General.Download, vm.DownloadModelCommand, 28)
+        var buttonDownloadModel = UiUtil.MakeButton(vm.DownloadModelCommand, IconNames.Download, Se.Language.General.Download)
+            .WithMarginLeft(5)
             .WithBindIsVisible(nameof(vm.IsModelDownloadVisible));
 
-        var panelModel = Row(Se.Language.General.Model, TtsMainEditorLook.Horizontal(comboBoxModels, buttonDownloadModel));
-        panelModel.Bind(IsVisibleProperty, new Binding(nameof(vm.HasModel)) { Mode = BindingMode.OneWay });
+        var panelModel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children =
+            {
+                new Label
+                {
+                    Content = Se.Language.General.Model,
+                    MinWidth = labelMinWidth,
+                },
+                comboBoxModels,
+                buttonDownloadModel,
+            },
+            [!StackPanel.IsVisibleProperty] = new Binding(nameof(vm.HasModel)) { Mode = BindingMode.OneWay },
+        };
         comboBoxModels.SelectionChanged += vm.SelectedModelChanged;
 
-        var comboBoxRegions = Combo(vm.Regions, vm, nameof(vm.SelectedRegion), Se.Language.General.Region);
-        comboBoxRegions.Bind(AutomationProperties.NameProperty, new Binding(nameof(vm.RegionLabel)) { Mode = BindingMode.OneWay });
-        var panelRegion = Row(null, comboBoxRegions, nameof(vm.RegionLabel));
-        panelRegion.Bind(IsVisibleProperty, new Binding(nameof(vm.HasRegion)) { Mode = BindingMode.OneWay });
+        var panelRegion = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children =
+            {
+                new Label
+                {
+                    MinWidth = labelMinWidth,
+                    [!ContentProperty] = new Binding(nameof(vm.RegionLabel)) { Mode = BindingMode.OneWay },
+                },
+                UiUtil.MakeComboBox(vm.Regions, vm, nameof(vm.SelectedRegion)).WithWidth(controlMinWidth),
+            },
+            [!StackPanel.IsVisibleProperty] = new Binding(nameof(vm.HasRegion)) { Mode = BindingMode.OneWay },
+        };
 
-        var comboBoxLanguages = Combo(vm.Languages, vm, nameof(vm.SelectedLanguage), Se.Language.General.Language);
-        var panelLanguage = Row(Se.Language.General.Language, comboBoxLanguages);
-        panelLanguage.Bind(IsVisibleProperty, new Binding(nameof(vm.HasLanguageParameter)) { Mode = BindingMode.OneWay });
+        var comboBoxLanguages = UiUtil.MakeComboBox(vm.Languages, vm, nameof(vm.SelectedLanguage)).WithWidth(controlMinWidth);
+        var panelLanguage = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children =
+            {
+                new Label
+                {
+                    Content = Se.Language.General.Language,
+                    MinWidth = labelMinWidth,
+                },
+                comboBoxLanguages,
+            },
+            [!StackPanel.IsVisibleProperty] = new Binding(nameof(vm.HasLanguageParameter)) { Mode = BindingMode.OneWay },
+        };
         comboBoxLanguages.SelectionChanged += vm.SelectedLanguageChanged;
 
-        var apiKey = UiUtil.MakeApiKeyTextBox(ComboWidth, vm, nameof(vm.ApiKey));
-        foreach (var child in apiKey.Children)
+        // Hidden general accent (v4 only): free text or pick from the list; the brackets are added
+        // when the line is sent to the API, never shown in the subtitle text.
+        var comboBoxGeneralAccent = new AutoCompleteBox
         {
-            if (child is TextBox textBox)
+            Width = controlMinWidth,
+            FilterMode = AutoCompleteFilterMode.Contains,
+            MinimumPrefixLength = 0,
+            IsTextCompletionEnabled = false,
+            ItemsSource = vm.GeneralAccentOptions,
+            [!AutoCompleteBox.TextProperty] = new Binding(nameof(vm.GeneralAccent)) { Mode = BindingMode.TwoWay },
+            DataContext = vm,
+        };
+        var panelGeneralAccent = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children =
             {
-                textBox.Classes.Add("text");
-            }
-        }
+                new Label
+                {
+                    Content = "General accent",
+                    MinWidth = labelMinWidth,
+                },
+                comboBoxGeneralAccent,
+            },
+            [!StackPanel.IsVisibleProperty] = new Binding(nameof(vm.IsGeneralAccentVisible)) { Mode = BindingMode.OneWay },
+        };
 
-        var panelApiKey = Row(Se.Language.General.ApiKey, apiKey);
-        panelApiKey.Bind(IsVisibleProperty, new Binding(nameof(vm.HasApiKey)) { Mode = BindingMode.OneWay });
+        var panelApiKey = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children =
+            {
+                new Label
+                {
+                    Content = Se.Language.General.ApiKey,
+                    MinWidth = labelMinWidth,
+                },
+                UiUtil.MakeApiKeyTextBox(325, vm, nameof(vm.ApiKey)),
+            },
+            [!StackPanel.IsVisibleProperty] = new Binding(nameof(vm.HasApiKey)) { Mode = BindingMode.OneWay },
+        };
 
-        var textBoxKeyFile = UiUtil.MakeTextBox(ComboWidth, vm, nameof(vm.KeyFile));
-        textBoxKeyFile.Classes.Add("text");
-        AutomationProperties.SetName(textBoxKeyFile, Se.Language.General.KeyFile);
-        var buttonBrowseKeyFile = EditorChrome.CreateToolButton("fa-solid fa-ellipsis", Se.Language.General.KeyFile, vm.BrowseKeyFileCommand, 28);
-        var panelKeyFile = Row(Se.Language.General.KeyFile, TtsMainEditorLook.Horizontal(textBoxKeyFile, buttonBrowseKeyFile));
-        panelKeyFile.Bind(IsVisibleProperty, new Binding(nameof(vm.HasKeyFile)) { Mode = BindingMode.OneWay });
+        var panelKeyFile = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children =
+            {
+                new Label
+                {
+                    Content = Se.Language.General.KeyFile,
+                    MinWidth = labelMinWidth,
+                },
+                UiUtil.MakeTextBox(325, vm, nameof(vm.KeyFile)).WithMarginRight(4),
+                UiUtil.MakeButtonBrowse(vm.BrowseKeyFileCommand, accessibleName: Se.Language.General.KeyFile),
+            },
+            [!StackPanel.IsVisibleProperty] = new Binding(nameof(vm.HasKeyFile)) { Mode = BindingMode.OneWay },
+        };
 
         // Voice instruction applied to every segment. Qwen3 TTS takes free text; OmniVoice TTS
         // only accepts fixed voice-design keywords, so it gets a multi-select picker instead.
         // The panel is shown for both (HasInstruction); the two controls toggle within it.
         var textBoxInstruction = new TextBox
         {
-            Width = ComboWidth + 32,
-            Height = 64,
+            Width = 325,
+            Height = 60,
             AcceptsReturn = true,
             TextWrapping = TextWrapping.Wrap,
             VerticalContentAlignment = VerticalAlignment.Top,
@@ -475,38 +574,81 @@ public class TextToSpeechWindow : Window
             DataContext = vm,
             [!TextBox.IsVisibleProperty] = new Binding(nameof(vm.IsInstructionTextVisible)) { Mode = BindingMode.OneWay },
         };
-        textBoxInstruction.Classes.Add("text");
         textBoxInstruction.Bind(TextBox.TextProperty, new Binding(nameof(vm.Instruction))
         {
             Mode = BindingMode.TwoWay,
             UpdateSourceTrigger = UpdateSourceTrigger.PropertyChanged,
         });
-        AutomationProperties.SetName(textBoxInstruction, Se.Language.Video.TextToSpeech.VoiceInstruction);
 
-        var instruction = new StackPanel { Children = { textBoxInstruction, MakeInstructionKeywordPicker(vm) } };
-        var panelInstruction = Row(Se.Language.Video.TextToSpeech.VoiceInstruction, instruction);
-        panelInstruction.Children[0].VerticalAlignment = VerticalAlignment.Top;
-        panelInstruction.Children[0].Margin = new Thickness(0, 6, 0, 0);
-        panelInstruction.Bind(IsVisibleProperty, new Binding(nameof(vm.HasInstruction)) { Mode = BindingMode.OneWay });
+        var panelInstruction = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Margin = new Thickness(0, 10, 0, 0),
+            Children =
+            {
+                new Label
+                {
+                    Content = Se.Language.Video.TextToSpeech.VoiceInstruction,
+                    MinWidth = labelMinWidth,
+                    VerticalAlignment = VerticalAlignment.Top,
+                },
+                textBoxInstruction,
+                MakeInstructionKeywordPicker(vm),
+            },
+            [!StackPanel.IsVisibleProperty] = new Binding(nameof(vm.HasInstruction)) { Mode = BindingMode.OneWay },
+        };
 
-        var rows = new StackPanel { Spacing = 8 };
-        rows.Children.Add(panelEngine);
-        rows.Children.Add(panelEngineDescription);
-        rows.Children.Add(panelModel);
-        rows.Children.Add(panelVoice);
-        rows.Children.Add(panelTestVoice);
-        rows.Children.Add(panelRegion);
-        rows.Children.Add(panelLanguage);
-        rows.Children.Add(panelApiKey);
-        rows.Children.Add(panelKeyFile);
-        rows.Children.Add(panelInstruction);
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                // Row 9: the instruction panel, which the accent row (fork) pushes one row down.
+                // Without this Avalonia clamped it onto the key-file row.
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnSpacing = 10,
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 0, 0, 15),
+        };
+
+        grid.Add(panelEngine, 0, 0);
+        grid.Add(labelEngineDescription, 1, 0);
+        grid.Add(panelModel, 2, 0);
+        grid.Add(panelVoice, 3, 0);
+        // Fork: the hidden general accent input. Off = upstream, whose window has no such row - the
+        // panels below move up so no gap is left.
+        var settingsRow = 4;
+        if (Fork.ElevenLabsGeneralAccent)
+        {
+            grid.Add(panelGeneralAccent, settingsRow++, 0);
+        }
+
+        grid.Add(panelRegion, settingsRow++, 0);
+        grid.Add(panelLanguage, settingsRow++, 0);
+        grid.Add(panelApiKey, settingsRow++, 0);
+        grid.Add(panelKeyFile, settingsRow++, 0);
+        grid.Add(panelInstruction, settingsRow, 0);
 
         // Give the left (Engine/Voice/Model/...) panel a sensible minimum so the window doesn't
         // collapse into a narrow column when the right-side panel happens to be wider than the
         // engine controls' intrinsic size.
-        var section = EditorChrome.MakeEditorSection(Se.Language.Video.TextToSpeech.EngineAndVoice, rows, first: true);
-        section.MinWidth = 470;
-        return section;
+        var border = UiUtil.MakeBorderForControl(grid);
+        border.MinWidth = 500;
+        return border;
     }
 
     // Single-select picker of OmniVoice TTS voice-design keywords: one combo box per mutually
@@ -544,17 +686,20 @@ public class TextToSpeechWindow : Window
         {
             Content = OmniVoiceTtsCpp.InstructionWhisper,
             DataContext = vm,
-            FontSize = EditorChrome.FieldFontSize,
-            Margin = new Thickness(0, 2, 0, 0),
+            Margin = new Thickness(0, 4, 0, 0),
         };
         whisper.Bind(CheckBox.IsCheckedProperty, new Binding(nameof(vm.OmniVoiceWhisper)) { Mode = BindingMode.TwoWay });
         grid.Add(whisper, 4, 0, 1, 2);
 
-        var clonedVoiceNote = TtsMainEditorLook.Hint(Se.Language.Video.TextToSpeech.VoiceInstructionClonedVoiceNote);
-        clonedVoiceNote.MaxWidth = 280;
-        clonedVoiceNote.HorizontalAlignment = HorizontalAlignment.Left;
-        clonedVoiceNote.Margin = new Thickness(0, 6, 0, 0);
-        clonedVoiceNote.Bind(IsVisibleProperty, new Binding(nameof(vm.IsInstructionVoiceHintVisible)) { Mode = BindingMode.OneWay });
+        var clonedVoiceNote = new TextBlock
+        {
+            Text = Se.Language.Video.TextToSpeech.VoiceInstructionClonedVoiceNote,
+            TextWrapping = TextWrapping.Wrap,
+            Opacity = 0.7,
+            MaxWidth = 280,
+            Margin = new Thickness(0, 6, 0, 0),
+            [!TextBlock.IsVisibleProperty] = new Binding(nameof(vm.IsInstructionVoiceHintVisible)) { Mode = BindingMode.OneWay },
+        };
 
         return new StackPanel
         {
@@ -567,52 +712,127 @@ public class TextToSpeechWindow : Window
     private static void AddInstructionPickerRow(Grid grid, int row, string label, TextToSpeechViewModel vm,
         ObservableCollection<string> items, string selectedPropertyPath)
     {
-        var text = EditorChrome.MakeDimLabel(label, new Thickness(0));
-        text.MinWidth = 60;
-        grid.Add(text, row, 0);
-        grid.Add(Combo(items, vm, selectedPropertyPath, label, 200), row, 1);
+        grid.Add(new Label { Content = label, MinWidth = 60, VerticalAlignment = VerticalAlignment.Center }, row, 0);
+        grid.Add(UiUtil.MakeComboBox(items, vm, selectedPropertyPath).WithWidth(200), row, 1);
     }
 
     private static Border MakeSettingsControls(TextToSpeechViewModel vm)
     {
-        var language = Se.Language.Video.TextToSpeech;
+        var checkBoxReviewAudioClips = new CheckBox
+        {
+            Content = Se.Language.Video.TextToSpeech.ReviewAudioSegments,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 10, 0, 0),
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.DoReviewAudioClips)) { Mode = BindingMode.TwoWay }
+        };
+        var panelReviewAudioClips = WithCheckBoxHint(checkBoxReviewAudioClips, Se.Language.Video.TextToSpeech.ReviewAudioSegmentsHint);
 
-        var panelReviewAudioClips = TtsMainEditorLook.SwitchRow(nameof(vm.DoReviewAudioClips), language.ReviewAudioSegments, language.ReviewAudioSegmentsHint);
+        var checkBoxAddAudioToVideoFile = new CheckBox
+        {
+            Content = Se.Language.Video.TextToSpeech.AddAudioToVideoFile,
+            VerticalAlignment = VerticalAlignment.Top,
+            Margin = new Thickness(0, 0, 0, 0),
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.DoGenerateVideoFile)) { Mode = BindingMode.TwoWay }
+        };
 
-        var buttonEncodingSettings = EditorChrome.CreateToolButton("fa-solid fa-gear", TtsMainEditorLook.SettingsName(language.AddAudioToVideoFile), vm.ShowEncodingSettingsCommand, 26);
-        var panelAddAudioWithHint = TtsMainEditorLook.SwitchRow(nameof(vm.DoGenerateVideoFile), language.AddAudioToVideoFile, language.AddAudioToVideoFileHint, buttonEncodingSettings);
+        var panelAddAudioToVideoFile = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Top,
+            Children =
+            {
+                checkBoxAddAudioToVideoFile,
+                UiUtil.MakeButton(vm.ShowEncodingSettingsCommand, IconNames.Settings, $"{Se.Language.Video.TextToSpeech.AddAudioToVideoFile} - {Se.Language.General.Settings}")
+                      .WithMarginLeft(5).WithMarginTop(0).WithTopAlignment(),
+            }
+        };
+        var panelAddAudioWithHint = WithCheckBoxHint(panelAddAudioToVideoFile, Se.Language.Video.TextToSpeech.AddAudioToVideoFileHint);
 
-        var backgroundMusic = Se.Language.Video.BackgroundMusic;
-        var buttonBackgroundMusicSettings = EditorChrome.CreateToolButton("fa-solid fa-gear", TtsMainEditorLook.SettingsName(backgroundMusic.AddBackgroundMusic), vm.ShowBackgroundMusicSettingsCommand, 26);
-        var panelAddBackgroundMusicWithHint = TtsMainEditorLook.SwitchRow(nameof(vm.DoAddBackgroundMusic), backgroundMusic.AddBackgroundMusic, backgroundMusic.AddBackgroundMusicHint, buttonBackgroundMusicSettings);
+        var checkBoxAddBackgroundMusic = new CheckBox
+        {
+            Content = Se.Language.Video.BackgroundMusic.AddBackgroundMusic,
+            VerticalAlignment = VerticalAlignment.Top,
+            [!CheckBox.IsCheckedProperty] = new Binding(nameof(vm.DoAddBackgroundMusic)) { Mode = BindingMode.TwoWay }
+        };
+        var panelAddBackgroundMusic = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Top,
+            Children =
+            {
+                checkBoxAddBackgroundMusic,
+                UiUtil.MakeButton(vm.ShowBackgroundMusicSettingsCommand, IconNames.Settings, $"{Se.Language.Video.BackgroundMusic.AddBackgroundMusic} - {Se.Language.General.Settings}")
+                      .WithMarginLeft(5).WithMarginTop(0).WithTopAlignment(),
+            }
+        };
+        var panelAddBackgroundMusicWithHint = WithCheckBoxHint(panelAddBackgroundMusic, Se.Language.Video.BackgroundMusic.AddBackgroundMusicHint);
 
-        // Left-aligned under the switches above it.
-        var buttonAdvanced = EditorChrome.MakeActionButton("fa-solid fa-sliders", Se.Language.General.AdvancedDotDotDot, vm.ShowAdvancedSettingsCommand);
+        var buttonAdvanced = UiUtil.MakeButton(Se.Language.General.AdvancedDotDotDot, vm.ShowAdvancedSettingsCommand)
+            .WithMarginTop(5);
+        // MakeButton defaults to Center; the right-side settings panel reads more cleanly with
+        // the Advanced button left-aligned under the checkboxes above it.
         buttonAdvanced.HorizontalAlignment = HorizontalAlignment.Left;
-        buttonAdvanced.Margin = new Thickness(-10, 0, 0, 0);
 
-        var rows = new StackPanel { Spacing = 12 };
-        rows.Children.Add(panelReviewAudioClips);
-        rows.Children.Add(panelAddAudioWithHint);
-        rows.Children.Add(panelAddBackgroundMusicWithHint);
-        rows.Children.Add(buttonAdvanced);
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Star) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnSpacing = 10,
+            RowSpacing = 0,
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+        };
 
-        var section = EditorChrome.MakeEditorSection(Se.Language.General.Output, rows, first: true);
-        section.Width = 330;
-        return section;
+        grid.Add(panelReviewAudioClips, 0, 0);
+        grid.Add(panelAddAudioWithHint, 1, 0);
+        grid.Add(panelAddBackgroundMusicWithHint, 2, 0);
+        grid.Add(buttonAdvanced, 3, 0);
+
+        return UiUtil.MakeBorderForControl(grid);
     }
 
-    private Border MakeProgressView(TextToSpeechViewModel vm)
+    private Grid MakeProgressBarControls(TextToSpeechViewModel vm)
     {
+        // Two rows so the status label and the progress bar stack vertically instead of
+        // overlapping in the same cell. Two columns so the progress text can explicitly span
+        // both — same shape as the outer window grid, so the text gets the full available
+        // width when long messages render (e.g. "Generating speech: segment 999 of 1000").
+        var grid = new Grid
+        {
+            RowDefinitions =
+            {
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+                new RowDefinition { Height = new GridLength(1, GridUnitType.Auto) },
+            },
+            ColumnDefinitions =
+            {
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+                new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) },
+            },
+            Width = double.NaN,
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            Margin = new Thickness(0, 5, 0, 7),
+            [!Grid.OpacityProperty] = new Binding(nameof(vm.ProgressOpacity)) { Mode = BindingMode.OneWay },
+        };
+
         // TextBlock (not Label) so we can use TextTrimming for overflow rendering. The actual
         // "don't grow the window" guarantee comes from the WidthIgnoringPanel wrapper around
         // this whole grid below — that panel reports 0 desired width up the layout chain so the
-        // outer grid's columns never see the progress text's natural width.
+        // outer grid's Star columns never see the progress text's natural width.
         var labelPercent = new TextBlock
         {
             VerticalAlignment = VerticalAlignment.Center,
-            FontWeight = FontWeight.SemiBold,
-            FontSize = EditorChrome.FieldFontSize,
+            FontWeight = FontWeight.Bold,
+            Margin = new Thickness(0, 6, 8, 0),
             [!TextBlock.TextProperty] = new Binding(nameof(vm.ProgressPercentText)) { Mode = BindingMode.OneWay },
         };
 
@@ -620,8 +840,9 @@ public class TextToSpeechWindow : Window
         {
             VerticalAlignment = VerticalAlignment.Center,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Foreground = EditorChrome.DimTextBrush,
-            FontSize = EditorChrome.FieldFontSize,
+            Opacity = 0.7,
+            FontSize = UiUtil.ScaledFontSize(12),
+            Margin = new Thickness(8, 6, 0, 0),
             [!TextBlock.TextProperty] = new Binding(nameof(vm.ProgressEtaText)) { Mode = BindingMode.OneWay },
         };
 
@@ -631,15 +852,13 @@ public class TextToSpeechWindow : Window
             VerticalAlignment = VerticalAlignment.Center,
             TextAlignment = TextAlignment.Left,
             TextTrimming = TextTrimming.CharacterEllipsis,
-            Foreground = EditorChrome.DimTextBrush,
-            FontSize = EditorChrome.FieldFontSize,
+            Margin = new Thickness(0, 6, 0, 0),
             [!TextBlock.TextProperty] = new Binding(nameof(vm.ProgressText)) { Mode = BindingMode.OneWay },
         };
 
-        // percent | status | elapsed/remaining on one line, the bar under it
+        // percent | status | elapsed/remaining on one line
         var statusRow = new Grid
         {
-            ColumnSpacing = 8,
             ColumnDefinitions =
             {
                 new ColumnDefinition { Width = new GridLength(1, GridUnitType.Auto) },
@@ -651,37 +870,20 @@ public class TextToSpeechWindow : Window
         statusRow.Add(labelPercent, 0, 0);
         statusRow.Add(labelStatus, 0, 1);
         statusRow.Add(labelEta, 0, 2);
+        var label = statusRow;
 
         var progressBar = UiUtil.MakeProgressBar();
         progressBar.HorizontalAlignment = HorizontalAlignment.Stretch;
         progressBar.Bind(ProgressBar.ValueProperty, new Binding(nameof(vm.ProgressValue)));
         progressBar.WithPlatformProgress(this, nameof(vm.IsGenerating));
 
-        var grid = new Grid
-        {
-            RowSpacing = 6,
-            RowDefinitions = { new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto) },
-        };
-        grid.Add(statusRow, 0, 0);
-        grid.Add(progressBar, 1, 0);
+        // Both rows explicitly span the two columns so the bar and status text use the full
+        // window width (matching the engine + settings panels above), and so the text doesn't
+        // need to grow horizontally when messages get longer.
+        grid.Add(progressBar, 0, 0, 1, 2);
+        grid.Add(label, 1, 0, 1, 2);
 
-        // The strip keeps its height while idle (only faded out), so the window does not jump
-        // when generating starts; idle it reads as part of the settings panel above.
-        return new Border
-        {
-            Background = EditorChrome.PanelBrush,
-            Child = new Border
-            {
-                Background = EditorChrome.StatusBrush,
-                BorderBrush = EditorChrome.LineBrush,
-                BorderThickness = new Thickness(0, 1, 0, 0),
-                Padding = new Thickness(16, 8, 16, 10),
-                // Wrap the progress layout in WidthIgnoringPanel so its measured width never feeds
-                // back up into the window's width. See the panel's class comment for why.
-                Child = new WidthIgnoringPanel { Children = { grid } },
-                [!Border.OpacityProperty] = new Binding(nameof(vm.ProgressOpacity)) { Mode = BindingMode.OneWay },
-            },
-        };
+        return grid;
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -704,8 +906,7 @@ public class TextToSpeechWindow : Window
 }
 
 // Wraps a child whose width should not influence the parent's measure. We use this for the
-// progress text + bar at the bottom of the TTS window, and for the context (lines / video) in
-// its button bar.
+// progress text + bar at the bottom of the TTS window.
 //
 // Without it, the progress TextBlock's natural text width feeds up through the inner grid into
 // the outer 2-column grid, where colSpan=2 distributes that desired width across both Star

@@ -445,6 +445,35 @@ public partial class MainViewModel :
     [ObservableProperty] private bool _isWebVttBrowserPreviewVisible;
     [ObservableProperty] private bool _selectCurrentSubtitleWhilePlaying;
     [ObservableProperty] private bool _waveformCenter;
+    [ObservableProperty] private bool _waveformCenterSmooth;
+
+    /// <summary>
+    /// True while either centre-on-position mode is on - the original (snap) toggle or the added
+    /// smooth one. Use this wherever the original code asked <see cref="WaveformCenter"/> and the
+    /// smooth mode should behave the same except for the easing.
+    /// </summary>
+    public bool WaveformCenterAny => WaveformCenter || WaveformCenterSmooth;
+
+    // The two centre toggles are mutually exclusive: turning one on turns the other off. Done here
+    // rather than in the toggle's CheckedChanged so it holds no matter what set the value.
+    partial void OnWaveformCenterChanged(bool value)
+    {
+        Se.Settings.Waveform.CenterVideoPosition = value;
+        OnPropertyChanged(nameof(WaveformCenterAny));
+        if (value && WaveformCenterSmooth)
+        {
+            WaveformCenterSmooth = false;
+        }
+    }
+
+    partial void OnWaveformCenterSmoothChanged(bool value)
+    {
+        OnPropertyChanged(nameof(WaveformCenterAny));
+        if (value && WaveformCenter)
+        {
+            WaveformCenter = false;
+        }
+    }
     [ObservableProperty] private bool _isRightToLeftEnabled;
     [ObservableProperty] private bool _showAutoTranslateSelectedLines;
     [ObservableProperty] private bool _hasMultipleLinesSelected;
@@ -763,6 +792,11 @@ public partial class MainViewModel :
     private int _changeSubtitleHash = -1;
     private int _changeSubtitleHashOriginal = -1;
     private bool _subtitleGridSelectionChangedSkip;
+
+    // Set while the "Play selected lines" playback moves the grid's highlighted line onto the
+    // line it is playing. The selection-changed handler must not reset the play selection then,
+    // or the mode would stop advancing (issue #14655).
+    private bool _selectingSubtitleForPlayback;
     private long _lastKeyPressedMs;
     private bool _loading;
     private bool _opening;
@@ -830,6 +864,14 @@ public partial class MainViewModel :
     private double _playheadPlaybackSpeed = 1.0;
     private double _pausedSelectLastSeconds = -1;
 
+    // State of the smooth "center on play-head" scroll (the magnet). While it runs, the view eases
+    // from where it was to the centered target over SeWaveform.CenterSmoothSeconds instead of
+    // snapping there. _centerAnimFromSeconds is the view position the ease started from.
+    private bool _centerAnimActive;
+    private long _centerAnimStartTicks;
+    private double _centerAnimFromSeconds;
+    private double _centerAnimTargetSeconds;
+
     // Scrub-seek throttle for waveform-driven position changes (wheel scrubbing in center mode,
     // wheel video-position stepping, edge drags with "set video position on move start/end").
     // Those paths fire OnVideoPositionChanged once per input event - 30-60/s on a trackpad - and
@@ -888,6 +930,12 @@ public partial class MainViewModel :
     string _dropDownFormatsSearchText = string.Empty;
     private System.Timers.Timer _dropDownFormatsSearchTimer = new System.Timers.Timer(1000);
     private PlaySelectionItem? _playSelectionItem;
+
+    // True while the "play through the following subtitles and skip the gaps" playback started by
+    // the "Play selected lines" command is active. The position timer keeps the play selection
+    // alive while this is set, and pressing the command again pauses or resumes instead of
+    // restarting from the beginning (issue #14655).
+    private bool _playSelectionToggleMode;
 
     // Holds off the position timer's "playback stopped" handling for the moment between asking the
     // player to play and it reporting that it is playing (#14167) - see PlayStartGate.
@@ -957,6 +1005,11 @@ public partial class MainViewModel :
     public MenuItem MenuItemAudioVisualizerCloneVoice { get; set; }
     public MenuItem MenuItemAudioVisualizerCopy { get; set; }
     public MenuItem MenuItemAudioVisualizerCopyText { get; set; }
+
+    // The three right-click flyouts, kept so the "Customize right-click menus" settings can list
+    // their items. Assigned where each flyout is built.
+    public MenuFlyout? SubtitleGridContextFlyout { get; set; }
+    public MenuFlyout? TextBoxContextFlyout { get; set; }
     public ITextBoxWrapper EditTextBoxOriginal { get; set; }
     public ITextBoxWrapper EditTextBox { get; set; }
 
@@ -1170,6 +1223,7 @@ public partial class MainViewModel :
         ShowUpDownLabels = Se.Settings.Appearance.ShowUpDownLabels;
         SelectCurrentSubtitleWhilePlaying = Se.Settings.General.SelectCurrentSubtitleWhilePlaying;
         WaveformCenter = Se.Settings.Waveform.CenterVideoPosition;
+        WaveformCenterSmooth = Se.Settings.Waveform.CenterVideoPositionSmooth;
         EditTextBoxOriginal = new TextBoxWrapper(new TextBox());
         EditTextCharactersPerSecondOriginal = string.Empty;
         EditTextCharactersPerSecondBackgroundOriginal = Brushes.Transparent;
@@ -1934,6 +1988,7 @@ public partial class MainViewModel :
         }
 
         vp.VideoPlayer.Pause();
+        CenterOnAnchorNow();
     }
 
     [RelayCommand]
@@ -1968,6 +2023,9 @@ public partial class MainViewModel :
         _playStartGate.PauseRequested(); // a pause supersedes any play still waiting to be observed
         _playheadPausedSettled = false; // reconcile the cursor to mpv's final frame once this pause settles
         _playheadPauseSettleTs = Stopwatch.GetTimestamp();
+        // Every pause in the app funnels through here, so this is the one place that has to pull the
+        // view onto the anchor (Fork.WaveformAnchorMarker).
+        CenterOnAnchorNow();
     }
 
     // Playback (re)started, so a pause freeze from a moment ago is stale: while it is set the cursor
@@ -1987,6 +2045,11 @@ public partial class MainViewModel :
         AlignPausedPlayerWithCursor();
         _pauseRequested = false;
         _playStartGate.PlayRequested(Stopwatch.GetTimestamp());
+
+        // Playback owns the view now: drop an anchor glide still running, or the centring (which
+        // stands down while a glide owns the view) would not follow the play-head at all.
+        _anchorGlideTimer?.Stop();
+        _anchorGlideTimer = null;
     }
 
     /// <summary>
@@ -2068,6 +2131,82 @@ public partial class MainViewModel :
     {
         RequestPausePlayheadFreeze();
         vp.VideoPlayer.Pause();
+        CenterOnAnchorNow();
+    }
+
+    // Fork: after a pause the view may sit away from the marker - glide the play-head under the
+    // anchor (distance-based, same curve as the review). A paused view has no cursor tick to ease
+    // it, so this runs its own timer. No-op unless the anchor marker is on.
+    private DispatcherTimer? _anchorGlideTimer;
+    private double _anchorGlideFrom;
+    private double _anchorGlideTo;
+    private long _anchorGlideStartTicks;
+    private double _anchorGlideMs;
+
+    private void CenterOnAnchorNow() => CenterOnAnchorNow(AudioVisualizer?.CurrentVideoPositionSeconds ?? 0);
+
+    // Anchor the given play-head position. restart=true (a fresh click) always takes over, so a
+    // click made while the view is still gliding is honoured; the pause path leaves restart=false
+    // and keeps the guard, because it is called repeatedly while the player settles and restarting
+    // there meant the glide never landed.
+    private void CenterOnAnchorNow(double playheadSeconds, bool restart = false)
+    {
+        var av = AudioVisualizer;
+        if (av == null || !Fork.WaveformAnchorMarker || av.WavePeaks == null)
+        {
+            return;
+        }
+
+        if (_anchorGlideTimer != null)
+        {
+            if (!restart)
+            {
+                return;
+            }
+
+            _anchorGlideTimer.Stop();
+            _anchorGlideTimer = null;
+        }
+
+        var visible = av.EndPositionSeconds - av.StartPositionSeconds;
+        var target = playheadSeconds - visible * av.AnchorFraction;
+
+        // Glide off: land under the marker at once.
+        if (!Fork.WaveformAnchorGlide)
+        {
+            av.StartPositionSeconds = target;
+            return;
+        }
+
+        var screens = visible > 0 ? Math.Abs(target - av.StartPositionSeconds) / visible : 1.0;
+        var durationMs = Math.Sqrt(Math.Min(1.0, screens)) * Se.Settings.Waveform.CenterSmoothSeconds * 1000.0;
+
+        _anchorGlideTimer?.Stop();
+        _anchorGlideTimer = null;
+        if (durationMs <= 1)
+        {
+            // Nothing to glide (already there, or adjacent): land at once.
+            av.StartPositionSeconds = target;
+            return;
+        }
+
+        _anchorGlideFrom = av.StartPositionSeconds;
+        _anchorGlideTo = target;
+        _anchorGlideStartTicks = Environment.TickCount64;
+        _anchorGlideMs = durationMs;
+        _anchorGlideTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(16) };
+        _anchorGlideTimer.Tick += (_, _) =>
+        {
+            var t = Math.Clamp((Environment.TickCount64 - _anchorGlideStartTicks) / _anchorGlideMs, 0, 1);
+            var eased = 1 - Math.Pow(1 - t, 3);
+            av.StartPositionSeconds = _anchorGlideFrom + (_anchorGlideTo - _anchorGlideFrom) * eased;
+            if (t >= 1)
+            {
+                _anchorGlideTimer?.Stop();
+                _anchorGlideTimer = null;
+            }
+        };
+        _anchorGlideTimer.Start();
     }
 
     // Start playback. Always go through here rather than calling Play() directly: a pending pause
@@ -5105,11 +5244,6 @@ public partial class MainViewModel :
         Se.Settings.General.SelectCurrentSubtitleWhilePlaying = value;
     }
 
-    partial void OnWaveformCenterChanged(bool value)
-    {
-        Se.Settings.Waveform.CenterVideoPosition = value;
-    }
-
     [RelayCommand]
     private void ToggleCurrentSubtitleWhilePlaying()
     {
@@ -6729,7 +6863,9 @@ public partial class MainViewModel :
         }
 
         var s = Se.Settings.Waveform;
-        var seconds = AudioVisualizer.FindDataBelowThresholdBack(s.SeekSilenceMaxVolume, s.SeekSilenceMinDurationSeconds);
+        // SeekSilenceMaxVolume is a fraction of the loudest peak (0-1, what the dialog edits);
+        // FindDataBelowThreshold* take a percentage of it.
+        var seconds = AudioVisualizer.FindDataBelowThresholdBack(s.SeekSilenceMaxVolume * 100, s.SeekSilenceMinDurationSeconds);
         if (seconds >= 0)
         {
             vp.Position = seconds;
@@ -6746,7 +6882,7 @@ public partial class MainViewModel :
         }
 
         var s = Se.Settings.Waveform;
-        var seconds = AudioVisualizer.FindDataBelowThreshold(s.SeekSilenceMaxVolume, s.SeekSilenceMinDurationSeconds);
+        var seconds = AudioVisualizer.FindDataBelowThreshold(s.SeekSilenceMaxVolume * 100, s.SeekSilenceMinDurationSeconds);
         if (seconds >= 0)
         {
             vp.Position = seconds;
@@ -11467,6 +11603,44 @@ public partial class MainViewModel :
     private void ResetPlaySelection()
     {
         _playSelectionItem = null;
+        _playSelectionToggleMode = false;
+    }
+
+    // Highlights the line the "Play selected lines" playback is on, without letting the grid's
+    // selection-changed handler reset the play selection that drives the playback. Must run on
+    // the UI thread.
+    private void SelectSubtitleForPlayback(SubtitleLineViewModel subtitle)
+    {
+        _selectingSubtitleForPlayback = true;
+        try
+        {
+            SubtitleGrid.SelectedItem = subtitle;
+            SubtitleGrid.ScrollIntoView(subtitle);
+        }
+        finally
+        {
+            _selectingSubtitleForPlayback = false;
+        }
+    }
+
+    // During the "play selected lines" playback, hook the grid onto the subtitle the playhead is
+    // in as soon as it reaches it. This is what makes starting from a gap work: playback runs
+    // from the playhead, and when it reaches the next subtitle that line gets selected and the
+    // normal play-selection behavior (skip the gaps, follow the lines) takes over from there.
+    private void SelectSubtitleUnderPlayheadForPlayback(double positionSeconds)
+    {
+        var current = _playSelectionItem?.GetCurrentSubtitle();
+        if (current == null ||
+            positionSeconds < current.StartTime.TotalSeconds ||
+            positionSeconds > current.EndTime.TotalSeconds)
+        {
+            return;
+        }
+
+        if (!ReferenceEquals(SelectedSubtitle, current))
+        {
+            SelectSubtitleForPlayback(current);
+        }
     }
 
     [RelayCommand]
@@ -11586,6 +11760,10 @@ public partial class MainViewModel :
             return false;
         }
 
+        // Upstream behaviour: play exactly the selected lines, starting at the first one. Clear the
+        // continuous mode's toggle flag so a leftover pause/resume state from that command can never
+        // bleed into this one (the two share _playSelectionItem).
+        _playSelectionToggleMode = false;
         vp.VideoPlayer.Pause();
         var p = selectedItems.First();
         SeekVideoPlayer(vp, p.StartTime.TotalSeconds);
@@ -11594,6 +11772,87 @@ public partial class MainViewModel :
         PlayVideo(vp);
 
         return true;
+    }
+
+    /// <summary>
+    /// The added "continuous" play mode: with nothing selected (or just the current row) it plays
+    /// from the playhead through every following line to the end of the file, skipping the gaps
+    /// where there is nothing to hear; a deliberate multi-line selection still plays exactly those
+    /// lines. A second press pauses, a third resumes from the playhead. A separate command from the
+    /// upstream Play selected lines, so the original stays as it was.
+    /// </summary>
+    private bool PlayerSelectedLinesContinuous(bool loop)
+    {
+        var selectedItems = SubtitleGridSelectedItems.Cast<SubtitleLineViewModel>().OrderBy(p => p.StartTime).ToList();
+        var vp = GetVideoPlayerControl();
+        if (Window == null || vp == null)
+        {
+            return false;
+        }
+
+        // The mode is already running: a press pauses it. A press while it is paused starts it
+        // over anchored to the playhead, which may have been moved while it was paused.
+        if (_playSelectionToggleMode)
+        {
+            if (vp.VideoPlayer.IsPlaying)
+            {
+                RequestPausePlayheadFreeze();
+                vp.VideoPlayer.Pause();
+                return true;
+            }
+
+            _playSelectionToggleMode = false;
+        }
+
+        // Without a real selection - nothing selected, or just the current row - it plays from the
+        // playhead through every following line to the end of the file, skipping the gaps where
+        // there is nothing to hear. A deliberate multi-line selection still plays exactly those lines.
+        if (selectedItems.Count <= 1)
+        {
+            var start = Subtitles.FirstOrDefault(s => s.EndTime.TotalSeconds > vp.Position && !string.IsNullOrWhiteSpace(s.Text));
+            if (start == null)
+            {
+                return false;
+            }
+
+            var startIndex = Subtitles.IndexOf(start);
+            if (startIndex < 0)
+            {
+                startIndex = 0;
+            }
+
+            selectedItems = Subtitles.Skip(startIndex).Where(s => !string.IsNullOrWhiteSpace(s.Text)).ToList();
+            if (selectedItems.Count == 0)
+            {
+                return false;
+            }
+        }
+
+        // Start exactly where the playhead is - do not seek to the first line. Playing from a gap
+        // is wanted: the grid hooks onto the subtitle as soon as playback reaches it.
+        vp.VideoPlayer.Pause();
+        _playSelectionItem = new PlaySelectionItem(selectedItems, selectedItems[0].EndTime, loop);
+        _playSelectionItem.FindSubtitleAtOrAfter(vp.Position);
+        _playSelectionToggleMode = true;
+        SelectSubtitleUnderPlayheadForPlayback(vp.Position);
+        PlayVideo(vp);
+
+        return true;
+    }
+
+    [RelayCommand]
+    private void PlaySelectedLinesContinuous()
+    {
+        PlayerSelectedLinesContinuous(false);
+    }
+
+    [RelayCommand]
+    private void PlaySelectedLinesContinuousAndFocusWaveform()
+    {
+        if (PlayerSelectedLinesContinuous(false))
+        {
+            FocusAudioVisualizer();
+        }
     }
 
     [RelayCommand]
@@ -20243,7 +20502,7 @@ public partial class MainViewModel :
 
         SelectAndScrollToRowCentered(idx);
 
-        if (WaveformCenter)
+        if (WaveformCenterAny)
         {
             var selectedLine = Subtitles.GetOrNull(idx);
             if (selectedLine != null)
@@ -20303,7 +20562,7 @@ public partial class MainViewModel :
 
         SelectAndScrollToRowCentered(idx);
 
-        if (WaveformCenter)
+        if (WaveformCenterAny)
         {
             var selectedLine = Subtitles.GetOrNull(idx);
             if (selectedLine != null)
@@ -24699,6 +24958,20 @@ public partial class MainViewModel :
         {
             _splitManager.Split(Subtitles, s, videoPositionSeconds, textIndex, language, originalSplit, allowEmptySecond);
             Renumber();
+
+            // "Split line at video and text box position" also re-wraps both halves the way
+            // "split/rebalance long lines" does, automatically and without asking - the two events
+            // are not split any further, only their line breaks are made optimal. Fork only: off =
+            // upstream, which leaves both halves exactly as the split produced them.
+            if (Fork.Enabled && atVideoPosition && atTextBoxPosition && Subtitles.Count > countBefore)
+            {
+                RebalanceAfterSplit(s, language);
+
+                if (Se.Settings.General.TrimSilenceAfterSplit)
+                {
+                    TrimSplitRightHalfSilence(s);
+                }
+            }
         });
 
         // The first half stays the current row (SE4's "focus left"), but the second half goes in
@@ -24737,6 +25010,145 @@ public partial class MainViewModel :
             : language;
 
         return new OriginalSplit(originalTextIndex, originalLanguage);
+    }
+
+    /// <summary>
+    /// Re-wraps the two halves a split produced with the same algorithm as "split/rebalance long
+    /// lines", using the settings that tool remembers. Only the line breaks change - neither half is
+    /// split into more events, and nothing is asked.
+    /// </summary>
+    private void RebalanceAfterSplit(SubtitleLineViewModel firstHalf, string language)
+    {
+        var singleLineMaxLength = Se.Settings.Tools.SplitRebalanceLongLinesSingleLineMaxLength > 0
+            ? Se.Settings.Tools.SplitRebalanceLongLinesSingleLineMaxLength
+            : Se.Settings.General.SubtitleLineMaximumLength;
+        var unbreakLinesShorterThan = Se.Settings.Tools.SplitRebalanceLongLinesUnbreakShorterThan > 0
+            ? Se.Settings.Tools.SplitRebalanceLongLinesUnbreakShorterThan
+            : Se.Settings.General.UnbreakLinesShorterThan;
+
+        // Same cap as the dialog: a threshold at or above the single line max length means "keep
+        // any text that fits on one line".
+        var mergeLinesShorterThan = unbreakLinesShorterThan >= singleLineMaxLength
+            ? singleLineMaxLength + 1
+            : unbreakLinesShorterThan;
+
+        var firstIndex = Subtitles.IndexOf(firstHalf);
+        if (firstIndex < 0)
+        {
+            return;
+        }
+
+        RebalanceSplitHalf(Subtitles.GetOrNull(firstIndex), language, singleLineMaxLength, mergeLinesShorterThan);
+        RebalanceSplitHalf(Subtitles.GetOrNull(firstIndex + 1), language, singleLineMaxLength, mergeLinesShorterThan);
+    }
+
+    private static void RebalanceSplitHalf(SubtitleLineViewModel? line, string language, int singleLineMaxLength, int mergeLinesShorterThan)
+    {
+        if (line == null || line.IsReferenceOnly || string.IsNullOrEmpty(line.Text))
+        {
+            return;
+        }
+
+        var rebalanced = Utilities.AutoBreakLine(line.Text, singleLineMaxLength, mergeLinesShorterThan, language);
+        if (rebalanced != line.Text)
+        {
+            line.Text = rebalanced;
+        }
+    }
+
+    /// <summary>
+    /// After a split, moves the right half's start forward to where the next speech begins, trimming
+    /// the leading silence the cut left in front of it. The threshold is found adaptively from the
+    /// local noise floor and the speech level ahead (the same sweep "guess start" uses), so nothing
+    /// has to be tuned. A cut made inside speech - no real silence in front of it - leaves the line
+    /// untouched, as does a missing waveform or no speech before the line's end.
+    /// </summary>
+    private void TrimSplitRightHalfSilence(SubtitleLineViewModel firstHalf)
+    {
+        var firstIndex = Subtitles.IndexOf(firstHalf);
+        var rightHalf = firstIndex < 0 ? null : Subtitles.GetOrNull(firstIndex + 1);
+        if (rightHalf == null)
+        {
+            return;
+        }
+
+        var startSeconds = rightHalf.StartTime.TotalSeconds;
+        var maxForwardSeconds = rightHalf.Duration.TotalSeconds;
+        if (maxForwardSeconds <= 0)
+        {
+            return;
+        }
+
+        // Voice detection (Silero VAD) first when enabled and its speech map is ready - it tells a
+        // voice from a clink or a rustle; otherwise (or when it finds nothing) fall back to the
+        // amplitude waveform.
+        double? speechStartSeconds = null;
+        if (Se.Settings.General.SplitTrimUseVoiceDetection)
+        {
+            speechStartSeconds = FindSpeechStartAfter(startSeconds);
+            if (speechStartSeconds == null)
+            {
+                // No map yet (option or model enabled after the video was loaded): build it now so
+                // the next split uses the voice detection; this one falls back to the waveform.
+                EnsureSpeechSegmentsBuilding();
+            }
+        }
+
+        if (speechStartSeconds == null)
+        {
+            var av = AudioVisualizer;
+            if (av?.WavePeaks != null)
+            {
+                speechStartSeconds = FindAdaptiveSpeechStartAfter(av, startSeconds, maxForwardSeconds);
+            }
+        }
+
+        if (!speechStartSeconds.HasValue || speechStartSeconds.Value <= startSeconds)
+        {
+            return;
+        }
+
+        var newStartMs = speechStartSeconds.Value * TimeCode.BaseUnit;
+        if (newStartMs >= rightHalf.EndTime.TotalMilliseconds)
+        {
+            return; // would leave the line with no duration
+        }
+
+        rightHalf.StartTime = TimeSpan.FromMilliseconds(Math.Round(newStartMs));
+    }
+
+    /// <summary>
+    /// Finds where the next speech after <paramref name="startSeconds"/> begins, without a fixed
+    /// threshold: the local noise floor and the speech level ahead give a sweep of volume
+    /// percentages (as "guess start" does), and the first threshold that sees a speech onset wins.
+    /// Returns null when the position is not in real silence or no speech follows in the window.
+    /// </summary>
+    private double? FindAdaptiveSpeechStartAfter(AudioVisualizer av, double startSeconds, double maxForwardSeconds)
+    {
+        const double minSilenceSeconds = 0.1;
+        var reachSeconds = Math.Max(0.8, maxForwardSeconds);
+
+        var lowPercent = av.FindLowPercentage(startSeconds - 0.3, startSeconds + 0.3);
+        var highPercent = av.FindHighPercentage(startSeconds, startSeconds + reachSeconds);
+        if (highPercent <= lowPercent + 0.3)
+        {
+            return null; // no speech-level audio ahead - nothing to detect
+        }
+
+        // Same proven search "guess start" uses: it sweeps the volume up from the noise floor and
+        // takes the first boundary where a quiet run is clearly followed by louder audio, which
+        // sees past ambient noise instead of taking whatever first pokes above the floor.
+        var sweep = GetGuessVolumeSweep(lowPercent, highPercent);
+        for (var threshold = sweep.Start; threshold < sweep.End; threshold += 0.3)
+        {
+            var position = av.FindDataBelowThresholdBackForStart(threshold, minSilenceSeconds, startSeconds, reachSeconds);
+            if (position > startSeconds)
+            {
+                return position;
+            }
+        }
+
+        return null;
     }
 
     /// <summary>Scrolls minimally so <paramref name="row"/> is fully on screen; no selection change.</summary>
@@ -24867,10 +25279,10 @@ public partial class MainViewModel :
         }
 
         var av = AudioVisualizer;
-        if (WaveformCenter)
+        if (WaveformCenterAny && _anchorGlideTimer == null)
         {
-            var waveformHalfSeconds = (av.EndPositionSeconds - av.StartPositionSeconds) / 2.0;
-            av.StartPositionSeconds = newPosition - waveformHalfSeconds;
+            var anchor = Fork.WaveformAnchorMarker ? av.AnchorFraction : 0.5;
+            av.StartPositionSeconds = newPosition - (av.EndPositionSeconds - av.StartPositionSeconds) * anchor;
         }
         else
         {
@@ -30048,6 +30460,7 @@ public partial class MainViewModel :
                 Se.Settings.Waveform.ZoomFactor = AudioVisualizer.ZoomFactor;
                 Se.Settings.Waveform.VerticalZoomFactor = AudioVisualizer.VerticalZoomFactor;
             }
+            Se.Settings.Waveform.CenterVideoPositionSmooth = WaveformCenterSmooth;
 
             UiUtil.SaveWindowPosition(Window);
             Se.Settings.General.UndockVideoControls = Se.Settings.General.RememberPositionAndSize && AreVideoControlsUndocked;
@@ -30740,6 +31153,10 @@ public partial class MainViewModel :
             return;
         }
 
+        // Cached peaks: make sure the speech map is there too - loaded from its cache, or built with
+        // a separate ffmpeg pass when only the peaks were cached. Runs in the background.
+        _ = BuildSpeechSegmentsAsync(null, videoFileName, trackNumber, cached.PeakWaveFileName);
+
         Dispatcher.UIThread.Post(() =>
         {
             AudioVisualizer.WavePeaks = cached.WavePeaks;
@@ -30978,6 +31395,32 @@ public partial class MainViewModel :
         {
             _mediaInfo = null;
         }
+    }
+
+    // Draws the same traffic-light "end of video" line the TTS review window has: green while every
+    // cue ends at or before the video, red when a cue runs past it. The main window never fed the
+    // visualizer before, so the line was simply absent here.
+    private void UpdateVideoEndMarker(AudioVisualizer av)
+    {
+        var videoEndSeconds = (double)(_mediaInfo?.Duration?.TotalSeconds ?? 0);
+        av.VideoEndSeconds = videoEndSeconds;
+        if (videoEndSeconds <= 0)
+        {
+            av.VideoEndOverrun = false;
+            return;
+        }
+
+        var overrun = false;
+        foreach (var line in Subtitles)
+        {
+            if (line.EndTime.TotalSeconds > videoEndSeconds + 0.001)
+            {
+                overrun = true;
+                break;
+            }
+        }
+
+        av.VideoEndOverrun = overrun;
     }
 
     private void SetAssaResolution(bool checkSettings)
@@ -31519,6 +31962,13 @@ public partial class MainViewModel :
                     DeleteTempFile(tempWaveFileName);
                     return;
                 }
+            }
+
+            if (File.Exists(tempWaveFileName))
+            {
+                // One VAD pass over the audio that was just extracted (no second ffmpeg run) so a
+                // split can later trim to the next voice; cached next to the peaks.
+                await BuildSpeechSegmentsAsync(tempWaveFileName, videoFileName, _audioTrack?.FfIndex ?? -1, peakWaveFileName);
             }
 
             ExtractShotChanges(videoFileName, _audioTrack?.FfIndex ?? -1);
@@ -33009,6 +33459,28 @@ public partial class MainViewModel :
         }
 
         AddSubtitleGridSpellCheckMenuItems(sender as MenuFlyout);
+
+        // Minimal right-click menu: keep only "Merge selected" (and only with 2+ lines selected),
+        // hide every other command and separator.
+        if (Se.Settings.General.MinimalContextMenus && sender is MenuFlyout minimalGridFlyout)
+        {
+            foreach (var item in minimalGridFlyout.Items)
+            {
+                if (item is Control control)
+                {
+                    control.IsVisible = false;
+                }
+            }
+
+            MenuItemMerge.IsVisible = selectedCount > 1;
+        }
+
+        // The user's per-item menu choices run last (after the spell-check items were added) so they
+        // only hide, never reveal, on top of the rules above.
+        if (sender is MenuFlyout customizedGridFlyout)
+        {
+            ApplyContextMenuCustomization("grid", customizedGridFlyout.Items);
+        }
     }
 
     private const int MaxSpellCheckMenuWords = 10;
@@ -35093,7 +35565,11 @@ public partial class MainViewModel :
         var outgoing = SelectedSubtitle;
         EditTextBox.ClearSelection();
         EditTextBoxOriginal.ClearSelection();
-        ResetPlaySelection();
+        if (!_selectingSubtitleForPlayback)
+        {
+            ResetPlaySelection();
+        }
+
         _updateAudioVisualizer = true;
 
         if (selectedItems.Count == 0)
@@ -35926,7 +36402,7 @@ public partial class MainViewModel :
                 var isPlaying = vp.IsPlaying;
                 var firstSelectedIndex = -1;
 
-                if (WaveformCenter && isPlaying)
+                if (WaveformCenterAny && isPlaying)
                 {
                     // The center-mode scroll position is driven smoothly by the 60 fps cursor timer (see
                     // the _cursorTimer tick); here we only refresh the paragraph list. Pass the current
@@ -35945,12 +36421,17 @@ public partial class MainViewModel :
                     }
                     else if (vp.Position > av.EndPositionSeconds) // scrolling backward
                     {
-                        vp.Position = av.StartPositionSeconds + ((av.EndPositionSeconds - av.StartPositionSeconds) / 2.0);
+                        vp.Position = av.StartPositionSeconds + ((av.EndPositionSeconds - av.StartPositionSeconds) * (Fork.WaveformAnchorMarker ? av.AnchorFraction : 0.5));
                     }
                 }
-                else if (av != null && isPlaying &&
+                else if (av != null && isPlaying && !WaveformCenterAny &&
                          (mediaPlayerSeconds > av.EndPositionSeconds || mediaPlayerSeconds < av.StartPositionSeconds))
                 {
+                    // A play-head that left the visible window is scrolled back into view in one
+                    // step - but never in "center on position" mode: there the 60 fps cursor
+                    // timer's magnet is the one that moves the view, and this step would snap it
+                    // the whole way at once (a far next subtitle looked like an instant skip while
+                    // a short one glided, which is why it only showed up zoomed in).
                     // -1 like the other branches: passing an index here names the PRIMARY
                     // selected paragraph, and 0 made this scroll-jump branch mark the file's
                     // first line as selected in the waveform for one tick.
@@ -35965,6 +36446,7 @@ public partial class MainViewModel :
                 if (_updateAudioVisualizer && av != null)
                 {
                     UpdateWaveformOriginalSubtitleCues(av);
+                    UpdateVideoEndMarker(av);
                     av.InvalidateVisual();
                     _updateAudioVisualizer = false;
                 }
@@ -36021,8 +36503,16 @@ public partial class MainViewModel :
                                 PinPlayheadTo(p.StartTime.TotalSeconds);
                             }
 
-                            Dispatcher.UIThread.Post(() => { SubtitleGrid.ScrollIntoView(p); });
+                            Dispatcher.UIThread.Post(() => { SelectSubtitleForPlayback(p); });
                         }
+                    }
+
+                    else if (Fork.Enabled && _playSelectionItem != null && !_pauseRequested)
+                    {
+                        // Fork: play-selected running from a gap selects the line the moment the
+                        // play-head reaches it, so the grid hooks on before the line's end. Off =
+                        // upstream, which leaves the selection alone until the line is reached.
+                        SelectSubtitleUnderPlayheadForPlayback(mediaPlayerSeconds);
                     }
 
                     else if (SelectCurrentSubtitleWhilePlaying && _playSelectionItem == null && !_pauseRequested)
@@ -36053,20 +36543,25 @@ public partial class MainViewModel :
                     // which resets the play selection a second way through SelectionChanged.
                     if (!_playStartGate.IsPending(Stopwatch.GetTimestamp(), Stopwatch.Frequency))
                     {
-                        ResetPlaySelection();
-
-                        // While paused, keep selecting the line under the play-head as it moves - by
-                        // waveform scrubbing, but also by the seek/frame/ms/second step commands, which
-                        // is why this no longer requires "center" (#16048).
-                        // Only react to position *changes* — otherwise this would immediately steal back
-                        // the selection when the user picks a different line in the grid while paused.
-                        // Opt-in (default off, like SE 4 which never selected while paused): scrubbing
-                        // backwards would otherwise steal the selection to the previous line, so the
-                        // current line's start can't be pulled back to the cursor (#15513).
-                        if (ShouldSelectAtPlayheadWhilePaused(Se.Settings.Waveform.SelectCurrentSubtitleWhilePaused,
-                                SelectCurrentSubtitleWhilePlaying, mediaPlayerSeconds, _pausedSelectLastSeconds))
+                        // Keep the play selection alive while the "play selected lines" toggle mode is
+                        // paused, so pressing it again resumes from the same line instead of restarting.
+                        if (!_playSelectionToggleMode)
                         {
-                            SelectCurrentSubtitleAtPlayhead(mediaPlayerSeconds, subtitle);
+                            ResetPlaySelection();
+
+                            // While paused, keep selecting the line under the play-head as it moves - by
+                            // waveform scrubbing, but also by the seek/frame/ms/second step commands, which
+                            // is why this no longer requires "center" (#16048).
+                            // Only react to position *changes* — otherwise this would immediately steal back
+                            // the selection when the user picks a different line in the grid while paused.
+                            // Opt-in (default off, like SE 4 which never selected while paused): scrubbing
+                            // backwards would otherwise steal the selection to the previous line, so the
+                            // current line's start can't be pulled back to the cursor (#15513).
+                            if (ShouldSelectAtPlayheadWhilePaused(Se.Settings.Waveform.SelectCurrentSubtitleWhilePaused,
+                                    SelectCurrentSubtitleWhilePlaying, mediaPlayerSeconds, _pausedSelectLastSeconds))
+                            {
+                                SelectCurrentSubtitleAtPlayhead(mediaPlayerSeconds, subtitle);
+                            }
                         }
 
                         _pausedSelectLastSeconds = mediaPlayerSeconds;
@@ -36185,15 +36680,99 @@ public partial class MainViewModel :
                 // few of them. Whole-paragraph moves never scrubbed, which is why only edge drags
                 // ran away. Re-centering the waveform under a held pointer is wrong on its own
                 // terms too - it drags the content out from under the user.
-                var centerPausedChange = WaveformCenter && !isPlaying &&
+                // In "center waveform on current position" mode the waveform scrolls to keep the
+                // cursor centered. Driven here at ~60 fps, in lockstep with the cursor, so it
+                // glides smoothly instead of jumping in 20 fps steps from the heavy 50 ms timer.
+                // With "center also while paused" on, paused position changes (wheel scrub,
+                // waveform clicks, shortcuts) recenter too - but only on actual changes, so the
+                // user can still scroll around the waveform freely while the play-head is at rest.
+                // It eases to the center over the configured time instead of snapping (the snap is
+                // painful on the eyes when the play-head jumps), and the ease is held off while the
+                // user is scrolling/dragging/zooming so it never fights them. Never recenter while
+                // the user is dragging an edge (#13955): the drag scrubs the video to the edge, so
+                // recentering would scroll to the very edge being dragged and the drag delta feeds
+                // back into the scroll until the edge shoots off screen (#13600).
+                var centerPausedChange = WaveformCenterAny && !isPlaying &&
                                          Se.Settings.Waveform.CenterVideoPositionAlsoWhenPaused &&
                                          !av.IsEditingWithPointer &&
                                          Math.Abs(est - _pausedCenterLastSeconds) > 0.001;
-                var centered = WaveformCenter && av.WavePeaks != null && (isPlaying || centerPausedChange);
+                var centered = _anchorGlideTimer == null && WaveformCenterAny && av.WavePeaks != null && (isPlaying || centerPausedChange);
+                // Only the smooth toggle eases; the original Center toggle keeps its instant snap.
+                var smoothCenter = WaveformCenterSmooth && !WaveformCenter;
                 if (centered)
                 {
-                    var halfSeconds = (av.EndPositionSeconds - av.StartPositionSeconds) / 2.0;
-                    av.StartPositionSeconds = Math.Max(0, est - halfSeconds);
+                    // The fork's red marker: the play-head stops under it instead of in the middle
+                    // (Fork.WaveformAnchorMarker). 0.5 is the classic centre.
+                    var visibleSeconds = av.EndPositionSeconds - av.StartPositionSeconds;
+                    var anchor = Fork.WaveformAnchorMarker ? av.AnchorFraction : 0.5;
+                    // No 0 clamp: the view may run left of zero (empty space) so the play-head can
+                    // reach the anchor even at the very start of the video.
+                    var centerTarget = est - visibleSeconds * anchor;
+                    var centerSuspended = av.IsEditingWithPointer || av.IsMouseWheelInteracting;
+
+                    if (centerSuspended)
+                    {
+                        _centerAnimActive = false;
+                    }
+                    else if (!smoothCenter)
+                    {
+                        // Original Center toggle: snap straight to the centre, as it always did.
+                        _centerAnimActive = false;
+                        av.StartPositionSeconds = centerTarget;
+                    }
+                    else
+                    {
+                        // The centre target jumped (a seek, the next subtitle) while the ease was
+                        // still running: restart it from where the view is now. Carrying the old
+                        // progress onto the new target snapped the view the rest of the way at
+                        // once - the skip seen on short lines that had not centred yet.
+                        if (_centerAnimActive && Math.Abs(centerTarget - _centerAnimTargetSeconds) > 0.15)
+                        {
+                            _centerAnimActive = false;
+                        }
+
+                        if (!_centerAnimActive && Math.Abs(av.StartPositionSeconds - centerTarget) > 0.15)
+                        {
+                            _centerAnimActive = true;
+                            _centerAnimFromSeconds = av.StartPositionSeconds;
+                            _centerAnimStartTicks = Stopwatch.GetTimestamp();
+                        }
+
+                        _centerAnimTargetSeconds = centerTarget;
+
+                        if (_centerAnimActive)
+                        {
+                            // Distance-based duration: one screen of travel takes CenterSmoothSeconds,
+                            // an adjacent block (nothing to skip) takes none - a 0 duration makes the
+                            // progress check below snap at once. Measured in screens, so the feel does
+                            // not change with the zoom level.
+                            var visible = av.EndPositionSeconds - av.StartPositionSeconds;
+                            var screens = visible > 0
+                                ? Math.Abs(centerTarget - _centerAnimFromSeconds) / visible
+                                : 1.0;
+                            var duration = Math.Sqrt(Math.Min(1.0, screens)) * Se.Settings.Waveform.CenterSmoothSeconds;
+                            var progress = (Stopwatch.GetTimestamp() - _centerAnimStartTicks) / (double)Stopwatch.Frequency / duration;
+                            if (progress >= 1)
+                            {
+                                _centerAnimActive = false;
+                                av.StartPositionSeconds = centerTarget;
+                            }
+                            else
+                            {
+                                // Ease-out: quick at first, settling as it reaches the center.
+                                var eased = 1 - Math.Pow(1 - progress, 3);
+                                av.StartPositionSeconds = _centerAnimFromSeconds + (centerTarget - _centerAnimFromSeconds) * eased;
+                            }
+                        }
+                        else
+                        {
+                            av.StartPositionSeconds = centerTarget;
+                        }
+                    }
+                }
+                else
+                {
+                    _centerAnimActive = false;
                 }
 
                 av.SetPlayheadMotion(tickTimestamp, playheadVelocity, centered && isPlaying);
@@ -37617,7 +38196,9 @@ public partial class MainViewModel :
 
         var s = SelectedSubtitle;
         var vp = GetVideoPlayerControl();
-        if (vp != null && !string.IsNullOrEmpty(_videoFileName) && s != null)
+        // Fork: the "split line at the video position and text-box cursor" item. Off = upstream has
+        // no such item, so it is never shown.
+        if (Fork.Enabled && vp != null && !string.IsNullOrEmpty(_videoFileName) && s != null)
         {
             if (s.StartTime.TotalSeconds < vp.Position &&
                 vp.Position < s.EndTime.TotalSeconds)
@@ -37725,6 +38306,25 @@ public partial class MainViewModel :
 
             AddYttTextBoxMenuItems(flyout);
         }
+
+        // Minimal right-click menu: keep only "Split line at video and text box position" (its own
+        // visibility binding still decides whether it applies) and hide every other command.
+        if (Se.Settings.General.MinimalContextMenus && sender is MenuFlyout minimalFlyout)
+        {
+            foreach (var item in minimalFlyout.Items)
+            {
+                if (item is Control control && control.Tag?.ToString() != "TextBoxSplitAtVideo")
+                {
+                    control.IsVisible = false;
+                }
+            }
+        }
+
+        // The user's per-item menu choices run last so they only hide on top of the rules above.
+        if (sender is MenuFlyout customizedTextBoxFlyout)
+        {
+            ApplyContextMenuCustomization("textbox", customizedTextBoxFlyout.Items);
+        }
     }
 
     [RelayCommand]
@@ -37748,11 +38348,188 @@ public partial class MainViewModel :
         });
     }
 
+    /// <summary>
+    /// Applies the user's "Customize right-click menus" choices to one menu: hides every item they
+    /// ticked off, then tidies the separators. Keyed by menu ("textbox", "grid", "waveform"); items
+    /// are matched by their header text. Runs after the per-item visibility rules so it can only
+    /// hide, never reveal. When the menu is left with five or fewer visible options the separators
+    /// are dropped entirely - a line through a short menu is just noise.
+    /// </summary>
+    private static void ApplyContextMenuCustomization(string menuKey, IEnumerable<object?> items)
+    {
+        // The minimal-menus preset owns the menus while it is on: it deliberately keeps a handful of
+        // commands and hides the rest, so the per-item choices must not run on top of it (a hidden
+        // header such as "Merge selected" would otherwise remove the very item the preset keeps).
+        if (Se.Settings.General.MinimalContextMenus)
+        {
+            return;
+        }
+
+        var itemList = items.ToList();
+
+        if (Se.Settings.General.HiddenContextMenuItems.TryGetValue(menuKey, out var hidden) && hidden.Count > 0)
+        {
+            var hiddenSet = new HashSet<string>(hidden, StringComparer.Ordinal);
+            foreach (var item in itemList)
+            {
+                if (item is MenuItem menuItem && menuItem.Header is string header && hiddenSet.Contains(header))
+                {
+                    menuItem.IsVisible = false;
+                }
+            }
+        }
+
+        TidyContextMenuSeparators(itemList);
+    }
+
+    /// <summary>
+    /// Hides separators that separate nothing: leading, trailing, doubled, or next to a hidden item.
+    /// When five or fewer menu items remain visible, every separator goes.
+    /// </summary>
+    private static void TidyContextMenuSeparators(List<object?> items)
+    {
+        var visibleItems = items.Count(i => i is MenuItem { IsVisible: true });
+        if (visibleItems <= 5)
+        {
+            foreach (var item in items)
+            {
+                if (item is Separator separator)
+                {
+                    separator.IsVisible = false;
+                }
+            }
+
+            return;
+        }
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (items[i] is not Separator separator)
+            {
+                continue;
+            }
+
+            separator.IsVisible = PreviousVisibleMenuItem(items, i) != null && NextVisibleMenuItem(items, i) != null;
+        }
+    }
+
+    private static MenuItem? PreviousVisibleMenuItem(List<object?> items, int index)
+    {
+        for (var i = index - 1; i >= 0; i--)
+        {
+            if (items[i] is MenuItem { IsVisible: true } menuItem)
+            {
+                return menuItem;
+            }
+
+            if (items[i] is Separator { IsVisible: true })
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    private static MenuItem? NextVisibleMenuItem(List<object?> items, int index)
+    {
+        for (var i = index + 1; i < items.Count; i++)
+        {
+            if (items[i] is MenuItem { IsVisible: true } menuItem)
+            {
+                return menuItem;
+            }
+
+            if (items[i] is Separator { IsVisible: true })
+            {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Returns the header texts of every item currently in one of the three right-click menus, in
+    /// menu order, skipping separators and empty headers. Used by the "Customize right-click menus"
+    /// settings to list what can be shown or hidden.
+    /// </summary>
+    internal List<string> GetContextMenuHeaders(string menuKey)
+    {
+        var flyout = menuKey switch
+        {
+            "textbox" => TextBoxContextFlyout,
+            "grid" => SubtitleGridContextFlyout,
+            "waveform" => AudioVisualizer?.MenuFlyout,
+            _ => null,
+        };
+
+        var headers = new List<string>();
+        if (flyout == null)
+        {
+            return headers;
+        }
+
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var item in flyout.Items)
+        {
+            if (item is MenuItem { Header: string header } && !string.IsNullOrEmpty(header) && seen.Add(header))
+            {
+                headers.Add(header);
+            }
+        }
+
+        return headers;
+    }
+
     public void AudioVisualizerFlyoutMenuOpening(object sender, AudioVisualizer.ContextEventArgs e)
+    {
+        UpdateAudioVisualizerFlyoutMenuVisibility(sender, e);
+
+        // The user's per-item menu choices run last so they only hide, never reveal, on top of the
+        // contextual rules.
+        if (sender is AudioVisualizer customizedVisualizer && customizedVisualizer.MenuFlyout != null)
+        {
+            ApplyContextMenuCustomization("waveform", customizedVisualizer.MenuFlyout.Items);
+        }
+    }
+
+    private void UpdateAudioVisualizerFlyoutMenuVisibility(object sender, AudioVisualizer.ContextEventArgs e)
     {
         // Remembered so "Insert subtitle file at video position..." anchors the file at the
         // right-clicked waveform position instead of wherever the play-head happens to be.
         _waveformContextMenuSeconds = e.PositionInSeconds;
+
+        // Minimal right-click menu: on a new (empty-area) selection keep only "Insert new
+        // selection"; on a subtitle keep only "Merge with line before/after". Everything else is
+        // hidden.
+        if (Se.Settings.General.MinimalContextMenus && sender is AudioVisualizer minimalVisualizer && minimalVisualizer.MenuFlyout != null)
+        {
+            foreach (var item in minimalVisualizer.MenuFlyout.Items)
+            {
+                if (item is Control control)
+                {
+                    control.IsVisible = false;
+                }
+            }
+
+            if (e.NewParagraph != null)
+            {
+                MenuItemAudioVisualizerInsertNewSelection.IsVisible = true;
+                return;
+            }
+
+            var clickedSubtitle = Subtitles.FirstOrDefault(p => p.StartTime.TotalSeconds < e.PositionInSeconds &&
+                                                                p.EndTime.TotalSeconds > e.PositionInSeconds);
+            if (clickedSubtitle != null && _selectedSubtitles?.Count == 1 && ReferenceEquals(_selectedSubtitles[0], clickedSubtitle))
+            {
+                var selectedIdxMinimal = SubtitleGrid.SelectedIndex;
+                MenuItemAudioVisualizerMergeWithPrevious.IsVisible = selectedIdxMinimal > 0;
+                MenuItemAudioVisualizerMergeWithNext.IsVisible = selectedIdxMinimal >= 0 && selectedIdxMinimal < Subtitles.Count - 1;
+            }
+
+            return;
+        }
 
         MenuItemAudioVisualizerInsertNewSelection.IsVisible = false;
         MenuItemAudioVisualizerPasteNewSelection.IsVisible = false;
@@ -38214,10 +38991,21 @@ public partial class MainViewModel :
 
     internal void WaveformCenterCheckedChanged()
     {
+        // The two centre toggles are kept mutually exclusive by the property setters; here we only
+        // persist the choice.
         Dispatcher.UIThread.Post(() =>
         {
             Task.Delay(50);
             Se.Settings.Waveform.CenterVideoPosition = WaveformCenter;
+        });
+    }
+
+    internal void WaveformCenterSmoothCheckedChanged()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            Task.Delay(50);
+            Se.Settings.Waveform.CenterVideoPositionSmooth = WaveformCenterSmooth;
         });
     }
 
@@ -38521,6 +39309,12 @@ public partial class MainViewModel :
         {
             // Land the playhead on a frame boundary when "Snap to frames" is on.
             var seconds = SnapSecondsToFrame(e.Seconds);
+
+            // Fork: glide the view so the clicked spot lands under the anchor. This is the real click
+            // path (OnVideoPositionChanged only fires for the wheel and right-click). It runs before
+            // the action below, whose pause calls CenterOnAnchorNow with the live play-head - stale
+            // until this click's seek has landed, which made the first click a no-op.
+            CenterOnAnchorNow(seconds, restart: true);
             switch (action)
             {
                 case WaveformSingleClickActionType.SetVideoPositionAndPauseAndSelectSubtitle:

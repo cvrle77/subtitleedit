@@ -1231,6 +1231,106 @@ public class SettingsPage : UserControl
         ]));
 
 
+        sections.Add(new SettingsSection("cvrle77", IconNames.Cogs, "#c084fc",
+        [
+            MakeGroupHeader("Fork features"),
+            MakeCheckboxSetting("Fork features (master switch - off = upstream Subtitle Edit)", nameof(_vm.ForkFeatures)),
+            MakeSeparator(),
+
+            MakeGroupHeader("Right-click menus"),
+            MakeCheckboxSetting(Se.Language.Options.Settings.MinimalContextMenus, nameof(_vm.MinimalContextMenus)),
+            new SettingsItem(Se.Language.Options.Settings.ContextMenuTextBox, () => MakeContextMenuComboBox(_vm.ContextMenuTextBox)),
+            new SettingsItem(Se.Language.Options.Settings.ContextMenuGrid, () => MakeContextMenuComboBox(_vm.ContextMenuGrid)),
+            new SettingsItem(Se.Language.Options.Settings.ContextMenuWaveform, () => MakeContextMenuComboBox(_vm.ContextMenuWaveform)),
+
+            MakeSeparator(),
+            MakeGroupHeader("TTS review (OK)"),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ReviewOkAlsoExports, nameof(_vm.ReviewOkAlsoExports)),
+
+            MakeSeparator(),
+            MakeGroupHeader("Split: trim the leading silence"),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TrimSilenceAfterSplit, nameof(_vm.TrimSilenceAfterSplit)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.SplitTrimUseVoiceDetection, nameof(_vm.SplitTrimUseVoiceDetection)),
+            new SettingsItem(Se.Language.Options.Settings.SileroVadModel, () => new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 10,
+                Children =
+                {
+                    MakeDownloadButton(Se.Language.Options.Settings.SileroVadModel, _vm.DownloadSileroVadCommand, nameof(_vm.SileroVadStatus)),
+                    new TextBlock
+                    {
+                        DataContext = _vm,
+                        [!TextBlock.TextProperty] = new Binding(nameof(_vm.SileroVadStatus)),
+                        VerticalAlignment = VerticalAlignment.Center,
+                    }
+                }
+            }),
+            new SettingsItem(Se.Language.Options.Settings.VadThreshold, () => UiUtil.MakeNumericUpDownTwoDecimals(
+                0, 1, 120, _vm, nameof(_vm.VadThreshold), defaultValue: 0.5m)),
+            new SettingsItem(Se.Language.Options.Settings.VadMinSpeechSeconds, () => UiUtil.MakeNumericUpDownTwoDecimals(
+                0, 10, 120, _vm, nameof(_vm.VadMinSpeechSeconds), defaultValue: 0.25m)),
+            new SettingsItem(Se.Language.Options.Settings.VadMinSilenceSeconds, () => UiUtil.MakeNumericUpDownTwoDecimals(
+                0, 10, 120, _vm, nameof(_vm.VadMinSilenceSeconds), defaultValue: 0.1m)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.CapitalizeAfterSplit, nameof(_vm.CapitalizeAfterSplit)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowVideoEndLine, nameof(_vm.ShowVideoEndLine)),
+
+            MakeSeparator(),
+            MakeGroupHeader("Waveform centering"),
+            new SettingsItem(Se.Language.Options.Settings.WaveformCenterSmoothSeconds, () => UiUtil.MakeNumericUpDownOneDecimal(
+                0, 10, 120, _vm, nameof(_vm.WaveformCenterSmoothSeconds), defaultValue: 2.0m)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformZoomCentersOnSelection, nameof(_vm.ZoomCentersOnSelection)),
+            MakeCheckboxSetting("Waveform: red anchor marker (play-head stops under it instead of the centre)", nameof(_vm.WaveformAnchorMarker)),
+            MakeCheckboxSetting("Waveform: glide to the anchor (animate instead of jumping)", nameof(_vm.WaveformAnchorGlide)),
+
+            MakeSeparator(),
+            MakeGroupHeader("Text to speech"),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechFastMerge, nameof(_vm.TextToSpeechFastMerge)),
+            MakeCheckboxSetting("Clean the text before TTS (tags, contractions, acronyms)", nameof(_vm.TtsCleanText)),
+            MakeCheckboxSetting("ElevenLabs v4 models + chunked generation", nameof(_vm.ElevenLabsV4)),
+            MakeCheckboxSetting("TTS review layout (three columns, auto-continue in the controls column)", nameof(_vm.TtsLayout)),
+            // These three are decided when the review window is built, so they live here, not in the
+            // window's live switch panel.
+            MakeCheckboxSetting("Review window: video player", nameof(_vm.ReviewVideoPlayer)),
+            MakeCheckboxSetting("Review window: two waveforms (off = upstream single waveform)", nameof(_vm.ReviewTwoWaveforms)),
+            MakeCheckboxSetting("Review window: grid look (zebra, centring, column order)", nameof(_vm.ReviewGridLook)),
+            MakeCheckboxSetting("ElevenLabs general accent (hidden accent tag on every line)", nameof(_vm.ElevenLabsGeneralAccent)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechDescriptiveFilenames, nameof(_vm.TextToSpeechDescriptiveFilenames)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.TextToSpeechThreeColumnReview, nameof(_vm.TextToSpeechThreeColumnReview)),
+            new SettingsItem(Se.Language.Options.Settings.AdjustSpeedParallelism, () => UiUtil.MakeNumericUpDownInt(
+                1, 32, 4, 120, _vm, nameof(_vm.AdjustSpeedParallelism))),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowTestingTools, nameof(_vm.ShowTestingTools)),
+            MakeCheckboxSetting(Se.Language.Video.TextToSpeech.ElevenLabsParallelGeneration, nameof(_vm.TextToSpeechElevenLabsParallel)),
+
+            // Detected plan, shown under the parallel checkbox once the API key has been read.
+            new SettingsItem(string.Empty, () => new TextBlock
+            {
+                DataContext = _vm,
+                [!TextBlock.TextProperty] = new Binding(nameof(_vm.TextToSpeechElevenLabsPlan)),
+                Opacity = 0.75,
+                Margin = new Thickness(4, 0, 0, 0),
+            }),
+
+            MakeSeparator(),
+            MakeGroupHeader("Speech to text"),
+            MakeCheckboxSetting(Se.Language.Options.Settings.SmartBreak, nameof(_vm.SmartBreak)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.AiFix, nameof(_vm.AiFix)),
+            new SettingsItem(Se.Language.Options.Settings.AiFixUrl, () => UiUtil.MakeTextBox(380, _vm, nameof(_vm.AiFixUrl))),
+            new SettingsItem(Se.Language.Options.Settings.AiFixModel, () => UiUtil.MakeTextBox(380, _vm, nameof(_vm.AiFixModel))),
+            new SettingsItem(Se.Language.Options.Settings.AiFixApiKey, () => UiUtil.MakeApiKeyTextBox(380, _vm, nameof(_vm.AiFixApiKey))),
+            new SettingsItem(Se.Language.Options.Settings.AiFixPrompt, () =>
+            {
+                var promptBox = UiUtil.MakeTextBox(380, _vm, nameof(_vm.AiFixPrompt));
+                promptBox.AcceptsReturn = true;
+                promptBox.TextWrapping = TextWrapping.Wrap;
+                promptBox.Height = 90;
+                ScrollViewer.SetVerticalScrollBarVisibility(promptBox, ScrollBarVisibility.Auto);
+                promptBox.VerticalAlignment = VerticalAlignment.Top;
+                return promptBox;
+            }),
+        ]));
+
+
         return sections;
     }
 
@@ -1340,6 +1440,79 @@ public class SettingsPage : UserControl
         var button = UiUtil.MakeButton(Se.Language.General.Download, command);
         AutomationProperties.SetName(button, settingName);
         button.Bind(AutomationProperties.HelpTextProperty, new Binding(statusProperty) { Source = _vm });
+        return button;
+    }
+
+    /// <summary>
+    /// A compact drop-down for one right-click menu: a thin button reading "All items" or "N hidden",
+    /// opening a flyout that lists every item with a tick. Select all / Select none sit at the top.
+    /// Disabled while the minimal-menus preset is on, because that preset owns the contents.
+    /// </summary>
+    private Control MakeContextMenuComboBox(
+        Nikse.SubtitleEdit.Features.Options.Settings.ContextMenuCustomization.ContextMenuSection section)
+    {
+        var summaryText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+        summaryText.Bind(TextBlock.TextProperty, new Binding(nameof(Nikse.SubtitleEdit.Features.Options.Settings.ContextMenuCustomization.ContextMenuSection.Summary)) { Source = section });
+
+        var button = new Button
+        {
+            MinWidth = 150,
+            HorizontalContentAlignment = HorizontalAlignment.Left,
+            VerticalAlignment = VerticalAlignment.Center,
+            Content = new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Children =
+                {
+                    summaryText,
+                    new TextBlock { Text = "\u25be", VerticalAlignment = VerticalAlignment.Center },
+                },
+            },
+        };
+        button.Bind(IsEnabledProperty, new Binding(nameof(SettingsViewModel.MinimalContextMenus))
+        {
+            Source = _vm,
+            Converter = Nikse.SubtitleEdit.Logic.ValueConverters.InverseBooleanConverter.Instance,
+        });
+        AutomationProperties.SetName(button, section.Key);
+
+        var listPanel = new StackPanel { Orientation = Orientation.Vertical, Spacing = 2, MinWidth = 240 };
+
+        void Rebuild()
+        {
+            listPanel.Children.Clear();
+
+            var selectAll = UiUtil.MakeButton(Se.Language.General.SelectAll, section.SelectAllCommand).WithMinWidth(110);
+            var selectNone = UiUtil.MakeButton(Se.Language.General.SelectNone, section.DeselectAllCommand).WithMinWidth(110);
+            listPanel.Children.Add(new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Spacing = 8,
+                Margin = new Thickness(4, 4, 4, 4),
+                Children = { selectAll, selectNone },
+            });
+
+            foreach (var item in section.Items)
+            {
+                var checkBox = new CheckBox { Content = item.Name, Margin = new Thickness(4, 0, 4, 0), IsChecked = item.IsVisible };
+                checkBox.Bind(ToggleButton.IsCheckedProperty, new Binding(nameof(item.IsVisible)) { Mode = BindingMode.TwoWay, Source = item });
+                AutomationProperties.SetName(checkBox, item.Name);
+                listPanel.Children.Add(checkBox);
+            }
+        }
+
+        section.Items.CollectionChanged += (_, _) => Rebuild();
+        Rebuild();
+
+        var flyout = new Flyout
+        {
+            Placement = PlacementMode.BottomEdgeAlignedLeft,
+            Content = new ScrollViewer { MaxHeight = 360, Content = listPanel },
+        };
+        button.Flyout = flyout;
+        button.Click += (_, _) => flyout.ShowAt(button);
+
         return button;
     }
 
@@ -1585,6 +1758,20 @@ public class SettingsPage : UserControl
     private static SettingsItem MakeSeparator()
     {
         return new SettingsItem(string.Empty, () => new Label()) { IsSeparator = true };
+    }
+
+    // A bold sub-heading inside a section, to group related options. The negative left margin pulls
+    // it back over the 200 px label column so it lines up with the section's left edge.
+    private static SettingsItem MakeGroupHeader(string text)
+    {
+        return new SettingsItem(string.Empty, () => new TextBlock
+        {
+            Text = text,
+            FontWeight = FontWeight.Bold,
+            FontSize = UiUtil.ScaledFontSize(14),
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(-200, 4, 0, 0),
+        });
     }
 
     private SettingsItem MakeNumericSetting(string label, string bindingProperty)

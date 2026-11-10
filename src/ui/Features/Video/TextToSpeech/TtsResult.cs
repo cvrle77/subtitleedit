@@ -10,6 +10,11 @@ public record TtsResult
     // API call), so the UI can tell the user *why* segments failed instead of a bare count (#12093).
     public string ErrorMessage { get; init; } = string.Empty;
 
+    // The engine's own id for the audio it just produced (the response "request-id" header for
+    // ElevenLabs). It is chained into the next request's previous_request_ids so separate
+    // generations keep one continuous prosody. Empty for engines that do not return one.
+    public string RequestId { get; init; } = string.Empty;
+
     public TtsResult()
     {
         FileName = string.Empty;

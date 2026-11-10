@@ -11,6 +11,16 @@ public class SeWaveform
     public bool ShowOriginalSubtitle { get; set; }
     public bool CenterVideoPosition { get; set; }
 
+    // The added smooth variant of the "Center" toggle: same "keep the play-head centered" mode,
+    // but the view eases to the centre (CenterSmoothSeconds) instead of snapping. Separate flag
+    // so the original Center toggle keeps its instant behaviour. The two are mutually exclusive.
+    public bool CenterVideoPositionSmooth { get; set; }
+
+    // When on, Alt+wheel (horizontal zoom) keeps the selected subtitle / dragged range in the
+    // middle of the view instead of keeping the left edge. Off by default so the original zoom
+    // behaviour is unchanged.
+    public bool ZoomCentersOnSelection { get; set; }
+
     // SE 4 parity for the "Center" toggle: keep the play-head centered (and keep
     // "select current subtitle" working) also while paused, so mouse-wheel
     // scrubbing walks the waveform as one continuous strip.
@@ -25,6 +35,19 @@ public class SeWaveform
     public bool RememberZoom { get; set; }
     public double ZoomFactor { get; set; }
     public double VerticalZoomFactor { get; set; }
+
+    // Seconds the view takes to ease the play-head back to the center when "center on video
+    // position" is on and the play-head is off-center (starting playback, a seek, scrubbing) -
+    // instead of snapping the whole waveform over. Configurable in Settings.
+    public double CenterSmoothSeconds { get; set; }
+
+    // The fork's red marker above the main waveform: the view scrolls the play-head to the marker
+    // instead of always to the centre. Off = upstream centring (see Fork.WaveformAnchorMarker).
+    public bool AnchorMarker { get; set; }
+
+    // Animate that scroll (ease to the anchor) instead of jumping there. Off = the play-head lands
+    // under the marker at once. See Fork.WaveformAnchorGlide.
+    public bool AnchorGlide { get; set; }
     public bool DrawGridLines { get; set; }
 
     /// <summary>
@@ -149,6 +172,10 @@ public class SeWaveform
         UseSkiaRenderer = false;
         FocusTextBoxAfterInsertNew = true;
         SpectrogramCombinedWaveformHeight = 50;
+        CenterSmoothSeconds = 2.0;
+        AnchorMarker = true;
+        AnchorGlide = true;
+        CenterVideoPositionSmooth = false;
         WaveformTextFontSize = 10;
         WaveformTextFontBold = false;
         WaveformTextColor = Colors.White.FromColorToHex();
@@ -239,6 +266,7 @@ public class SeWaveform
             new SeWaveformToolbarItem { Type = SeWaveformToolbarItemType.PlaybackSpeed, IsVisible = true, SortOrder = 130 },
             new SeWaveformToolbarItem { Type = SeWaveformToolbarItemType.AutoSelectOnPlay, IsVisible = true, SortOrder = 140 },
             new SeWaveformToolbarItem { Type = SeWaveformToolbarItemType.Center, IsVisible = true, SortOrder = 150 },
+            new SeWaveformToolbarItem { Type = SeWaveformToolbarItemType.CenterSmooth, IsVisible = true, SortOrder = 151 },
             new SeWaveformToolbarItem { Type = SeWaveformToolbarItemType.TimelineTrackGrouping, IsVisible = true, SortOrder = 155 },
             new SeWaveformToolbarItem { Type = SeWaveformToolbarItemType.RuleProfile, IsVisible = false, SortOrder = 157 },
             new SeWaveformToolbarItem { Type = SeWaveformToolbarItemType.More, IsVisible = true, SortOrder = 160 },

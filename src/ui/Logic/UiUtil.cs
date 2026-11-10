@@ -41,6 +41,31 @@ public static class UiUtil
 {
     public const int WindowMarginWidth = 12;
     public const int CornerRadius = 4;
+
+    // Section border around a control group. Removed upstream in v5.4 when the TTS windows moved to
+    // EditorChrome sections; the fork's TTS/review windows still group their fields with it.
+    public static Border MakeBorderForControl(Control control)
+    {
+        return new Border
+        {
+            Child = control,
+            BorderThickness = new Thickness(1),
+            BorderBrush = EditorChrome.LineBrush,
+            Padding = new Thickness(5),
+            CornerRadius = new CornerRadius(CornerRadius),
+        };
+    }
+
+    public static Border MakeBorderForControlNoPadding(Control control)
+    {
+        return new Border
+        {
+            Child = control,
+            BorderThickness = new Thickness(1),
+            BorderBrush = EditorChrome.LineBrush,
+            CornerRadius = new CornerRadius(CornerRadius),
+        };
+    }
     public const int SplitterWidthOrHeight = 4;
 
     /// <summary>

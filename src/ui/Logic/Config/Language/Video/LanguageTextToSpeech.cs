@@ -27,6 +27,7 @@ public class LanguageTextToSpeech
     public string VideoEncodingSettings { get; set; }
     public string ElevenLabsSettings { get; set; }
     public string ElevenLabsSettingsResetHint { get; set; }
+    public string ElevenLabsParallelGeneration { get; set; }
     public string Provider { get; set; }
     public string OpenAiCompatibleSettings { get; set; }
     public string CustomServerUrl { get; set; }
@@ -38,11 +39,14 @@ public class LanguageTextToSpeech
     public string Instructions { get; set; }
     public string InstructionsHint { get; set; }
     public string OpenAiSpeedHint { get; set; }
+    public string Output { get; set; }
     public string OutputFormatHint { get; set; }
     public string RegenerateAudio { get; set; }
     public string AutoContinuePlaying { get; set; }
     public string FitDurationToGeneratedAudio { get; set; }
     public string ResetTiming { get; set; }
+    public string WaveformOriginalAudio { get; set; }
+    public string WaveformGeneratedAudio { get; set; }
     public string AddingAudioToVideoFileDotDotDot { get; set; }
     public string PreparingMergeDotDotDot { get; set; }
     public string ImportVoiceDotDotDot { get; set; }
@@ -348,6 +352,7 @@ public class LanguageTextToSpeech
         VideoEncodingSettings = "TTS - Video encoding settings";
         ElevenLabsSettings = "TTS - ElevenLabs settings";
         ElevenLabsSettingsResetHint = "Reset ElevenLabs settings to default values";
+        ElevenLabsParallelGeneration = "Generate in parallel (faster; uses your plan's concurrency limit)";
         Provider = "Provider";
         OpenAiCompatibleSettings = "TTS - OpenAI-compatible settings";
         CustomServerUrl = "Custom server URL";
@@ -359,11 +364,14 @@ public class LanguageTextToSpeech
         Instructions = "Instructions";
         InstructionsHint = "Optional speaking style, e.g. \"Speak in a calm, warm voice\". Sent only to models that support it (not tts-1/tts-1-hd)";
         OpenAiSpeedHint = "Speech speed from 0.25 to 4.0 (1.0 is normal). Not every model supports it";
+        Output = "Output";
         OutputFormatHint = "Audio format requested from the server. \"Auto\" asks for MP3 and switches to PCM for models that only return PCM (e.g. Gemini TTS)";
         RegenerateAudio = "Regenerate audio";
         AutoContinuePlaying = "Auto-continue playing";
         FitDurationToGeneratedAudio = "Fit duration to generated audio";
         ResetTiming = "Reset timing";
+        WaveformOriginalAudio = "Original audio";
+        WaveformGeneratedAudio = "Generated speech";
         AddingAudioToVideoFileDotDotDot = "Adding audio to video file...";
         PreparingMergeDotDotDot = "Preparing merge...";
         ImportVoiceDotDotDot = "Import voice...";

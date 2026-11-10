@@ -108,7 +108,10 @@ public class SkiaAudioVisualizer : AudioVisualizer
         f.Width = (float)width;
         f.Height = (float)height;
         f.Peaks = peaks;
-        f.SampleRate = peaks?.SampleRate ?? 0;
+        // Fall back to the owner-supplied rate so a control whose peaks are not loaded yet still
+        // has a time axis (review window's generated-speech track) - otherwise its zoom and the
+        // shared playhead would collapse onto x=0.
+        f.SampleRate = peaks?.SampleRate is > 0 ? peaks.SampleRate : FallbackSampleRate;
         f.HighestPeak = Math.Max(1, peaks?.HighestPeak ?? 1);
         f.StartSeconds = StartPositionSeconds;
         f.ZoomFactor = ZoomFactor;
@@ -150,6 +153,13 @@ public class SkiaAudioVisualizer : AudioVisualizer
             ? ClickToGenerateText
             : null;
 
+        // The cursor is set before the early-out below: with no peaks of its own the control still
+        // has to draw the shared playhead, and that is the whole point of FallbackSampleRate.
+        f.CursorSeconds = CurrentVideoPositionSeconds;
+        f.CursorOnShotChange = f.CursorSeconds >= 0 && GetShotChangeIndex(f.CursorSeconds) >= 0;
+        f.VideoEndSeconds = VideoEndSeconds;
+        f.VideoEndOverrun = VideoEndOverrun;
+
         if (f.SampleRate == 0)
         {
             return;
@@ -162,9 +172,6 @@ public class SkiaAudioVisualizer : AudioVisualizer
         AddShotChanges(f);
         AddChapters(f);
         AddSpectrogram(f);
-
-        f.CursorSeconds = CurrentVideoPositionSeconds;
-        f.CursorOnShotChange = f.CursorSeconds >= 0 && GetShotChangeIndex(f.CursorSeconds) >= 0;
 
         var newSelection = NewSelectionParagraph;
         if (newSelection != null)
@@ -536,6 +543,8 @@ internal sealed class SkiaWaveformFrame
 
     public double CursorSeconds = -1;
     public bool CursorOnShotChange;
+    public double VideoEndSeconds;
+    public bool VideoEndOverrun;
 
     public bool HasNewSelection;
     public double NewSelectionStartSeconds;
