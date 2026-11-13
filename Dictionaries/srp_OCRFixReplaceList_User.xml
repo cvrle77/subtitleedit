@@ -6198,6 +6198,20 @@
     <Word to="slavlju" from="Slavlju" />
     <Word to="orah" from="oras" />
     <Word to="Orah" from="Oras" />
+    <Word to="leku" from="lijeku" />
+    <Word to="Leku" from="Lijeku" />
+    <Word to="lekom" from="lijekom" />
+    <Word to="Lekom" from="Lijekom" />
+    <Word to="stepen" from="stupanj" />
+    <Word to="Stepen" from="Stupanj" />
+    <Word to="stepena" from="stupnja" />
+    <Word to="Stepena" from="Stupnja" />
+    <Word to="stepenom" from="stupnjem" />
+    <Word to="Stepenom" from="Stupnjem" />
+    <Word to="stepeni" from="stupnjevi" />
+    <Word to="Stepeni" from="Stupnjevi" />
+    <Word to="stepenima" from="stupnjevima" />
+    <Word to="Stepenima" from="Stupnjevima" />
 </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
