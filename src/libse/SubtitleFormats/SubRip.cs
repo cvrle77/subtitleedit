@@ -1,7 +1,6 @@
 ﻿using Nikse.SubtitleEdit.Core.Common;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -51,6 +50,8 @@ namespace Nikse.SubtitleEdit.Core.SubtitleFormats
 
         public override string Name => NameOfFormat;
 
+        public override double MaxTimeCodeTotalMilliseconds => TimeCode.MaxSupportedTotalMilliseconds; // 3+ digit hours (#16937)
+
         public override List<string> AlternateExtensions => new List<string> { ".wsrt" };
 
         public override bool IsMine(List<string> lines, string fileName)
@@ -96,7 +97,7 @@ namespace Nikse.SubtitleEdit.Core.SubtitleFormats
         private static void AppendTimeCode(StringBuilder sb, TimeCode timeCode)
         {
             var totalMilliseconds = timeCode.TotalMilliseconds;
-            if (totalMilliseconds < 0 || totalMilliseconds > TimeCode.MaxTimeTotalMilliseconds)
+            if (totalMilliseconds < 0 || totalMilliseconds > TimeCode.MaxSupportedTotalMilliseconds)
             {
                 sb.Append(timeCode.ToString());
                 return;

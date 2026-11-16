@@ -68,14 +68,16 @@ public partial class CompareRow : ObservableObject
 
     public bool CanTakeReference => IsLeftEditable && (Kind == CompareRowKind.Changed || Kind == CompareRowKind.OnlyRight);
     public bool CanDeleteCurrent => IsLeftEditable && Kind == CompareRowKind.OnlyLeft;
-    public bool HasGutterAction => CanTakeReference || CanDeleteCurrent;
     public bool CanEdit => IsLeftEditable && HasLeft && Left.Line != null;
     public bool CanTakeFromPair => CanEdit && HasRight && Right.Line != null;
 
     // The right-click menu offers only the takes that would change something (#15621).
     public bool CanTakeText => CanTakeFromPair && Left.Text != Right.Text;
+    // "Take text, keep formatting" only when it differs from both the current line and a plain "Take text" (#16823).
+    public bool CanTakeTextKeepFormatting => CanTakeFromPair && TextKeepingFormatting is { } text && text != Left.Text && text != Right.Text;
+    public string? TextKeepingFormatting => CanTakeFromPair ? CompareFormattingKeeper.TakeText(Left.Text, Right.Text) : null;
     public bool CanTakeTiming => CanTakeFromPair && (Left.StartTime != Right.StartTime || Left.EndTime != Right.EndTime);
-    public bool HasTakeActions => CanTakeReference || CanTakeText || CanTakeTiming;
+    public bool HasTakeActions => CanTakeReference || CanTakeText || CanTakeTextKeepFormatting || CanTakeTiming;
 
     public string TakeReferenceHint => Kind == CompareRowKind.OnlyRight
         ? Se.Language.File.CompareInsertFromReference

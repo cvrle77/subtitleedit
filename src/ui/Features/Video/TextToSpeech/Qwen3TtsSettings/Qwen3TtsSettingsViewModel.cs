@@ -162,10 +162,12 @@ public partial class Qwen3TtsSettingsViewModel : ObservableObject
         var variant = Qwen3TtsCppDownloadService.WindowsVariantVulkan;
         if (Configuration.IsRunningOnWindows)
         {
+            var gpuHint = await GpuBuildHint.GetAsync(GpuBuild.Cpu, GpuBuild.Vulkan, GpuBuild.Cuda);
             var variantAnswer = await MessageBox.Show(
                 Window,
                 "Re-download Qwen3 TTS",
                 $"{Environment.NewLine}Select the build to download:",
+                gpuHint,
                 MessageBoxButtons.Cancel,
                 MessageBoxIcon.Question,
                 "CPU",
@@ -248,17 +250,5 @@ public partial class Qwen3TtsSettingsViewModel : ObservableObject
         Window?.Close();
     }
 
-    internal void OnKeyDown(KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape)
-        {
-            e.Handled = true;
-            Window?.Close();
-        }
-        else if (UiUtil.IsHelp(e))
-        {
-            e.Handled = true;
-            UiUtil.ShowHelp("features/text-to-speech", "engine-settings");
-        }
-    }
+    internal void OnKeyDown(KeyEventArgs e) => UiUtil.CloseOnEscapeOrShowHelp(e, Window, "features/text-to-speech", "engine-settings");
 }

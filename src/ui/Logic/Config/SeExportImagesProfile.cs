@@ -18,6 +18,12 @@ public class SeExportImagesProfile
     public string FontName { get; set; }
     public float FontSize { get; set; }
     public bool IsBold { get; set; }
+
+    /// <summary>
+    /// Right-to-left text (Arabic, Persian, Hebrew): numbers and Latin runs are kept in reading
+    /// order. Saved so batch convert, which renders from this profile, honors it (#16831).
+    /// </summary>
+    public bool IsRightToLeft { get; set; }
     public string OutlineColor { get; set; }
     public double OutlineWidth { get; set; }
     public string ShadowColor { get; set; }
@@ -26,6 +32,12 @@ public class SeExportImagesProfile
     public double BackgroundCornerRadius { get; set; }
     public int ScreenWidth { get; set; }
     public int ScreenHeight { get; set; }
+
+    /// <summary>
+    /// Sample (pixel) aspect ratio like "64:45" for PAL 16:9 (see <see cref="ExportPixelAspect"/>);
+    /// empty for square pixels.
+    /// </summary>
+    public string PixelAspect { get; set; } = string.Empty;
     public int BottomTopMargin { get; set; }
     public int LeftRightMargin { get; set; }
     public string OverridePosition { get; set; }

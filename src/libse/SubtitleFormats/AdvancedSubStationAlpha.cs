@@ -77,6 +77,8 @@ namespace Nikse.SubtitleEdit.Core.SubtitleFormats
         public const string NameOfFormat = "Advanced Sub Station Alpha";
         public override string Name => NameOfFormat;
 
+        public override double MaxTimeCodeTotalMilliseconds => TimeCode.MaxSupportedTotalMilliseconds; // 3+ digit hours (#16937)
+
         public const int DefaultWidth = 384;
         public const int DefaultHeight = 288;
 
@@ -1032,44 +1034,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
             if (!added)
             {
                 sb.AppendLine(tagAndValue);
-            }
-
-            return sb.ToString();
-        }
-
-        /// <summary>
-        /// Remove tag from header.
-        /// </summary>
-        /// <param name="tagName">Tag to remove</param>
-        /// <param name="section">Section name - include square brackets, e.g. "[Script Info]"</param>
-        /// <param name="header">Header to update</param>
-        /// <returns>Header with updated section</returns>
-        public static string RemoveTagFromHeader(string tagName, string section, string header)
-        {
-            var sectionOn = false;
-            var sb = new StringBuilder();
-            foreach (var line in header.SplitToLines())
-            {
-                var s = line.Trim();
-                if (s.StartsWith('['))
-                {
-                    if (s.Equals(section, StringComparison.OrdinalIgnoreCase))
-                    {
-                        sectionOn = true;
-                    }
-                    else if (sectionOn)
-                    {
-                        sectionOn = false;
-                    }
-                }
-                else if (sectionOn &&
-                         s.StartsWith(tagName, StringComparison.OrdinalIgnoreCase) &&
-                         s.RemoveChar(' ').StartsWith(tagName + ":", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
-
-                sb.AppendLine(line);
             }
 
             return sb.ToString();
@@ -2476,348 +2440,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
             return $"{alphaName}&H{alpha:X2}&\\{tag}&H{c.Blue:X2}{c.Green:X2}{c.Red:X2}";
         }
 
-        public static string GetSsaColorStringNoTransparency(SKColor c) => $"&H{c.Blue:X2}{c.Green:X2}{c.Red:X2}";
-
-        public static string CheckForErrors(string header)
-        {
-            if (string.IsNullOrEmpty(header))
-            {
-                return string.Empty;
-            }
-
-            var sb = new StringBuilder();
-
-            int styleCount = -1;
-
-            int nameIndex = -1;
-            int fontNameIndex = -1;
-            int fontsizeIndex = -1;
-            int primaryColourIndex = -1;
-            int secondaryColourIndex = -1;
-            int outlineColourIndex = -1;
-            int backColourIndex = -1;
-            int boldIndex = -1;
-            int italicIndex = -1;
-            int underlineIndex = -1;
-            int strikeOutIndex = -1;
-            int outlineIndex = -1;
-            int shadowIndex = -1;
-            int alignmentIndex = -1;
-            int marginLIndex = -1;
-            int marginRIndex = -1;
-            int marginVIndex = -1;
-            int scaleXIndex = -1;
-            int scaleYIndex = -1;
-            int spacingIndex = -1;
-            int angleIndex = -1;
-            int borderStyleIndex = -1;
-
-            foreach (string line in header.SplitToLines())
-            {
-                string s = line.Trim().ToLowerInvariant();
-                if (s.StartsWith("format:", StringComparison.Ordinal))
-                {
-                    if (s.Length > 10)
-                    {
-                        // cut the trimmed line - leading whitespace shifted every field name
-                        var format = s.Substring(8).Split(',');
-                        styleCount = format.Length;
-                        for (int i = 0; i < format.Length; i++)
-                        {
-                            string f = format[i].Trim();
-                            if (f == "name")
-                            {
-                                nameIndex = i;
-                            }
-                            else if (f == "fontname")
-                            {
-                                fontNameIndex = i;
-                            }
-                            else if (f == "fontsize")
-                            {
-                                fontsizeIndex = i;
-                            }
-                            else if (f == "primarycolour")
-                            {
-                                primaryColourIndex = i;
-                            }
-                            else if (f == "secondarycolour")
-                            {
-                                secondaryColourIndex = i;
-                            }
-                            else if (f == "outlinecolour")
-                            {
-                                outlineColourIndex = i;
-                            }
-                            else if (f == "backcolour")
-                            {
-                                backColourIndex = i;
-                            }
-                            else if (f == "bold")
-                            {
-                                boldIndex = i;
-                            }
-                            else if (f == "italic")
-                            {
-                                italicIndex = i;
-                            }
-                            else if (f == "underline")
-                            {
-                                underlineIndex = i;
-                            }
-                            else if (f == "strikeout")
-                            {
-                                strikeOutIndex = i;
-                            }
-                            else if (f == "outline")
-                            {
-                                outlineIndex = i;
-                            }
-                            else if (f == "shadow")
-                            {
-                                shadowIndex = i;
-                            }
-                            else if (f == "alignment")
-                            {
-                                alignmentIndex = i;
-                            }
-                            else if (f == "marginl")
-                            {
-                                marginLIndex = i;
-                            }
-                            else if (f == "marginr")
-                            {
-                                marginRIndex = i;
-                            }
-                            else if (f == "marginv")
-                            {
-                                marginVIndex = i;
-                            }
-                            else if (f == "scalex")
-                            {
-                                scaleXIndex = i;
-                            }
-                            else if (f == "scaley")
-                            {
-                                scaleYIndex = i;
-                            }
-                            else if (f == "spacing")
-                            {
-                                spacingIndex = i;
-                            }
-                            else if (f == "angle")
-                            {
-                                angleIndex = i;
-                            }
-                            else if (f == "borderstyle")
-                            {
-                                borderStyleIndex = i;
-                            }
-                        }
-                    }
-                }
-                else if (s.RemoveChar(' ').StartsWith("style:", StringComparison.Ordinal))
-                {
-                    if (line.Length > 10)
-                    {
-                        string rawLine = line;
-                        var format = line.Trim().Substring(6).Split(',');
-
-                        if (format.Length != styleCount)
-                        {
-                            sb.AppendLine("Number of expected Style elements do not match number of Format elements: " + rawLine);
-                            sb.AppendLine();
-                        }
-                        else
-                        {
-                            var dummyColor = ColorUtils.FromArgb(9, 14, 16, 26);
-                            for (int i = 0; i < format.Length; i++)
-                            {
-                                string f = format[i].Trim().ToLowerInvariant();
-                                if (i == nameIndex)
-                                {
-                                    if (f.Length == 0)
-                                    {
-                                        sb.AppendLine("'Name' is empty: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == fontNameIndex)
-                                {
-                                    if (f.Length == 0)
-                                    {
-                                        sb.AppendLine("'Fontname' is empty: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == fontsizeIndex)
-                                {
-                                    if (!float.TryParse(f, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out _) || f.StartsWith('-'))
-                                    {
-                                        sb.AppendLine("'Fontsize' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == primaryColourIndex)
-                                {
-                                    if (GetSsaColor(f, dummyColor) == dummyColor || f == "&h")
-                                    {
-                                        sb.AppendLine("'PrimaryColour' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == secondaryColourIndex)
-                                {
-                                    if (GetSsaColor(f, dummyColor) == dummyColor)
-                                    {
-                                        sb.AppendLine("'SecondaryColour' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == outlineColourIndex)
-                                {
-                                    if (GetSsaColor(f, dummyColor) == dummyColor)
-                                    {
-                                        sb.AppendLine("'OutlineColour' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == backColourIndex)
-                                {
-                                    if (GetSsaColor(f, dummyColor) == dummyColor)
-                                    {
-                                        sb.AppendLine("'BackColour' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == boldIndex)
-                                {
-                                    if (Utilities.AllLetters.Contains(f))
-                                    {
-                                        sb.AppendLine("'Bold' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == italicIndex)
-                                {
-                                    if (Utilities.AllLetters.Contains(f))
-                                    {
-                                        sb.AppendLine("'Italic' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == underlineIndex)
-                                {
-                                    if (Utilities.AllLetters.Contains(f))
-                                    {
-                                        sb.AppendLine("'Underline' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == strikeOutIndex)
-                                {
-                                    if (Utilities.AllLetters.Contains(f))
-                                    {
-                                        sb.AppendLine("'StrikeOut' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == outlineIndex)
-                                {
-                                    if (!float.TryParse(f, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out _) || f.StartsWith('-'))
-                                    {
-                                        sb.AppendLine("'Outline' (width) incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == shadowIndex)
-                                {
-                                    if (!float.TryParse(f, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out _) || f.StartsWith('-'))
-                                    {
-                                        sb.AppendLine("'Shadow' (width) incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == alignmentIndex)
-                                {
-                                    if (!"101123456789 ".Contains(f))
-                                    {
-                                        sb.AppendLine("'Alignment' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == marginLIndex)
-                                {
-                                    if (!int.TryParse(f, out _) || f.StartsWith('-'))
-                                    {
-                                        sb.AppendLine("'MarginL' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == marginRIndex)
-                                {
-                                    if (!int.TryParse(f, out _) || f.StartsWith('-'))
-                                    {
-                                        sb.AppendLine("'MarginR' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == marginVIndex)
-                                {
-                                    if (!int.TryParse(f, out _) || f.StartsWith('-'))
-                                    {
-                                        sb.AppendLine("'MarginV' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == scaleXIndex)
-                                {
-                                    if (!float.TryParse(f, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out _) || f.StartsWith('-'))
-                                    {
-                                        sb.AppendLine("'ScaleX' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == scaleYIndex)
-                                {
-                                    if (!float.TryParse(f, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out _) || f.StartsWith('-'))
-                                    {
-                                        sb.AppendLine("'ScaleY' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == spacingIndex)
-                                {
-                                    if (!float.TryParse(f, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out _) || f.StartsWith('-'))
-                                    {
-                                        sb.AppendLine("'Spacing' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == angleIndex)
-                                {
-                                    if (!float.TryParse(f, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _))
-                                    {
-                                        sb.AppendLine("'Angle' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                                else if (i == borderStyleIndex)
-                                {
-                                    if (f.Length != 0 && !"1234".Contains(f))
-                                    {
-                                        sb.AppendLine("'BorderStyle' incorrect: " + rawLine);
-                                        sb.AppendLine();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            return sb.ToString();
-        }
-
         /// <summary>
         /// Add new style to ASS header
         /// </summary>
@@ -3264,6 +2886,126 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text"
             h = AdvancedSubStationAlpha.AddTagToHeader("PlayResY", "PlayResY: " + height.ToString(CultureInfo.InvariantCulture), "[Script Info]", h);
 
             return h;
+        }
+
+        /// <summary>
+        /// Reads LayoutResX/LayoutResY (libass 0.17+, xy-VSFilter). They replace the video storage
+        /// size in libass' aspect-ratio correction and in the VSFilter-style scaling of borders,
+        /// shadows and blur (ScaledBorderAndShadow: no), so a script that carries them renders the
+        /// same on every video of the same display aspect ratio. Positions and font sizes are still
+        /// in PlayRes units. Only a pair of positive numbers counts - libass ignores anything else.
+        /// </summary>
+        public static bool TryGetLayoutResolution(string header, out int width, out int height)
+        {
+            width = 0;
+            height = 0;
+            if (string.IsNullOrEmpty(header))
+            {
+                return false;
+            }
+
+            if (!int.TryParse(GetTagValueFromHeader("LayoutResX", "[Script Info]", header), NumberStyles.Integer, CultureInfo.InvariantCulture, out var w) ||
+                !int.TryParse(GetTagValueFromHeader("LayoutResY", "[Script Info]", header), NumberStyles.Integer, CultureInfo.InvariantCulture, out var h) ||
+                w <= 0 || h <= 0)
+            {
+                return false;
+            }
+
+            width = w;
+            height = h;
+            return true;
+        }
+
+        /// <summary>
+        /// Writes LayoutResX/LayoutResY into [Script Info]; a width or height of zero (or less) removes both.
+        /// </summary>
+        public static string SetLayoutResolution(string header, int width, int height)
+        {
+            var h = (string.IsNullOrEmpty(header) || !header.Contains("[V4+ Styles]")) ? DefaultHeader : header;
+            if (width <= 0 || height <= 0)
+            {
+                h = RemoveTagFromHeader("LayoutResX", "[Script Info]", h);
+                return RemoveTagFromHeader("LayoutResY", "[Script Info]", h);
+            }
+
+            h = AddTagToHeader("LayoutResX", "LayoutResX: " + width.ToString(CultureInfo.InvariantCulture), "[Script Info]", h);
+            return AddTagToHeader("LayoutResY", "LayoutResY: " + height.ToString(CultureInfo.InvariantCulture), "[Script Info]", h);
+        }
+
+        /// <summary>
+        /// Removes every "tagName:" line from the given section.
+        /// </summary>
+        public static string RemoveTagFromHeader(string tagName, string section, string header)
+        {
+            if (string.IsNullOrEmpty(header))
+            {
+                return header;
+            }
+
+            var sectionOn = false;
+            var sb = new StringBuilder();
+            foreach (var line in header.SplitToLines())
+            {
+                var s = line.Trim();
+                if (s.StartsWith('['))
+                {
+                    sectionOn = s.Equals(section, StringComparison.OrdinalIgnoreCase);
+                }
+                else if (sectionOn &&
+                         s.StartsWith(tagName, StringComparison.OrdinalIgnoreCase) &&
+                         s.RemoveChar(' ').StartsWith(tagName + ":", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                sb.AppendLine(line);
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// The LayoutRes a script needs after its PlayRes is resampled from source to target, so it
+        /// renders the same (Aegisub's rule, "Properly adjust LayoutRes when resampling resolution").
+        /// LayoutResY never changes (vertical blur and the perspective focal length are in its
+        /// units), and LayoutResX follows the change of aspect ratio, so the ratio between the
+        /// LayoutRes and PlayRes aspect ratios - how much text is stretched against drawings -
+        /// stays the same. A proportional resample (same aspect ratio) leaves LayoutRes untouched.
+        /// </summary>
+        public static (int Width, int Height) GetLayoutResolutionAfterResample(int layoutWidth, int layoutHeight, decimal sourceWidth, decimal sourceHeight, decimal targetWidth, decimal targetHeight)
+        {
+            if (layoutWidth <= 0 || layoutHeight <= 0 || sourceWidth <= 0 || sourceHeight <= 0 || targetWidth <= 0 || targetHeight <= 0)
+            {
+                return (layoutWidth, layoutHeight);
+            }
+
+            var sourceAspect = sourceWidth / sourceHeight;
+            var targetAspect = targetWidth / targetHeight;
+            var width = (int)Math.Round(layoutWidth * targetAspect / sourceAspect, MidpointRounding.AwayFromZero);
+            return (Math.Max(1, width), layoutHeight);
+        }
+
+        /// <summary>
+        /// The display size of a video frame: the storage size widened (or heightened) to the display
+        /// aspect ratio, never shrunk - an anamorphic 720x576 PAL DVD with DAR 16:9 gives 1024x576.
+        /// This is what LayoutRes should be set to for a new script (libass ASS File Format Guide).
+        /// A missing or invalid display aspect ratio means square pixels.
+        /// </summary>
+        public static (int Width, int Height) GetDisplayResolution(int storageWidth, int storageHeight, double displayAspectRatio)
+        {
+            if (storageWidth <= 0 || storageHeight <= 0)
+            {
+                return (storageWidth, storageHeight);
+            }
+
+            var storageAspect = (double)storageWidth / storageHeight;
+            if (displayAspectRatio <= 0 || double.IsNaN(displayAspectRatio) || double.IsInfinity(displayAspectRatio))
+            {
+                displayAspectRatio = storageAspect;
+            }
+
+            return ((int)Math.Round(storageWidth * Math.Max(1.0, displayAspectRatio / storageAspect), MidpointRounding.AwayFromZero),
+                    (int)Math.Round(storageHeight * Math.Max(1.0, storageAspect / displayAspectRatio), MidpointRounding.AwayFromZero));
         }
     }
 }

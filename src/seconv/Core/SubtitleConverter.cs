@@ -3,6 +3,7 @@ using Nikse.SubtitleEdit.Core.SubtitleFormats;
 using Nikse.SubtitleEdit.Core.VobSub;
 using Nikse.SubtitleEdit.UiLogic.Export;
 using Nikse.SubtitleEdit.UiLogic.SpellCheck;
+using Nikse.SubtitleEdit.UiLogic.Translate.LlamaCppAdvanced;
 using Spectre.Console;
 
 namespace SeConv.Core;
@@ -1090,11 +1091,14 @@ internal class SubtitleConverter
         // Scale all times by 100/percent (matches Sync > Change Speed in the UI)
         if (options.ChangeSpeedPercent.HasValue && Math.Abs(options.ChangeSpeedPercent.Value - 100.0) > 0.0001)
         {
+            // Whole milliseconds, like the frame rate change above: SubRip & co. truncate, so a
+            // drop-frame speed saved 1500 ms (-> 1498.50015 ms) as ",498". Start and end are
+            // rounded on their own, so cues that touched still touch.
             var factor = 100.0 / options.ChangeSpeedPercent.Value;
             foreach (var p in subtitle.Paragraphs)
             {
-                p.StartTime.TotalMilliseconds *= factor;
-                p.EndTime.TotalMilliseconds *= factor;
+                p.StartTime.TotalMilliseconds = Math.Round(p.StartTime.TotalMilliseconds * factor, MidpointRounding.AwayFromZero);
+                p.EndTime.TotalMilliseconds = Math.Round(p.EndTime.TotalMilliseconds * factor, MidpointRounding.AwayFromZero);
             }
         }
 
@@ -1162,7 +1166,7 @@ internal class SubtitleConverter
         var normalizedFormat = LibSEIntegration.NormalizeFormatName(options.Format);
 
         // ASSA-only post-processing: resolution + style-file overlay
-        LibSEIntegration.ApplyAssaPostProcess(subtitle, normalizedFormat, options.Resolution, options.AssaStyleFile);
+        LibSEIntegration.ApplyAssaPostProcess(subtitle, normalizedFormat, options.Resolution, options.AssaStyleFile, options.LayoutResolution);
 
         if (options.BurnInEffects.Count > 0)
         {
@@ -1419,6 +1423,9 @@ internal record class ConversionOptions
     public int? ApplyMinGapMs { get; init; }
     public (int Width, int Height)? Resolution { get; init; }
 
+    /// <summary>ASSA LayoutResX/LayoutResY to write (the video's display size). Null leaves them as they are.</summary>
+    public (int Width, int Height)? LayoutResolution { get; init; }
+
     /// <summary>
     /// Styling for text → image output (font, outline, shadow, background box, ...).
     /// Resolved from defaults + the settings JSON's <c>exportImages</c> section + CLI flags.
@@ -1539,7 +1546,7 @@ internal record class ConversionOptions
     /// <summary>Model: ollama/lmstudio/openai-compatible model name, or llamacpp .gguf file name/path.</summary>
     public string? TranslateModel { get; init; }
 
-    /// <summary>API key for the engines in <see cref="AutoTranslateRunner.ApiKeyEngines"/> (openai-compatible, deepl).</summary>
+    /// <summary>API key for the engines in <see cref="AutoTranslateRunner.ApiKeyEngines"/>.</summary>
     public string? TranslateApiKey { get; init; }
 
     /// <summary>
@@ -1548,6 +1555,34 @@ internal record class ConversionOptions
     /// <see cref="AutoTranslateRunner.ReadPromptOption"/>.
     /// </summary>
     public string? TranslatePrompt { get; init; }
+
+    /// <summary>Advanced engines (<see cref="AutoTranslateRunner.AdvancedEngines"/>): subtitle lines per request, 1-50. Null = 10.</summary>
+    public int? TranslateBatchSize { get; init; }
+
+    /// <summary>Advanced engines: already-translated lines sent as context before each batch, 0-50. Null = 12.</summary>
+    public int? TranslateHistory { get; init; }
+
+    /// <summary>Advanced engines: what the content is about; inline text or the path to a text file (see <see cref="AutoTranslateRunner.ReadPromptOption"/>).</summary>
+    public string? TranslateSynopsis { get; init; }
+
+    /// <summary>Advanced engines: glossary, one "source term = translation" per line; inline text (<c>\n</c> for a line break) or the path to a text file.</summary>
+    public string? TranslateGlossary { get; init; }
+
+    /// <summary>Advanced engines: default | formal | informal (see <see cref="AutoTranslateRunner.FormalityValues"/>).</summary>
+    public string? TranslateFormality { get; init; }
+
+    /// <summary>Advanced engines: ask the model to keep each line's number of line breaks (the GUI's "Keep line breaks" switch). Null = the settings file's value, else on.</summary>
+    public bool? TranslateKeepLineBreaks { get; init; }
+
+    /// <summary>Advanced engines: extra request body fields as one JSON object (inline, or the path to a .json file), merged into every request last so they win. Null = the settings file's value.</summary>
+    public string? TranslateRequestJson { get; init; }
+
+    /// <summary>
+    /// Advanced engines: the <c>tools.llamaCppAdvanced</c> section of a <c>--settings</c> file
+    /// (what the GUI's "Advanced..." dialog edits), the base the seven options above and the
+    /// prompt are applied onto. Null = the dialog's defaults.
+    /// </summary>
+    public SeLlamaCppAdvanced? TranslateAdvancedSettings { get; init; }
 
     public bool TeletextOnly { get; init; }
     public bool SkipTeletext { get; init; }

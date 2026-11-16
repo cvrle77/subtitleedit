@@ -47,8 +47,6 @@ namespace Nikse.SubtitleEdit.Core.ContainerFormats.TransportStream
 
         public AdaptationField AdaptationField { get; }
 
-        public bool IsNullPacket => PacketId == NullPacketId;
-
         public bool IsProgramAssociationTable => PacketId == ProgramAssociationTablePacketId;
 
         public byte[] Payload { get; }
@@ -66,23 +64,6 @@ namespace Nikse.SubtitleEdit.Core.ContainerFormats.TransportStream
                        Payload[1] == 0 &&
                        Payload[2] == 1 &&
                        Payload[3] == 0xbd; // 0xbd == 189 - MPEG-2 Private stream 1 (non MPEG audio, sub pictures)
-            }
-        }
-
-        public bool IsVideoStream
-        {
-            get
-            {
-                if (Payload == null || Payload.Length < 4)
-                {
-                    return false;
-                }
-
-                return Payload[0] == 0 &&
-                       Payload[1] == 0 &&
-                       Payload[2] == 1 &&
-                       Payload[3] >= 0xE0 &&
-                       Payload[3] < 0xF0;
             }
         }
 

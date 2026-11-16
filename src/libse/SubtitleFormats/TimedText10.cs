@@ -6,7 +6,6 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
-using static System.Net.Mime.MediaTypeNames;
 
 namespace Nikse.SubtitleEdit.Core.SubtitleFormats
 {
@@ -22,6 +21,8 @@ namespace Nikse.SubtitleEdit.Core.SubtitleFormats
         public const string NameOfFormat = "Timed Text 1.0";
 
         public override string Name => NameOfFormat;
+
+        public override double MaxTimeCodeTotalMilliseconds => TimeCode.MaxSupportedTotalMilliseconds; // 3+ digit hours (#16937)
 
         // Carries the region of every paragraph, and the regions themselves in the header.
         public override bool HasPositionSupport => true;
@@ -1564,7 +1565,7 @@ namespace Nikse.SubtitleEdit.Core.SubtitleFormats
             }
 
             var hours = int.Parse(parts[0]);
-            if (hours > 99)
+            if (hours > 9999) // TTML allows 2+ hour digits; beyond SE's 9999 hours is junk
             {
                 hours = 0;
             }

@@ -17,8 +17,20 @@ public class CrispAsrParakeet : CrispAsrEngineBase
     public override bool IncludeLanguage => true;
     public override bool HasNativeTimestamps => true;
 
+    /// <summary>
+    /// The first CrispASR whose parakeet runtime has the Haas-ja KDA predictor. Older binaries load
+    /// the model with null LSTM tensors and crash with an access violation on the first slice (#16900).
+    /// </summary>
+    public static readonly Version HaasMinimumCrispAsrVersion = new(0, 8, 50);
+
+    public override Version? GetMinimumCrispAsrVersion(WhisperModel model) =>
+        IsHaasModel(model.Name) ? HaasMinimumCrispAsrVersion : null;
+
+    internal static bool IsHaasModel(string? modelName) =>
+        modelName != null && modelName.StartsWith("haas-", StringComparison.OrdinalIgnoreCase);
+
     // The 25 European languages of parakeet-tdt-0.6b-v3 (also Parakeet Ultra), plus
-    // Japanese for the ja TDT, ja CTC and ReazonSpeech models (#15991).
+    // Japanese for the ja TDT, ja CTC, ReazonSpeech and Haas-ja models (#15991).
     public override List<WhisperLanguage> Languages =>
        new()
        {
@@ -212,6 +224,37 @@ public class CrispAsrParakeet : CrispAsrEngineBase
                 Urls =
                 [
                     "https://huggingface.co/cstr/reazonspeech-nemo-v2-GGUF/resolve/main/reazonspeech-nemo-v2-f16.gguf",
+                ],
+            },
+
+            // Haas-ja v1.0 (third-intelligence, Apache-2.0) - Japanese-only 600M FastConformer
+            // encoder + Kimi Delta Attention predictor + TDT joint. Runs on the parakeet backend
+            // from CrispASR v0.8.50; q8_0 is upstream's recommended default.
+            new WhisperModel
+            {
+                Name = "haas-ja-v1.0-q4_k.gguf",
+                Size = "386 MB",
+                Urls =
+                [
+                    "https://huggingface.co/cstr/Haas-ja-v1.0-GGUF/resolve/main/haas-ja-v1.0-q4_k.gguf",
+                ],
+            },
+            new WhisperModel
+            {
+                Name = "haas-ja-v1.0-q8_0.gguf",
+                Size = "656 MB",
+                Urls =
+                [
+                    "https://huggingface.co/cstr/Haas-ja-v1.0-GGUF/resolve/main/haas-ja-v1.0-q8_0.gguf",
+                ],
+            },
+            new WhisperModel
+            {
+                Name = "haas-ja-v1.0-f16.gguf",
+                Size = "1.23 GB",
+                Urls =
+                [
+                    "https://huggingface.co/cstr/Haas-ja-v1.0-GGUF/resolve/main/haas-ja-v1.0-f16.gguf",
                 ],
             },
 

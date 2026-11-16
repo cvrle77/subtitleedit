@@ -3,6 +3,106 @@ Subtitle Edit Changelog
 
 -----------------------------------------------------------------------------------------------------
 
+v5.5.0-beta7 (16th of November 2026)
+
+* Text to speech: KugelAudio voice cloning from a reference clip
+* ASSA: support LayoutResX/LayoutResY headers - thx k6G52m4Dz75W
+* ASSA properties: support setting the YCbCr Matrix header - thx Khaoklong51/k6G52m4Dz75W
+* Allow time codes past 99:59:59,999 (per-format limit) - thx claudiu-mn
+* Add "Set start and offset the whole subtitle" shortcut - thx club706
+* Toolbar auto-translate/speech to text: use the selected lines when more than one line is selected - thx hisui3393
+* Improve time codes: refine starts from the audio level and snap to shot changes
+* Auto-translate: names and repeated interjections no longer count as untranslated echoes - thx Giorgio800
+* Auto-translate: extra request body JSON for the advanced engines - thx Makar8000
+* Auto-translate: refresh model lists
+* Batch convert: show the translate settings button for every auto-translate engine - thx svarga91
+* seconv: --translate-keep-line-breaks for the advanced translate engines - thx Makar8000
+* seconv: --verbose prints the prompt the translate engine sends - thx Makar8000
+* seconv: --translate-api-key for llama.cpp, Ollama and LM Studio (incl. advanced) - thx Makar8000
+* Speech to text: show the detected GPU and recommended build in CPU/Vulkan/CUDA prompts - thx Uer9-create
+* Settings search: also find settings grouped inside an item, e.g. Alignment - thx routineCode/caioocesar
+* Burn-in: logo picker opens in the logo's folder - thx bichitoxxx/caioocesar
+* OCR fix: read replace lists saved as ANSI - thx fraternl
+* Word lists: edit spell-checked OCR regex rules in Regex rules - thx fraternl
+* nOCR: fix pixel color reading used for match points and italic space fixing
+* Update audio.cpp to v0.9.5
+* Update Japanese translation - thx hisui3393
+* Update Korean translation - thx 12si27
+
+-----------------------------------------------------------------------------------------------------
+v5.5.0-beta6 (14th of November 2026)
+
+* Fix common errors: sort the fixes by line number - thx radektuma
+* Keep the format (e.g. ASSA) on Save as after joining/merging subtitles or importing a Matroska text track - thx z3us
+* OCR fix: spell-check-gated regexes now work from the _User replace list - thx fraternl
+* OCR fix: spell-check-gated regexes respect the names list and the user dictionary - thx fraternl/k6G52m4Dz75W
+* EBU STL: support €, ¾, ‰ and α
+* Add .hevc as a video file extension - thx Klojum
+* Speech to text: turn on VAD for Crisp ASR Qwen3 (FireRedVAD on Auto) for better timing - thx gojetablade
+* Speech to text: ask for CrispASR v0.8.50 before running Haas-ja (older versions crashed) - thx Xtiger909
+* Speech to text: use a macOS 12 compatible whisper.cpp build on Mac - thx cmwyer1961
+* Update CrispASR to v0.8.53
+* Update llama.cpp to b12360
+* Update macOS Apple Silicon FFmpeg download to 9.0.2
+* Fix llama.cpp advanced translate failing correct translations that grow a lot (e.g. Chinese to English) - thx Makar8000/caioocesar
+* Update German translation - thx FunkyKnilch
+* Update Japanese translation - thx hisui3393
+
+-----------------------------------------------------------------------------------------------------
+v5.5.0-beta5 (13th of November 2026)
+
+* Layout 14: quality control layout with QC panel and tag chips
+* Bookmarks: multi-line notes, bookmark tags on the waveform, three colors, filter in the list (export/import keeps the color)
+* Batch convert: merge translation with original into one bilingual ASSA subtitle - thx svarga91
+* Compare: "Take text, keep formatting" - thx FunkyKnilch
+* Setting for an empty line between subtitles in Copy text - thx OmrSi
+* Remember size and position of 67 more resizable windows
+* Spell check and three list windows are now resizable
+* Spell check: Enter changes the word instead of closing the window
+* Show history: say there is nothing to undo instead of showing a blank list
+* Help pages and F1 for Sync to audio, Sync audio track and Dialogue list
+* TS track picker: show Default/Forced as check marks
+* llama.cpp advanced: reject broken replies, fewer wasted retries, add Index-Nailong 9B - thx marwanlhabti5-coder
+* Auto-translate: keep whole-line <i> and ♪ out of the model's hands - thx mmmsh-125
+* Auto-translate: send the advanced engines' batch JSON as raw UTF-8 - thx Makar8000
+* Image export and Blu-ray sup: faster export (up to 3.7x) and better sup palette quality
+* Spell check dictionaries: update Polish, Croatian, Khmer, Welsh; add Kazakh and Uzbek
+* Fix Batch convert ignoring "Right to left", box type/padding and alignment for image formats - thx mehdittttt
+* Fix Change speed/Assisted move producing times with fractions of a millisecond (also in Batch convert and seconv) - thx Davanix
+* Fix video position not restored on a remembered first line - thx bereld
+* Fix Speak from current line / Play with speech cutting off clips
+* Fix Netflix check shot-change fixes that could end before they start
+* Fix common errors: log "still too fast/short" instead of "Unable to fix"
+* D-Cinema SMPTE: only allow valid edit rates - thx accessallareas
+* Fix Paddle OCR CUDA 12 unpack on Flatpak - thx zjDrummond
+* Update German translation - thx FunkyKnilch
+* Update Italian translation - thx bovirus/GitGianluc
+* Update Japanese translation - thx hisui3393
+* Update Korean translation - thx 12si27
+
+-----------------------------------------------------------------------------------------------------
+v5.5.0-beta4 (11th of November 2026)
+
+* Add Qwen3-ForcedAligner-Ultra as a forced aligner option
+* Add Haas-ja v1.0 models to Crisp ASR Parakeet
+* Optional Actor box in the edit panel - thx yolanda123a
+* Export image-based: SD presets with pixel aspect (PAL/NTSC 4:3 and 16:9) - thx doom9
+* Track pickers: full-width preview text + auto-fit columns
+* OCR: PGS thumbnails scale with the window - thx tormento
+* seconv: advanced local-LLM translate engines, also configurable in the --settings file - thx Makar8000
+* seconv info: report Chinese script (zh-Hans / zh-Hant) - thx Makar8000
+* Auto-translate: accept Chinese/Japanese batch replies that drop the "." separators - thx Makar8000
+* Font picker preview: fall back per line for glyphs the font lacks - thx liubin1777
+* Fix light alternating row color default not being visible - thx GitGianluc
+* Fix common errors: label short-line fixes as "Remove line break" - thx AceFrahm
+* TTS Review: keep "Clone from video" in the voice list - thx yolanda123a
+* Fix Bulgarian translation errors
+* Update Danish translation - thx Manavagg2003
+* Update European Portuguese translation - thx Blackspirits/Manavagg2003
+* Update Japanese translation - thx hisui3393
+* Update Swedish translation - thx Manavagg2003
+
+-----------------------------------------------------------------------------------------------------
 v5.5.0-beta3 (10th of November 2026)
 
 * Option to preset the save encoding on open to a chosen UTF-8 variant now also works for UTF-8 files - thx darnn

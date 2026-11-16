@@ -147,7 +147,32 @@ public class AssaPropertiesWindow : Window
         var content = new StackPanel { Spacing = 8 };
         content.Children.Add(size);
         content.Children.Add(presets);
+        content.Children.Add(MakeLayoutResolutionRow(vm));
         return EditorChrome.MakeEditorSection(Se.Language.General.VideoResolution, content);
+    }
+
+    /// <summary>
+    /// LayoutResX/LayoutResY - independent of PlayRes, so its own row; 0 × 0 leaves it out (#16933).
+    /// </summary>
+    private static StackPanel MakeLayoutResolutionRow(AssaPropertiesViewModel vm)
+    {
+        var width = EditorChrome.MakeField(nameof(vm.LayoutWidth), 0, 10000, 90, "W");
+        var height = EditorChrome.MakeField(nameof(vm.LayoutHeight), 0, 10000, 90, "H");
+        AutomationProperties.SetName(width, Se.Language.Assa.LayoutResolution + " - " + Se.Language.General.Width);
+        AutomationProperties.SetName(height, Se.Language.Assa.LayoutResolution + " - " + Se.Language.General.Height);
+
+        var fromVideo = EditorChrome.CreateToolButton("fa-solid fa-film", Se.Language.Assa.LayoutResolutionFromVideo, vm.GetLayoutResolutionFromCurrentVideoCommand, 28);
+        fromVideo.Bind(Button.IsVisibleProperty, new Binding(nameof(vm.ShowGetResolutionFromCurrentVideo)) { Source = vm });
+        var clear = EditorChrome.CreateToolButton("fa-solid fa-xmark", Se.Language.General.Clear, vm.ClearLayoutResolutionCommand, 28);
+
+        var size = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+        size.Children.Add(width);
+        size.Children.Add(new TextBlock { Text = "×", Foreground = EditorChrome.DimTextBrush, VerticalAlignment = VerticalAlignment.Center });
+        size.Children.Add(height);
+        size.Children.Add(fromVideo);
+        size.Children.Add(clear);
+
+        return LabeledWithHint(Se.Language.Assa.LayoutResolution, size, Se.Language.Assa.LayoutResolutionHint);
     }
 
     private static Border MakeOptionsSection(AssaPropertiesViewModel vm)
@@ -162,11 +187,31 @@ public class AssaPropertiesWindow : Window
         var grid = new Grid
         {
             ColumnSpacing = 12,
+            RowDefinitions = { new RowDefinition(GridLength.Auto), new RowDefinition(GridLength.Auto) },
             ColumnDefinitions = { new ColumnDefinition(new GridLength(1, GridUnitType.Star)), new ColumnDefinition(new GridLength(1, GridUnitType.Star)) },
         };
         grid.Add(Labeled(Se.Language.Assa.WrapStyle, wrapStyle), 0, 0);
         grid.Add(Labeled(Se.Language.Assa.BorderAndShadowScaling, scaling), 0, 1);
+
+        var ycbCrMatrix = UiUtil.MakeComboBox(vm.YCbCrMatrixItems, vm, nameof(vm.SelectedYCbCrMatrix));
+        ycbCrMatrix.HorizontalAlignment = HorizontalAlignment.Stretch;
+        AutomationProperties.SetName(ycbCrMatrix, Se.Language.Assa.YCbCrMatrix);
+        grid.Add(LabeledWithHint(Se.Language.Assa.YCbCrMatrix, ycbCrMatrix, Se.Language.Assa.YCbCrMatrixHint), 1, 0);
+
         return EditorChrome.MakeEditorSection(Se.Language.General.Options, grid);
+    }
+
+    private static StackPanel LabeledWithHint(string label, Control control, string hint)
+    {
+        // Mirrors Labeled, with the hint icon beside the label text instead of the control.
+        var labelRow = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
+        labelRow.Children.Add(new TextBlock { Text = label, FontSize = EditorChrome.FieldFontSize, Foreground = EditorChrome.DimTextBrush, TextTrimming = TextTrimming.CharacterEllipsis });
+        labelRow.Children.Add(UiUtil.MakeHintIcon(hint, control));
+
+        var panel = new StackPanel { Spacing = 4 };
+        panel.Children.Add(labelRow);
+        panel.Children.Add(control);
+        return panel;
     }
 
     private static StackPanel Labeled(string label, Control control)

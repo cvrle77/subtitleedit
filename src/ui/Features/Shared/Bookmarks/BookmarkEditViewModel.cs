@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Nikse.SubtitleEdit.Features.Main;
 using Nikse.SubtitleEdit.Logic.Config;
+using Nikse.SubtitleEdit.Logic;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -15,6 +16,7 @@ public partial class BookmarkEditViewModel : ObservableObject
     [ObservableProperty] private string? _bookmarkText;
     [ObservableProperty] private bool _showRemoveButton;
     [ObservableProperty] private bool _showListButton;
+    [ObservableProperty] private int _colorIndex;
 
     public Window? Window { get; set; }
 
@@ -55,19 +57,13 @@ public partial class BookmarkEditViewModel : ObservableObject
         Window?.Close();
     }
 
-    internal void OnKeyDown(KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape)
-        {
-            e.Handled = true;
-            Window?.Close();
-        }
-    }
+    internal void OnKeyDown(KeyEventArgs e) => UiUtil.CloseOnEscape(e, Window);
 
     internal void Initialize(List<SubtitleLineViewModel> selectedItems, List<SubtitleLineViewModel> allBookmarks)
     {
         Title = selectedItems.All(p => p.Bookmark == null) ? GetAddLabel(selectedItems) : GetEditLabel(selectedItems);
         BookmarkText = selectedItems.First().Bookmark ?? string.Empty;
+        ColorIndex = selectedItems.First().BookmarkColor;
         ShowRemoveButton = !selectedItems.All(p => p.Bookmark == null);
         ShowListButton = allBookmarks.Count > 1;
     }
@@ -94,7 +90,7 @@ public partial class BookmarkEditViewModel : ObservableObject
 
     internal void OnTextBoxKeyDown(KeyEventArgs args)
     {
-        if (args.Key == Key.Enter)
+        if (args.Key == Key.Enter && args.KeyModifiers == KeyModifiers.None)
         {
             args.Handled = true;
             Ok();

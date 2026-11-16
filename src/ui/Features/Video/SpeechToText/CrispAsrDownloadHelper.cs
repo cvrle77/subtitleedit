@@ -3,7 +3,6 @@ using Nikse.SubtitleEdit.Features.Shared;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Download;
-using Nikse.SubtitleEdit.Logic.Media;
 using System;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -74,10 +73,12 @@ public static class CrispAsrDownloadHelper
     /// </summary>
     public static async Task<string?> PromptWindowsVariantAsync(Window owner, string engineName, string? message = null)
     {
+        var gpuHint = await GpuBuildHint.GetAsync(GpuBuild.Cpu, GpuBuild.Vulkan, GpuBuild.Cuda);
         var answer = await MessageBox.Show(
             owner,
             string.Format(Se.Language.General.DownloadXQuestion, engineName),
             Environment.NewLine + (message ?? string.Format(Se.Language.Video.AudioToText.XRequiresCrispAsrSelectVersion, engineName)),
+            gpuHint,
             MessageBoxButtons.Cancel,
             MessageBoxIcon.Question,
             "CPU",
@@ -139,10 +140,12 @@ public static class CrispAsrDownloadHelper
     /// </summary>
     public static async Task<string?> PromptLinuxVariantAsync(Window owner, string engineName, string? message = null)
     {
+        var gpuHint = await GpuBuildHint.GetAsync(GpuBuild.Cpu, GpuBuild.Vulkan, GpuBuild.Cuda, GpuBuild.Rocm);
         var answer = await MessageBox.Show(
             owner,
             string.Format(Se.Language.General.DownloadXQuestion, engineName),
             Environment.NewLine + (message ?? string.Format(Se.Language.Video.AudioToText.XRequiresCrispAsrSelectVersion, engineName)),
+            gpuHint,
             MessageBoxButtons.Cancel,
             MessageBoxIcon.Question,
             "CPU",
@@ -171,10 +174,12 @@ public static class CrispAsrDownloadHelper
     /// </summary>
     private static async Task<string?> PromptCudaVersionAsync(Window owner)
     {
+        var gpuHint = await GpuBuildHint.GetAsync(GpuBuild.Cuda12, GpuBuild.Cuda13);
         var answer = await MessageBox.Show(
             owner,
             Se.Language.General.CrispAsrCudaBuild,
             Environment.NewLine + Se.Language.General.CrispAsrCudaBuildInfo,
+            gpuHint,
             MessageBoxButtons.Cancel,
             MessageBoxIcon.Question,
             "CUDA 12",

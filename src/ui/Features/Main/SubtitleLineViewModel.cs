@@ -55,6 +55,18 @@ public partial class SubtitleLineViewModel : ObservableObject
     [ObservableProperty]
     private string? _bookmark;
 
+    /// <summary>Which of the three bookmark colors (0-2) the bookmark uses; reset when the bookmark is removed.</summary>
+    [ObservableProperty]
+    private int _bookmarkColor;
+
+    partial void OnBookmarkChanged(string? value)
+    {
+        if (value == null)
+        {
+            BookmarkColor = 0;
+        }
+    }
+
     /// <summary>
     /// The forced-narrative mark: a line that must also go into the separate forced subtitle
     /// many clients ask for alongside the full file (#14322). Observable so the "Forced"
@@ -318,6 +330,7 @@ public partial class SubtitleLineViewModel : ObservableObject
         _forced = p.Forced;
         _bookmark = p.Bookmark;
             IsSmartBreakRisky = p.IsSmartBreakRisky;
+        _bookmarkColor = p.Bookmark != null ? p.BookmarkColor : 0;
         _isReferenceOnly = p.IsReferenceOnly;
         ReferenceParagraphId = p.ReferenceParagraphId;
 
@@ -354,6 +367,7 @@ public partial class SubtitleLineViewModel : ObservableObject
         Paragraph = paragraph;
         Bookmark = paragraph.Bookmark;
             IsSmartBreakRisky = paragraph.IsSmartBreakRisky;
+        BookmarkColor = paragraph.BookmarkColor;
 
         if (subtitleFormat is AdvancedSubStationAlpha or SubStationAlpha)
         {
@@ -385,6 +399,7 @@ public partial class SubtitleLineViewModel : ObservableObject
             Forced = Forced,
             Layer = Layer,
             Bookmark = Bookmark,
+            BookmarkColor = BookmarkColor,
         };
 
         if (subtitleFormat is AdvancedSubStationAlpha or SubStationAlpha)
@@ -413,6 +428,7 @@ public partial class SubtitleLineViewModel : ObservableObject
             Forced = Forced,
             Layer = Layer,
             Bookmark = Bookmark,
+            BookmarkColor = BookmarkColor,
         };
 
         if (subtitleFormat is AdvancedSubStationAlpha or SubStationAlpha)
@@ -1332,6 +1348,7 @@ public partial class SubtitleLineViewModel : ObservableObject
         NewSection = p.NewSection;
         Forced = p.Forced;
         Bookmark = p.Bookmark;
+        BookmarkColor = p.BookmarkColor;
         if (subtitleFormat is AdvancedSubStationAlpha or SubStationAlpha)
         {
             Style = p.Extra;
@@ -1365,6 +1382,7 @@ public partial class SubtitleLineViewModel : ObservableObject
         NewSection = src.NewSection;
         Forced = src.Forced;
         Bookmark = src.Bookmark;
+        BookmarkColor = src.BookmarkColor;
         _skipUpdate = true;
         StartTime = src.StartTime;
         EndTime = src.EndTime;

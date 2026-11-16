@@ -265,6 +265,13 @@ public partial class MainViewModel :
     [ObservableProperty] private ObservableCollection<SubtitleFormat> _subtitleFormats;
     [ObservableProperty] private SubtitleFormat _selectedSubtitleFormat;
 
+    // Typed/pasted time codes follow the format's limit: 99:59:59,999 by default, 9999 hours for
+    // SubRip, WebVTT, TTML and ASSA/SSA (#16937).
+    partial void OnSelectedSubtitleFormatChanged(SubtitleFormat value)
+    {
+        TimeCodeUpDown.MaxInputTotalMilliseconds = value?.MaxTimeCodeTotalMilliseconds ?? TimeCode.MaxTimeTotalMilliseconds;
+    }
+
     [ObservableProperty] private ObservableCollection<TextEncoding> _encodings;
     [ObservableProperty] private TextEncoding _selectedEncoding;
 
@@ -487,6 +494,7 @@ public partial class MainViewModel :
     [ObservableProperty] private bool _hasMultipleLinesSelected;
     [ObservableProperty] private bool _showShotChangesListMenuItem;
     [ObservableProperty] private bool _showLayer;
+    [ObservableProperty] private bool _showActorBox;
     [ObservableProperty] private bool _showLayerFilterIcon;
     [ObservableProperty] private bool _showColumnLayerFlyoutMenuItem;
     [ObservableProperty] private bool _isVideoLoaded;
@@ -2880,7 +2888,8 @@ public partial class MainViewModel :
         var result = await ShowDialogAsync<AssaPropertiesWindow, AssaPropertiesViewModel>(vm =>
         {
             vm.Initialize(_subtitle, SelectedSubtitleFormat, _subtitleFileName ?? string.Empty,
-                _videoFileName ?? string.Empty, _mediaInfo?.Dimension.Width ?? 0, _mediaInfo?.Dimension.Height ?? 0);
+                _videoFileName ?? string.Empty, _mediaInfo?.Dimension.Width ?? 0, _mediaInfo?.Dimension.Height ?? 0,
+                _mediaInfo?.DisplayDimension.Width ?? 0, _mediaInfo?.DisplayDimension.Height ?? 0);
         });
 
         if (result.OkPressed)
@@ -3120,7 +3129,8 @@ public partial class MainViewModel :
     /// One authored for another picture size - PlayResX/PlayResY present and different from the
     /// video - gets the resampler dialog pre-filled with both resolutions, the way SE 4 and
     /// Aegisub ask, so the user sees what is about to change and can decline (#14367). With the
-    /// prompt setting off the file is resampled automatically, as before.
+    /// prompt setting off the file is resampled automatically, as before. A script with
+    /// LayoutResX/LayoutResY is left alone: it is laid out against its own LayoutRes (#16933).
     /// </para>
     /// </summary>
     private async Task SetAssaResolutionFromVideoAsync()
@@ -3148,6 +3158,14 @@ public partial class MainViewModel :
         }
 
         if (scriptWidth == videoWidth && scriptHeight == videoHeight)
+        {
+            return;
+        }
+
+        // A script with LayoutResX/LayoutResY is self-contained: libass lays it out against its
+        // own LayoutRes, not this video's size, so it renders the same on any video with the same
+        // display aspect ratio. Resampling it would only rewrite values for nothing (#16933).
+        if (AdvancedSubStationAlpha.TryGetLayoutResolution(header, out _, out _))
         {
             return;
         }
@@ -6937,7 +6955,7 @@ public partial class MainViewModel :
     {
         var vp = GetVideoPlayerControl();
         var audioPeaks = AudioPeaks;
-        if (Window == null || audioPeaks == null || vp == null)
+        if (Window == null || audioPeaks == null || vp == null || AudioVisualizer == null)
         {
             return;
         }
@@ -6970,7 +6988,7 @@ public partial class MainViewModel :
     private void SeekSilenceBack()
     {
         var vp = GetVideoPlayerControl();
-        if (AudioPeaks == null || vp == null)
+        if (AudioPeaks == null || vp == null || AudioVisualizer == null)
         {
             return;
         }
@@ -6989,7 +7007,7 @@ public partial class MainViewModel :
     private void SeekSilenceForward()
     {
         var vp = GetVideoPlayerControl();
-        if (AudioPeaks == null || vp == null)
+        if (AudioPeaks == null || vp == null || AudioVisualizer == null)
         {
             return;
         }
@@ -7058,7 +7076,7 @@ public partial class MainViewModel :
             return Se.Language.Main.Waveform.GuessStartTimeCodesLocked;
         }
 
-        if (AudioPeaks == null)
+        if (AudioPeaks == null || AudioVisualizer == null)
         {
             return Se.Language.Main.Waveform.GuessStartNoWaveform;
         }
@@ -7237,7 +7255,7 @@ public partial class MainViewModel :
             return Se.Language.Main.Waveform.GuessEndTimeCodesLocked;
         }
 
-        if (AudioPeaks == null)
+        if (AudioPeaks == null || AudioVisualizer == null)
         {
             return Se.Language.Main.Waveform.GuessEndNoWaveform;
         }
@@ -7774,7 +7792,7 @@ public partial class MainViewModel :
     private async Task ShowWaveformGuessTimeCodes()
     {
         var vp = GetVideoPlayerControl();
-        if (Window == null || AudioPeaks == null || vp == null)
+        if (Window == null || AudioPeaks == null || vp == null || AudioVisualizer == null)
         {
             return;
         }
@@ -8996,6 +9014,9 @@ public partial class MainViewModel :
         // Carry over the header that SortAndLoad spent its merge building, or the joined file is
         // written with no style table at all.
         _subtitle.Header = result.JoinedSubtitle.Header;
+        // The format comes from the joined files, so Save as must offer it instead of the
+        // "Default Save as format" setting, or joined ASSA files are suggested as .srt (#16899).
+        _formatChangedByUser = SelectedSubtitleFormat is not SubRip;
         SelectAndScrollToRow(0);
         ShowStatus(Se.Language.Main.JoinedSubtitleLoaded);
     }
@@ -9033,6 +9054,8 @@ public partial class MainViewModel :
         SetSubtitles(result.ResultSubtitle);
         // Carry over the header so the merged styles (Style1/Style2) are kept
         _subtitle.Header = result.ResultSubtitle.Header;
+        // Keep the merged format (and its styles) on Save as - see ShowToolsJoin (#16899).
+        _formatChangedByUser = SelectedSubtitleFormat is not SubRip;
         SelectAndScrollToRow(0);
     }
 
@@ -9350,9 +9373,22 @@ public partial class MainViewModel :
     private async Task CopyLinesToClipboard(IEnumerable<string> lines)
     {
         var list = lines.ToList();
-        await ClipboardHelper.SetTextAsync(Window!, string.Join(Environment.NewLine + Environment.NewLine, list));
+        await ClipboardHelper.SetTextAsync(Window!, JoinCopiedText(list));
 
         ShowStatus(string.Format("{0} lines copied to clipboard", list.Count));
+    }
+
+    /// <summary>
+    /// Joins subtitle texts for the "Copy text" commands (grid and waveform): an empty line between
+    /// subtitles when <see cref="SeGeneral.CopyTextBlankLineBetweenSubtitles"/> is on (SE4 style),
+    /// otherwise one subtitle per line.
+    /// </summary>
+    private static string JoinCopiedText(IEnumerable<string> texts)
+    {
+        var separator = Se.Settings.General.CopyTextBlankLineBetweenSubtitles
+            ? Environment.NewLine + Environment.NewLine
+            : Environment.NewLine;
+        return string.Join(separator, texts);
     }
 
     /// <summary>
@@ -9384,7 +9420,7 @@ public partial class MainViewModel :
             return;
         }
 
-        await ClipboardHelper.SetTextAsync(Window, string.Join(Environment.NewLine, lines.Select(p => p.Text)));
+        await ClipboardHelper.SetTextAsync(Window, JoinCopiedText(lines.Select(p => p.Text)));
         _shortcutManager.ClearKeys();
     }
 
@@ -11303,6 +11339,23 @@ public partial class MainViewModel :
 
         SelectedRuleProfile = profile.Name;
         ShowStatus(string.Format(Se.Language.Main.RuleProfileIsX, profile.Name));
+    }
+
+    /// <summary>
+    /// Toolbar "Speech to text": with more than one line selected only those lines are
+    /// transcribed, otherwise the whole video (#16928). Menus and shortcuts keep their own scope.
+    /// </summary>
+    [RelayCommand]
+    private async Task ToolbarSpeechToText()
+    {
+        if (SubtitleGridSelectedItems.Count > 1 && !string.IsNullOrEmpty(_videoFileName))
+        {
+            await SpeechToTextSelectedLines();
+        }
+        else
+        {
+            await ShowSpeechToTextWhisper();
+        }
     }
 
     [RelayCommand]
@@ -14735,6 +14788,23 @@ public partial class MainViewModel :
         }
     }
 
+    /// <summary>
+    /// Toolbar "Auto-translate": with more than one line selected only those lines are translated,
+    /// otherwise the whole subtitle (#16928). Menus and shortcuts keep their own fixed scope.
+    /// </summary>
+    [RelayCommand]
+    private async Task ToolbarAutoTranslate()
+    {
+        if (SubtitleGridSelectedItems.Count > 1)
+        {
+            await AutoTranslateSelectedLines(autoStart: false);
+        }
+        else
+        {
+            await ShowAutoTranslate();
+        }
+    }
+
     [RelayCommand]
     private async Task ShowAutoTranslate()
     {
@@ -14933,6 +15003,7 @@ public partial class MainViewModel :
                     Region = line.Region,
                     Layer = line.Layer,
                     Bookmark = line.Bookmark,
+                    BookmarkColor = line.BookmarkColor,
                 };
                 sub.Paragraphs.Add(p);
             }
@@ -15087,6 +15158,7 @@ public partial class MainViewModel :
                     Region = line.Region,
                     Layer = line.Layer,
                     Bookmark = line.Bookmark,
+                    BookmarkColor = line.BookmarkColor,
                 };
                 sub.Paragraphs.Add(p);
             }
@@ -15141,6 +15213,7 @@ public partial class MainViewModel :
                     Region = line.Region,
                     Layer = line.Layer,
                     Bookmark = line.Bookmark,
+                    BookmarkColor = line.BookmarkColor,
                 };
                 sub.Paragraphs.Add(p);
             }
@@ -15211,6 +15284,7 @@ public partial class MainViewModel :
                     Region = line.Region,
                     Layer = line.Layer,
                     Bookmark = line.Bookmark,
+                    BookmarkColor = line.BookmarkColor,
                 };
                 sub.Paragraphs.Add(p);
             }
@@ -15418,6 +15492,7 @@ public partial class MainViewModel :
                     Region = line.Region,
                     Layer = line.Layer,
                     Bookmark = line.Bookmark,
+                    BookmarkColor = line.BookmarkColor,
                 };
                 sub.Paragraphs.Add(p);
                 if (p.Id.HasValue)
@@ -15999,6 +16074,7 @@ public partial class MainViewModel :
         ShowUpDownDuration = Se.Settings.Appearance.ShowUpDownDuration;
         ShowUpDownLabels = Se.Settings.Appearance.ShowUpDownLabels;
         ShowTimeCodeModeInStatusBar = Se.Settings.Appearance.ShowTimeCodeModeInStatusBar;
+        ShowActorBox = HasFormatActor && !IsFormatWebVtt && Se.Settings.Appearance.ShowActor;
 
         _errorColor = Se.Settings.General.ErrorColor.FromHexToColor();
         _errorBrush = new ImmutableSolidColorBrush(_errorColor);
@@ -16168,6 +16244,13 @@ public partial class MainViewModel :
         var result = await ShowDialogAsync<WordListsWindow, WordListsViewModel>();
     }
 
+    /// <summary>Saves the bookmarks next to the subtitle and repaints the waveform, which draws them.</summary>
+    private void SaveBookmarks()
+    {
+        new SubtitleMarksPersistence(GetSaveSubtitle(), _subtitleFileName).Save();
+        _updateAudioVisualizer = true;
+    }
+
     [RelayCommand]
     private async Task AddOrEditBookmark()
     {
@@ -16199,17 +16282,16 @@ public partial class MainViewModel :
             foreach (var item in selectedItems)
             {
                 item.Bookmark = result.BookmarkText;
+                item.BookmarkColor = result.BookmarkText != null ? result.ColorIndex : 0;
             }
         }
 
-        new SubtitleMarksPersistence(GetSaveSubtitle(), _subtitleFileName).Save();
+        SaveBookmarks();
 
         if (result.ListPressed)
         {
             await ListBookmarks();
         }
-
-        _updateAudioVisualizer = true;
     }
 
     [RelayCommand]
@@ -16228,7 +16310,7 @@ public partial class MainViewModel :
             }
         }
 
-        new SubtitleMarksPersistence(GetSaveSubtitle(), _subtitleFileName).Save();
+        SaveBookmarks();
 
         _shortcutManager.ClearKeys();
     }
@@ -16318,7 +16400,7 @@ public partial class MainViewModel :
 
         var result = await ShowDialogAsync<BookmarksListWindow, BookmarksListViewModel>(vm => { vm.Initialize(Subtitles.ToList()); });
 
-        new SubtitleMarksPersistence(GetSaveSubtitle(), _subtitleFileName).Save();
+        SaveBookmarks();
 
         if (result.GoToPressed && result.SelectedSubtitle != null)
         {
@@ -16335,7 +16417,7 @@ public partial class MainViewModel :
             item.Bookmark = null;
         }
 
-        new SubtitleMarksPersistence(GetSaveSubtitle(), _subtitleFileName).Save();
+        SaveBookmarks();
 
         _shortcutManager.ClearKeys();
     }
@@ -16380,7 +16462,7 @@ public partial class MainViewModel :
             item.Bookmark = null;
         }
 
-        new SubtitleMarksPersistence(GetSaveSubtitle(), _subtitleFileName).Save();
+        SaveBookmarks();
 
         _shortcutManager.ClearKeys();
     }
@@ -22670,6 +22752,35 @@ public partial class MainViewModel :
         });
     }
 
+    // #16934: SE 4's "Set start, offset the whole subtitle" - like "offset the rest", but the
+    // lines before the selected one move by the same amount too.
+    [RelayCommand]
+    private void WaveformSetStartAndOffsetTheWholeSubtitle()
+    {
+        var s = SelectedSubtitle;
+        var vp = GetVideoPlayerControl();
+        if (s == null || vp == null || AreTimeCodesLocked || !Subtitles.Contains(s))
+        {
+            return;
+        }
+
+        var difference = TimeSpan.FromSeconds(vp.Position) - s.StartTime;
+        if (Math.Abs(difference.TotalMilliseconds) < 0.01)
+        {
+            return;
+        }
+
+        RunWithoutChangeDetection(() =>
+        {
+            foreach (var subtitle in Subtitles)
+            {
+                subtitle.SetStartTimeKeepDuration(subtitle.StartTime + difference);
+            }
+
+            _updateAudioVisualizer = true;
+        });
+    }
+
     [RelayCommand]
     private void WaveformSetEndAndOffsetTheRest()
     {
@@ -24903,7 +25014,7 @@ public partial class MainViewModel :
     /// this list, so shortcut "1" sets the first actor, "2" the second, etc. - and keeps doing
     /// so when a new actor is added.
     /// </summary>
-    private List<string> GetActorsInSubtitle()
+    internal List<string> GetActorsInSubtitle()
     {
         return _actorOrder.GetOrdered(Subtitles.Select(p => p.Actor));
     }
@@ -27668,21 +27779,21 @@ public partial class MainViewModel :
             SetupLiveSpellCheck();
         }
 
-        if (rememberedRecentFile != null && selectedSubtitleIndex > 0)
+        if (rememberedRecentFile != null && selectedSubtitleIndex != null)
         {
             await SeekVideoToSelectedLineAsync();
         }
     }
 
     // Where the video should be opened when a session is restored: the start time of the line the
-    // user was last on. Mirrors the "index 0 is not a restored position" rule in
-    // SeekVideoToSelectedLineAsync, so a freshly opened file still comes up at 0:00.
+    // user was last on - the first line too (#16822). A file opened for the first time has no
+    // remembered line (null) and still comes up at 0:00 (#13191 / #12898).
     // videoOffsetToRestoreMs is the remembered video offset the caller takes off the rows once the
     // open is done (SetRecentFileProperties): the rows still hold the file's time codes here, which
     // carry that offset, so the video position is the start time minus it.
     private double GetRestoredVideoStartPositionSeconds(int? selectedSubtitleIndex, long videoOffsetToRestoreMs)
     {
-        if (selectedSubtitleIndex is not > 0 || selectedSubtitleIndex.Value >= Subtitles.Count)
+        if (selectedSubtitleIndex is not >= 0 || selectedSubtitleIndex.Value >= Subtitles.Count)
         {
             return 0;
         }
@@ -27706,14 +27817,9 @@ public partial class MainViewModel :
             return;
         }
 
-        // A remembered first-line selection is not a previously established position - it is
-        // just where the grid always lands on open. Leave the video at 0:00 instead of jumping
-        // to the first caption's start time (#13191 / #12898); only a mid-file line restores.
-        if ((SelectedSubtitleIndex ?? 0) == 0)
-        {
-            return;
-        }
-
+        // Only called when a remembered session is restored, so the first line restores like any
+        // other (#16822) - "start at 0:00" (#13191 / #12898) is for a file opened for the first
+        // time, which never gets here.
         await vp.WaitForPlayersReadyAsync();
         await Task.Delay(200);
         var s = SelectedSubtitle;
@@ -27965,6 +28071,7 @@ public partial class MainViewModel :
         for (var i = 0; i < Subtitles.Count && i < sub.Paragraphs.Count; i++)
         {
             Subtitles[i].Bookmark = sub.Paragraphs[i].Bookmark;
+            Subtitles[i].BookmarkColor = sub.Paragraphs[i].BookmarkColor;
 
             // Union, not assignment: a format that carries the forced flag itself (BDN xml)
             // has already set it on the row, and the sidecar only ever adds marks.
@@ -27983,7 +28090,7 @@ public partial class MainViewModel :
     {
         Dispatcher.UIThread.Post(async () =>
         {
-            var result = await ShowDialogAsync<OcrWindow, OcrViewModel>(vm => { vm.InitializeBdn(subtitle, fileName, false); });
+            var result = await ShowDialogAsync<OcrWindow, OcrViewModel>(vm => { vm.InitializeBdn(subtitle, fileName); });
 
             if (result.OkPressed)
             {
@@ -28934,6 +29041,10 @@ public partial class MainViewModel :
         // auto-imported single track showed "Untitled" in the title bar and save prompt (#12848).
         _subtitleFileName = Utilities.GetPathAndFileNameWithoutExtension(fileName) + SelectedSubtitleFormat.Extension;
         _converted = true;
+
+        // The format comes from the track (ASSA, SSA, WebVTT, ...), so Save as must offer it instead
+        // of the "Default Save as format" setting, which suggested .srt for an ASSA track (#16899).
+        _formatChangedByUser = SelectedSubtitleFormat is not SubRip;
 
         return true;
     }
@@ -30240,7 +30351,7 @@ public partial class MainViewModel :
             return true;
         }
 
-        var limits = format.FormatLimits;
+        var limits = SubtitleFormatLimits.ForFormat(format);
         if (limits == null)
         {
             return true;
@@ -30253,7 +30364,7 @@ public partial class MainViewModel :
         }
 
         var vm = await ShowDialogAsync<FormatLimitWarningWindow, FormatLimitWarningViewModel>(
-            vm => vm.Initialize(format, limits, violating));
+            vm => vm.Initialize(format, limits, violating, subtitle));
         return vm.SaveAnywayPressed;
     }
 
@@ -31796,6 +31907,19 @@ public partial class MainViewModel :
         var oldHeader = _subtitle.Header;
         _subtitle.Header = AdvancedSubStationAlpha.SetResolution(_subtitle.Header, _mediaInfo.Dimension.Width, _mediaInfo.Dimension.Height);
 
+        // A script that named no resolution is being authored for this video now: also give it
+        // LayoutRes = the video's display size, as the libass format guide asks for new files, so
+        // it keeps rendering the same on other resolutions of the same video (#16933).
+        var hadPlayRes = !string.IsNullOrEmpty(oldHeader) &&
+                         oldHeader.Contains("[V4+ Styles]", StringComparison.OrdinalIgnoreCase) &&
+                         TryGetPlayRes(oldHeader, "PlayResX", out _) &&
+                         TryGetPlayRes(oldHeader, "PlayResY", out _);
+        if (!hadPlayRes && !AdvancedSubStationAlpha.TryGetLayoutResolution(_subtitle.Header, out _, out _))
+        {
+            var display = _mediaInfo.DisplayDimension;
+            _subtitle.Header = AdvancedSubStationAlpha.SetLayoutResolution(_subtitle.Header, display.Width, display.Height);
+        }
+
         if (!Se.Settings.Assa.AutoSetResolutionConvert || oldHeader == _subtitle.Header)
         {
             return;
@@ -32681,6 +32805,7 @@ public partial class MainViewModel :
                 // too - otherwise bookmarking alone records no snapshot and the bookmark gets
                 // baked into the next unrelated edit's entry, where one undo removes both.
                 hash = hash * 23 + (p.Bookmark?.GetHashCode() ?? 0);
+                hash = hash * 23 + p.BookmarkColor;
                 // Same reasoning for the forced-narrative mark (#14322).
                 hash = hash * 23 + (p.Forced ? 1 : 0);
             }
@@ -39224,6 +39349,7 @@ public partial class MainViewModel :
             ? Se.Language.File.WebVtt.ShowVoiceColumn
             : Se.Language.General.ShowActorColumn;
         ShowLayer = IsFormatAssa && Se.Settings.Appearance.ShowLayer;
+        ShowActorBox = HasFormatActor && !IsFormatWebVtt && Se.Settings.Appearance.ShowActor;
         ShowLayerFilterIcon = IsFormatAssa && Se.Settings.Appearance.ShowLayer && _visibleLayers != null;
 
         if (!IsFormatAssa)
@@ -39660,20 +39786,6 @@ public partial class MainViewModel :
         if (s != null)
         {
             SubtitleGrid.SelectedItem = s;
-        }
-    }
-
-    internal void OnWaveformDoubleTapped(object sender, ParagraphEventArgs e)
-    {
-        var vp = GetVideoPlayerControl();
-        if (!string.IsNullOrEmpty(_videoFileName) && vp != null)
-        {
-            vp.Position = e.Seconds;
-            var p = Subtitles.FirstOrDefault(p => p.Id == e.Paragraph.Id);
-            if (p != null)
-            {
-                SelectAndScrollToSubtitle(p);
-            }
         }
     }
 

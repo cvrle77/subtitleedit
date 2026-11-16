@@ -36,6 +36,7 @@ using Nikse.SubtitleEdit.Features.Tools.AdjustDuration;
 using Nikse.SubtitleEdit.Features.Tools.BatchConvert.BatchErrorList;
 using Nikse.SubtitleEdit.Features.Tools.ConvertActors;
 using Nikse.SubtitleEdit.Features.Tools.FixCommonErrors;
+using Nikse.SubtitleEdit.Features.Tools.MergeTwoSubtitles;
 using Nikse.SubtitleEdit.Features.Tools.RemoveTextForHearingImpaired;
 using Nikse.SubtitleEdit.Features.Translate;
 using Nikse.SubtitleEdit.Features.Translate.LlamaCppAdvanced;
@@ -45,7 +46,6 @@ using Nikse.SubtitleEdit.Features.Video.SpeechToText.Engines;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.UiLogic.SubtitleLoading;
 using Nikse.SubtitleEdit.Logic.Config;
-using Nikse.SubtitleEdit.Logic.Download;
 using Nikse.SubtitleEdit.UiLogic.BatchConvert;
 using Nikse.SubtitleEdit.Logic.Media;
 using Nikse.SubtitleEdit.Logic.Plugins;
@@ -185,7 +185,7 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
     [ObservableProperty] private SpeechToTextModelDisplay? _selectedCrispAsrModel;
     [ObservableProperty] private bool _crispAsrModelComboIsVisible;
     [ObservableProperty] private bool _llamaCppAdvancedButtonIsVisible;
-    [ObservableProperty] private bool _llamaCppSettingsButtonIsVisible;
+    [ObservableProperty] private bool _translateSettingsButtonIsVisible;
     [ObservableProperty] private bool _llamaCppEngineSettingsButtonIsVisible;
     [ObservableProperty] private ObservableCollection<LlamaCppModelDisplay> _llamaCppModels = new();
     [ObservableProperty] private LlamaCppModelDisplay? _selectedLlamaCppModel;
@@ -329,6 +329,27 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         Se.Language.Tools.ChangeCasing.AllLowercase,
         "Proper case",
     };
+
+    // Merge translation with original - 1 = style of the original text, 2 = style of the translation
+    [ObservableProperty] private ObservableCollection<string> _mergeTranslationWithOriginalFontNames = new();
+    [ObservableProperty] private string _mergeTranslationWithOriginalFontName1 = "Arial";
+    [ObservableProperty] private int _mergeTranslationWithOriginalFontSize1 = 20;
+    [ObservableProperty] private bool _mergeTranslationWithOriginalBold1;
+    [ObservableProperty] private bool _mergeTranslationWithOriginalItalic1;
+    [ObservableProperty] private Color _mergeTranslationWithOriginalPrimaryColor1 = Colors.White;
+    [ObservableProperty] private Color _mergeTranslationWithOriginalOutlineColor1 = Colors.Black;
+    [ObservableProperty] private decimal _mergeTranslationWithOriginalOutlineWidth1 = 2;
+    [ObservableProperty] private decimal _mergeTranslationWithOriginalShadowWidth1 = 1;
+    [ObservableProperty] private bool _mergeTranslationWithOriginalAlignTop1 = true;
+    [ObservableProperty] private string _mergeTranslationWithOriginalFontName2 = "Arial";
+    [ObservableProperty] private int _mergeTranslationWithOriginalFontSize2 = 20;
+    [ObservableProperty] private bool _mergeTranslationWithOriginalBold2;
+    [ObservableProperty] private bool _mergeTranslationWithOriginalItalic2;
+    [ObservableProperty] private Color _mergeTranslationWithOriginalPrimaryColor2 = Colors.White;
+    [ObservableProperty] private Color _mergeTranslationWithOriginalOutlineColor2 = Colors.Black;
+    [ObservableProperty] private decimal _mergeTranslationWithOriginalOutlineWidth2 = 2;
+    [ObservableProperty] private decimal _mergeTranslationWithOriginalShadowWidth2 = 1;
+    [ObservableProperty] private bool _mergeTranslationWithOriginalAlignTop2;
 
     // Presets
     [ObservableProperty] private ObservableCollection<string> _presetNames = new();
@@ -494,7 +515,28 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         };
         SelectedSortByOption = SortByOptions[0];
 
+        MergeTranslationWithOriginalFontNames = new ObservableCollection<string>(FontHelper.GetSystemFonts());
+
         BatchFunctions = new ObservableCollection<BatchConvertFunction>(BatchConvertFunction.List(this));
+        BatchFunctions.Single(p => p.Type == BatchConvertFunctionType.MergeTranslationWithOriginal).PropertyChanged += (s, e) =>
+        {
+            // Asked, never switched silently: the target format may be a deliberate choice
+            if (e.PropertyName == nameof(BatchConvertFunction.IsSelected) &&
+                s is BatchConvertFunction { IsSelected: true } function &&
+                !_isApplyingPreset &&
+                Window != null &&
+                NeedsTargetFormatQuestion(true, true, SelectedTargetFormat))
+            {
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    // Without Advanced Sub Station Alpha the function does nothing useful - cancel unticks it
+                    if (!await AskMergeTranslationWithOriginalTargetFormat())
+                    {
+                        function.IsSelected = false;
+                    }
+                });
+            }
+        };
         ApplyFunctionFilter();
 
         _cancellationTokenSource = new CancellationTokenSource();
@@ -947,6 +989,26 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         Se.Settings.Tools.BatchConvert.ConvertActorsCasingType = ConvertActorsCasingIndex;
         Se.Settings.Tools.BatchConvert.ConvertActorsOnlyNames = ConvertActorsOnlyNames;
 
+        // Merge translation with original
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalFontName1 = MergeTranslationWithOriginalFontName1;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalFontSize1 = MergeTranslationWithOriginalFontSize1;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalBold1 = MergeTranslationWithOriginalBold1;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalItalic1 = MergeTranslationWithOriginalItalic1;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalPrimaryColor1 = MergeTranslationWithOriginalPrimaryColor1.FromColorToHex();
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalOutlineColor1 = MergeTranslationWithOriginalOutlineColor1.FromColorToHex();
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalOutlineWidth1 = MergeTranslationWithOriginalOutlineWidth1;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalShadowWidth1 = MergeTranslationWithOriginalShadowWidth1;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalAlignTop1 = MergeTranslationWithOriginalAlignTop1;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalFontName2 = MergeTranslationWithOriginalFontName2;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalFontSize2 = MergeTranslationWithOriginalFontSize2;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalBold2 = MergeTranslationWithOriginalBold2;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalItalic2 = MergeTranslationWithOriginalItalic2;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalPrimaryColor2 = MergeTranslationWithOriginalPrimaryColor2.FromColorToHex();
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalOutlineColor2 = MergeTranslationWithOriginalOutlineColor2.FromColorToHex();
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalOutlineWidth2 = MergeTranslationWithOriginalOutlineWidth2;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalShadowWidth2 = MergeTranslationWithOriginalShadowWidth2;
+        Se.Settings.Tools.BatchConvert.MergeTranslationWithOriginalAlignTop2 = MergeTranslationWithOriginalAlignTop2;
+
         // Adjust image brightness/alpha/color
         Se.Settings.Tools.BatchConvert.ImageAdjustBrightnessOn = ImageAdjustBrightnessOn;
         Se.Settings.Tools.BatchConvert.ImageAdjustBrightness = ImageAdjustBrightness;
@@ -987,6 +1049,17 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         Se.Settings.Tools.SplitRebalanceLongLinesUnbreakShorterThan = SplitBreakUnbreakLinesShorterThan;
 
         Se.SaveSettings();
+    }
+
+    // Like Merge two subtitles: a font that is not installed falls back to the first system font.
+    private string ResolveMergeTranslationWithOriginalFontName(string? name)
+    {
+        if (!string.IsNullOrEmpty(name) && MergeTranslationWithOriginalFontNames.Contains(name))
+        {
+            return name;
+        }
+
+        return MergeTranslationWithOriginalFontNames.FirstOrDefault() ?? "Arial";
     }
 
     private void LoadSettings()
@@ -1157,6 +1230,39 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         ConvertActorsChangeCasing = Se.Settings.Tools.BatchConvert.ConvertActorsChangeCasing;
         ConvertActorsCasingIndex = Math.Clamp(Se.Settings.Tools.BatchConvert.ConvertActorsCasingType, 0, ConvertActorsCasingOptions.Count - 1);
         ConvertActorsOnlyNames = Se.Settings.Tools.BatchConvert.ConvertActorsOnlyNames;
+
+        // Merge translation with original
+        var mergeSettings = Se.Settings.Tools.BatchConvert;
+        MergeTranslationWithOriginalFontName1 = ResolveMergeTranslationWithOriginalFontName(mergeSettings.MergeTranslationWithOriginalFontName1);
+        MergeTranslationWithOriginalFontSize1 = mergeSettings.MergeTranslationWithOriginalFontSize1;
+        MergeTranslationWithOriginalBold1 = mergeSettings.MergeTranslationWithOriginalBold1;
+        MergeTranslationWithOriginalItalic1 = mergeSettings.MergeTranslationWithOriginalItalic1;
+        if (!string.IsNullOrEmpty(mergeSettings.MergeTranslationWithOriginalPrimaryColor1))
+        {
+            MergeTranslationWithOriginalPrimaryColor1 = mergeSettings.MergeTranslationWithOriginalPrimaryColor1.FromHexToColor();
+        }
+        if (!string.IsNullOrEmpty(mergeSettings.MergeTranslationWithOriginalOutlineColor1))
+        {
+            MergeTranslationWithOriginalOutlineColor1 = mergeSettings.MergeTranslationWithOriginalOutlineColor1.FromHexToColor();
+        }
+        MergeTranslationWithOriginalOutlineWidth1 = mergeSettings.MergeTranslationWithOriginalOutlineWidth1;
+        MergeTranslationWithOriginalShadowWidth1 = mergeSettings.MergeTranslationWithOriginalShadowWidth1;
+        MergeTranslationWithOriginalAlignTop1 = mergeSettings.MergeTranslationWithOriginalAlignTop1;
+        MergeTranslationWithOriginalFontName2 = ResolveMergeTranslationWithOriginalFontName(mergeSettings.MergeTranslationWithOriginalFontName2);
+        MergeTranslationWithOriginalFontSize2 = mergeSettings.MergeTranslationWithOriginalFontSize2;
+        MergeTranslationWithOriginalBold2 = mergeSettings.MergeTranslationWithOriginalBold2;
+        MergeTranslationWithOriginalItalic2 = mergeSettings.MergeTranslationWithOriginalItalic2;
+        if (!string.IsNullOrEmpty(mergeSettings.MergeTranslationWithOriginalPrimaryColor2))
+        {
+            MergeTranslationWithOriginalPrimaryColor2 = mergeSettings.MergeTranslationWithOriginalPrimaryColor2.FromHexToColor();
+        }
+        if (!string.IsNullOrEmpty(mergeSettings.MergeTranslationWithOriginalOutlineColor2))
+        {
+            MergeTranslationWithOriginalOutlineColor2 = mergeSettings.MergeTranslationWithOriginalOutlineColor2.FromHexToColor();
+        }
+        MergeTranslationWithOriginalOutlineWidth2 = mergeSettings.MergeTranslationWithOriginalOutlineWidth2;
+        MergeTranslationWithOriginalShadowWidth2 = mergeSettings.MergeTranslationWithOriginalShadowWidth2;
+        MergeTranslationWithOriginalAlignTop2 = mergeSettings.MergeTranslationWithOriginalAlignTop2;
 
         // Prefer this tool's own saved values over the app-wide rules, exactly as the dedicated
         // split/break dialog does - otherwise the numbers typed here reset on every open (and
@@ -1416,11 +1522,21 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
 
         SaveSettings();
 
+        if (!await EnsureMergeTranslationWithOriginalTargetFormat())
+        {
+            return;
+        }
+
         var config = MakeBatchConvertConfig();
 
         // Set before the ensure-chain below: starting the server is itself the slow part a user
         // cancels out of, and the shutdown has to know the run owns it by then. (#13865)
         _usesLocalLlamaCppServer |= UsesLocalLlamaCppServer(config);
+
+        if (!await EnsureMergeTranslationWithOriginalHasAutoTranslate(config))
+        {
+            return;
+        }
 
         if (!await EnsureTranslateApiKeyPresent(config))
         {
@@ -1618,10 +1734,12 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
 
         if (Configuration.IsRunningOnWindows && !File.Exists(Path.Combine(Se.PaddleOcrFolder, "paddleocr.exe")))
         {
+            var gpuHint = await GpuBuildHint.GetAsync(GpuBuild.Cpu, GpuBuild.Cuda11, GpuBuild.Cuda12);
             var answer = await MessageBox.Show(
                 Window,
                 "Download Paddle OCR?",
                 $"{Environment.NewLine}\"Paddle OCR\" requires downloading Paddle OCR.{Environment.NewLine}{Environment.NewLine}Download and use Paddle OCR?",
+                gpuHint,
                 MessageBoxButtons.Cancel,
                 MessageBoxIcon.Question,
                 "CPU",
@@ -1660,10 +1778,12 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         }
         else if (Configuration.IsRunningOnLinux && !File.Exists(Path.Combine(Se.PaddleOcrFolder, "paddleocr.bin")))
         {
+            var gpuHint = await GpuBuildHint.GetAsync(GpuBuild.Cpu, GpuBuild.Cuda11, GpuBuild.Cuda12);
             var answer = await MessageBox.Show(
                 Window,
                 "Download Paddle OCR?",
                 $"{Environment.NewLine}\"Paddle OCR\" requires downloading Paddle OCR.{Environment.NewLine}{Environment.NewLine}Download and use Paddle OCR?",
+                gpuHint,
                 MessageBoxButtons.Cancel,
                 MessageBoxIcon.Question,
                 "CPU",
@@ -1820,6 +1940,73 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
             config.RunPlugin.Plugin == null
                 ? string.Format(Se.Language.Plugins.PluginXNotAvailable, config.RunPlugin.PluginName)
                 : string.Format(Se.Language.Plugins.PluginXHasNoExecutable, config.RunPlugin.PluginName),
+            MessageBoxButtons.OK,
+            MessageBoxIcon.Error);
+        return false;
+    }
+
+    /// <summary>
+    /// The two styles of "Merge translation with original" only exist in Advanced Sub Station
+    /// Alpha - with another target format the result looks like the function does nothing. So
+    /// when the function is selected with another format, ask which format to use.
+    /// </summary>
+    internal static bool NeedsTargetFormatQuestion(bool mergeSelected, bool autoTranslateSelected, string? targetFormat)
+    {
+        return mergeSelected && autoTranslateSelected && targetFormat != AdvancedSubStationAlpha.NameOfFormat;
+    }
+
+    private async Task<bool> EnsureMergeTranslationWithOriginalTargetFormat()
+    {
+        var mergeSelected = BatchFunctions.Any(p => p.Type == BatchConvertFunctionType.MergeTranslationWithOriginal && p.IsSelected);
+        var autoTranslateSelected = BatchFunctions.Any(p => p.Type == BatchConvertFunctionType.AutoTranslate && p.IsSelected);
+        if (Window == null || !NeedsTargetFormatQuestion(mergeSelected, autoTranslateSelected, SelectedTargetFormat))
+        {
+            return true;
+        }
+
+        return await AskMergeTranslationWithOriginalTargetFormat();
+    }
+
+    /// <summary>
+    /// The function needs Advanced Sub Station Alpha: asks to switch to it. Returns false when the
+    /// user cancels - the target format is left unchanged then.
+    /// </summary>
+    private async Task<bool> AskMergeTranslationWithOriginalTargetFormat()
+    {
+        var answer = await MessageBox.Show(
+            Window!,
+            Se.Language.Tools.BatchConvert.MergeTranslationWithOriginalTargetFormatTitle,
+            string.Format(Se.Language.Tools.BatchConvert.MergeTranslationWithOriginalTargetFormatMessage, SelectedTargetFormat),
+            MessageBoxButtons.Cancel,
+            MessageBoxIcon.Question,
+            AdvancedSubStationAlpha.NameOfFormat);
+
+        if (answer != MessageBoxResult.Custom1)
+        {
+            return false;
+        }
+
+        SelectedTargetFormat = AdvancedSubStationAlpha.NameOfFormat;
+        SaveSettings();
+        return true;
+    }
+
+    private async Task<bool> EnsureMergeTranslationWithOriginalHasAutoTranslate(BatchConvertConfig config)
+    {
+        if (!config.MergeTranslationWithOriginal.IsActive || config.AutoTranslate.IsActive)
+        {
+            return true;
+        }
+
+        if (Window == null)
+        {
+            return false;
+        }
+
+        await MessageBox.Show(
+            Window,
+            Se.Language.General.Error,
+            Se.Language.Tools.BatchConvert.MergeTranslationWithOriginalNeedsAutoTranslate,
             MessageBoxButtons.OK,
             MessageBoxIcon.Error);
         return false;
@@ -3172,12 +3359,12 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         RefreshAutoTranslateEngineDots?.Invoke(); // the engine binary just changed - amber -> green
     }
 
-    // Prompt (plus request delay, max bytes and the merge strategy) for the regular llama.cpp
-    // engine - the same window the Auto-translate window's settings button opens, editing the same
-    // shared settings. Its OK writes both Se.Settings.AutoTranslate and Configuration.Settings.Tools,
+    // Prompt (plus request delay, max bytes, keep music lines and the merge strategy) for the
+    // selected engine - the same window the Auto-translate window's settings button opens, editing
+    // the same shared settings. Its OK writes both Se.Settings.AutoTranslate and Configuration.Settings.Tools,
     // so a prompt edited here reaches the batch run too.
     [RelayCommand]
-    private async Task ShowLlamaCppTranslateSettings()
+    private async Task ShowTranslateSettings()
     {
         if (Window == null || SelectedAutoTranslator == null)
         {
@@ -3507,19 +3694,7 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         return JsonSerializer.Deserialize(JsonSerializer.Serialize(value, typeInfo), typeInfo) ?? new T();
     }
 
-    internal void OnKeyDown(KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape)
-        {
-            e.Handled = true;
-            Window?.Close();
-        }
-        else if (UiUtil.IsHelp(e))
-        {
-            e.Handled = true;
-            UiUtil.ShowHelp("features/batch-convert");
-        }
-    }
+    internal void OnKeyDown(KeyEventArgs e) => UiUtil.CloseOnEscapeOrShowHelp(e, Window, "features/batch-convert");
 
     private BatchConvertConfig MakeBatchConvertConfig()
     {
@@ -3837,6 +4012,23 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
                 ChangeCasing = ConvertActorsChangeCasing,
                 CasingIndex = ConvertActorsCasingIndex,
                 OnlyNames = ConvertActorsOnlyNames,
+            },
+
+            MergeTranslationWithOriginal = new BatchConvertConfig.MergeTranslationWithOriginalSettings
+            {
+                IsActive = activeFunctions.Contains(BatchConvertFunctionType.MergeTranslationWithOriginal),
+                StyleOriginal = MergeTwoSubtitlesHelper.BuildSsaStyle(MergeTwoSubtitlesHelper.StyleName1,
+                    MergeTranslationWithOriginalFontName1, MergeTranslationWithOriginalFontSize1,
+                    MergeTranslationWithOriginalBold1, MergeTranslationWithOriginalItalic1,
+                    MergeTranslationWithOriginalPrimaryColor1, MergeTranslationWithOriginalOutlineColor1,
+                    MergeTranslationWithOriginalOutlineWidth1, MergeTranslationWithOriginalShadowWidth1,
+                    MergeTranslationWithOriginalAlignTop1),
+                StyleTranslation = MergeTwoSubtitlesHelper.BuildSsaStyle(MergeTwoSubtitlesHelper.StyleName2,
+                    MergeTranslationWithOriginalFontName2, MergeTranslationWithOriginalFontSize2,
+                    MergeTranslationWithOriginalBold2, MergeTranslationWithOriginalItalic2,
+                    MergeTranslationWithOriginalPrimaryColor2, MergeTranslationWithOriginalOutlineColor2,
+                    MergeTranslationWithOriginalOutlineWidth2, MergeTranslationWithOriginalShadowWidth2,
+                    MergeTranslationWithOriginalAlignTop2),
             },
 
             AdjustImageColors = new BatchConvertConfig.AdjustImageColorsSettings
@@ -4254,9 +4446,11 @@ public partial class BatchConvertViewModel : ObservableObject, IClosingCleanup
         // (local or remote llama-server) and Ollama.
         LlamaCppAdvancedButtonIsVisible = engine is LlamaCppAdvancedTranslate or OllamaAdvancedTranslate or LmStudioAdvancedTranslate;
 
-        // The regular llama.cpp engine has no advanced window - its prompt (and the shared
-        // delay/max-bytes/merge settings) live in the translate settings dialog instead.
-        LlamaCppSettingsButtonIsVisible = engine is LlamaCppTranslate;
+        // The translate settings dialog holds the prompt and the shared delay/max-bytes/merge/
+        // keep-music-lines settings, like in the Auto-translate window. The advanced engines run
+        // their own batch loop that bypasses all of these (their settings live in the Advanced
+        // window), so the dialog would only show options without effect there.
+        TranslateSettingsButtonIsVisible = engine != null && !LlamaCppAdvancedButtonIsVisible;
 
         if (engine is CrispAsrMadladTranslate)
         {

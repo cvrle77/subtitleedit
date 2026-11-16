@@ -14,8 +14,6 @@ public class CrispAsrEngine : CrispAsrEngineBase
     public static string StaticName => "Crisp ASR";
     public IReadOnlyList<CrispAsrEngineBase> Backends => _backends;
     public CrispAsrEngineBase SelectedBackend { get; private set; }
-    public string SelectedBackendDisplay => GetBackendDisplayName(SelectedBackend);
-
     public CrispAsrEngine()
     {
         _backends = new List<CrispAsrEngineBase>
@@ -81,6 +79,7 @@ public class CrispAsrEngine : CrispAsrEngineBase
     public override string DefaultLanguage => SelectedBackend.DefaultLanguage;
     public override bool IncludeLanguage => SelectedBackend.IncludeLanguage;
     public override bool HasNativeTimestamps => SelectedBackend.HasNativeTimestamps;
+    public override Version? GetMinimumCrispAsrVersion(WhisperModel model) => SelectedBackend.GetMinimumCrispAsrVersion(model);
     public override List<WhisperLanguage> Languages => SelectedBackend.Languages;
     public override List<WhisperModel> Models => SelectedBackend.Models;
     public override string Extension => SelectedBackend.Extension;

@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Globalization;
 using SeConv.Core;
 using SeConv.Helpers;
+using Nikse.SubtitleEdit.UiLogic.Translate.LlamaCppAdvanced;
 
 namespace SeConv.Commands;
 
@@ -177,7 +178,7 @@ internal sealed class ConvertCommand : AsyncCommand<ConvertCommand.Settings>
         public string? TranslateFrom { get; init; }
 
         [CommandOption("--translate-engine|--translateengine")]
-        [Description("Translate engine: llamacpp (default) | ollama | lmstudio | openai-compatible | libretranslate | nllb-serve | nllb-api | deepl")]
+        [Description("Translate engine: llamacpp (default) | llamacpp-advanced | ollama | ollama-advanced | lmstudio | lmstudio-advanced | openai-compatible | libretranslate | nllb-serve | nllb-api | deepl (the advanced engines translate in batches with context)")]
         public string? TranslateEngine { get; init; }
 
         [CommandOption("--translate-url|--translateurl")]
@@ -185,16 +186,44 @@ internal sealed class ConvertCommand : AsyncCommand<ConvertCommand.Settings>
         public string? TranslateUrl { get; init; }
 
         [CommandOption("--translate-model|--translatemodel")]
-        [Description("Translate model: ollama/lmstudio/openai-compatible model name, or llamacpp .gguf file name/path (default: first downloaded translate model)")]
+        [Description("Translate model: ollama/lmstudio/openai-compatible model name (required for ollama-advanced), or llamacpp .gguf file name/path (default: first downloaded translate model)")]
         public string? TranslateModel { get; init; }
 
         [CommandOption("--translate-api-key|--translateapikey")]
-        [Description("API key for the openai-compatible and deepl translate engines (required for deepl)")]
+        [Description("API key: sent as a Bearer token by llamacpp/ollama/lmstudio, their advanced variants and openai-compatible when the server asks for one (llamacpp needs --translate-url); required for deepl")]
         public string? TranslateApiKey { get; init; }
 
         [CommandOption("--translate-prompt|--translateprompt")]
-        [Description("Prompt for llamacpp/ollama/lmstudio/openai-compatible: inline text (\\n = line break) or a path to a text file; {0}=source language, {1}=target language, {2}=the text (completion-format models)")]
+        [Description("Prompt for llamacpp/ollama/lmstudio/openai-compatible and the system prompt of the advanced engines: inline text (\\n = line break) or a path to a text file; {0}=source language, {1}=target language, {2}=the text (completion-format models, not for the advanced engines)")]
         public string? TranslatePrompt { get; init; }
+
+        [CommandOption("--translate-batch-size|--translatebatchsize")]
+        [Description("Advanced engines (llamacpp-advanced/ollama-advanced/lmstudio-advanced): subtitle lines per request, 1-50 (default: 10)")]
+        public int? TranslateBatchSize { get; init; }
+
+        [CommandOption("--translate-history|--translatehistory")]
+        [Description("Advanced engines: already-translated lines sent as context before each batch, 0-50 (default: 12)")]
+        public int? TranslateHistory { get; init; }
+
+        [CommandOption("--translate-synopsis|--translatesynopsis")]
+        [Description("Advanced engines: what the content is about (genre, setting, tone), included in every request; inline text or a path to a text file")]
+        public string? TranslateSynopsis { get; init; }
+
+        [CommandOption("--translate-glossary|--translateglossary")]
+        [Description("Advanced engines: terms to translate exactly as given, one \"source term = translation\" per line; inline text (\\n = line break) or a path to a text file")]
+        public string? TranslateGlossary { get; init; }
+
+        [CommandOption("--translate-formality|--translateformality")]
+        [Description("Advanced engines: default | formal | informal (adds an instruction to use e.g. German Sie or du)")]
+        public string? TranslateFormality { get; init; }
+
+        [CommandOption("--translate-keep-line-breaks|--translatekeeplinebreaks")]
+        [Description("Advanced engines: ask the model to keep each line's number of line breaks, the GUI's \"Keep line breaks\" switch (default: on; --translate-keep-line-breaks:false turns it off)")]
+        public bool? TranslateKeepLineBreaks { get; init; }
+
+        [CommandOption("--translate-request-json|--translaterequestjson")]
+        [Description("Advanced engines: extra request body fields as one JSON object (inline, starting with {, or the path to a .json file), merged into every request last so they win; a null value removes a field; messages and response_format cannot be set")]
+        public string? TranslateRequestJson { get; init; }
 
         [CommandOption("--offset")]
         [Description("Offset time (hh:mm:ss:ms)")]
@@ -247,6 +276,10 @@ internal sealed class ConvertCommand : AsyncCommand<ConvertCommand.Settings>
         [CommandOption("--resolution")]
         [Description("Resolution (widthxheight)")]
         public string? Resolution { get; init; }
+
+        [CommandOption("--layout-resolution")]
+        [Description("ASSA LayoutResX/LayoutResY (widthxheight): the video's display size")]
+        public string? LayoutResolution { get; init; }
 
         [CommandOption("--target-fps|--targetfps")]
         [Description("Target frame rate")]
@@ -571,14 +604,20 @@ internal sealed class ConvertCommand : AsyncCommand<ConvertCommand.Settings>
                  !string.IsNullOrWhiteSpace(settings.TranslateUrl) ||
                  !string.IsNullOrWhiteSpace(settings.TranslateModel) ||
                  !string.IsNullOrWhiteSpace(settings.TranslateApiKey) ||
-                 !string.IsNullOrWhiteSpace(settings.TranslatePrompt)))
+                 !string.IsNullOrWhiteSpace(settings.TranslatePrompt) ||
+                 settings.TranslateBatchSize.HasValue ||
+                 settings.TranslateHistory.HasValue ||
+                 !string.IsNullOrWhiteSpace(settings.TranslateSynopsis) ||
+                 !string.IsNullOrWhiteSpace(settings.TranslateGlossary) ||
+                 !string.IsNullOrWhiteSpace(settings.TranslateFormality) ||
+                 settings.TranslateKeepLineBreaks.HasValue ||
+                 !string.IsNullOrWhiteSpace(settings.TranslateRequestJson)))
             {
-                return Fail(settings, "--translate-from/--translate-engine/--translate-url/--translate-model/--translate-api-key/--translate-prompt require --translate-to:<language>.");
+                return Fail(settings, "--translate-from/--translate-engine/--translate-url/--translate-model/--translate-api-key/--translate-prompt/" +
+                                      AutoTranslateRunner.AdvancedOptionNames + " require --translate-to:<language>.");
             }
 
-            if (!string.IsNullOrWhiteSpace(settings.TranslateEngine) &&
-                !AutoTranslateRunner.SupportedEngines.Contains(settings.TranslateEngine.Trim(), StringComparer.OrdinalIgnoreCase) &&
-                !settings.TranslateEngine.Trim().Equals("llama.cpp", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(settings.TranslateEngine) && !AutoTranslateRunner.IsSupportedEngine(settings.TranslateEngine))
             {
                 return Fail(
                     settings,
@@ -609,6 +648,24 @@ internal sealed class ConvertCommand : AsyncCommand<ConvertCommand.Settings>
                 }
             }
 
+            // The batch/context options only mean something to the advanced engines; the rest
+            // translate line by line (or merged) with no history, synopsis or glossary. Fail
+            // instead of silently ignoring them. The settings themselves are built once the
+            // --settings file is loaded (below), so its values are validated the same way.
+            if ((settings.TranslateBatchSize.HasValue || settings.TranslateHistory.HasValue ||
+                 !string.IsNullOrWhiteSpace(settings.TranslateSynopsis) ||
+                 !string.IsNullOrWhiteSpace(settings.TranslateGlossary) ||
+                 !string.IsNullOrWhiteSpace(settings.TranslateFormality) ||
+                 settings.TranslateKeepLineBreaks.HasValue ||
+                 !string.IsNullOrWhiteSpace(settings.TranslateRequestJson)) &&
+                !AutoTranslateRunner.IsAdvancedEngine(settings.TranslateEngine))
+            {
+                return Fail(
+                    settings,
+                    $"{AutoTranslateRunner.AdvancedOptionNames} require an advanced translate engine: " +
+                    $"--translate-engine:{string.Join(" | ", AutoTranslateRunner.AdvancedEngines)}.");
+            }
+
             // Fail fast on a typo in --encoding so we don't silently substitute UTF-8 and
             // decode the input incorrectly without the user noticing. The literal "source"
             // is a sentinel — resolved per-file from the input's detected encoding.
@@ -636,6 +693,7 @@ internal sealed class ConvertCommand : AsyncCommand<ConvertCommand.Settings>
             // Load --settings:path.json overrides into libse Configuration before any conversion.
             // --profile <name> selects a named overlay from the same file.
             var imageStyle = new ImageExportStyle();
+            var advancedSettings = new SeLlamaCppAdvanced(); // the dialog's defaults, overlaid by tools.llamaCppAdvanced
             var settingsWarnings = new List<string>();
             if (!string.IsNullOrWhiteSpace(settings.SettingsPath))
             {
@@ -644,6 +702,7 @@ internal sealed class ConvertCommand : AsyncCommand<ConvertCommand.Settings>
                     var seConvSettings = SeConvSettings.Load(settings.SettingsPath);
                     seConvSettings.ApplyToLibSe(settings.Profile);
                     seConvSettings.ApplyExportImages(imageStyle, settings.Profile);
+                    seConvSettings.ApplyLlamaCppAdvanced(advancedSettings, settings.Profile);
 
                     // Unknown keys are ignored by the JSON reader, which used to mean a typo - or a
                     // key from a newer seconv - silently produced default output (issue #12437).
@@ -673,6 +732,25 @@ internal sealed class ConvertCommand : AsyncCommand<ConvertCommand.Settings>
             else if (!string.IsNullOrWhiteSpace(settings.Profile))
             {
                 return Fail(settings, "--profile requires --settings:<path.json>");
+            }
+
+            // Build the advanced engine's settings up front - the command-line options on top of
+            // the file's tools.llamaCppAdvanced section - so a bad value from either source (the
+            // synopsis and glossary may be files, the prompt must not be a completion template)
+            // never costs a conversion.
+            if (AutoTranslateRunner.IsAdvancedEngine(settings.TranslateEngine))
+            {
+                try
+                {
+                    AutoTranslateRunner.CreateAdvancedSettings(
+                        settings.TranslateBatchSize, settings.TranslateHistory, settings.TranslateSynopsis,
+                        settings.TranslateGlossary, settings.TranslateFormality, settings.TranslateKeepLineBreaks, settings.TranslateRequestJson,
+                        AutoTranslateRunner.ReadPromptOption(settings.TranslatePrompt), advancedSettings);
+                }
+                catch (Exception ex)
+                {
+                    return Fail(settings, ex.Message);
+                }
             }
 
             // Image styling flags override the settings JSON. Unlike the JSON (which only warns
@@ -809,6 +887,19 @@ internal sealed class ConvertCommand : AsyncCommand<ConvertCommand.Settings>
                 }
             }
 
+            (int Width, int Height)? layoutResolution = null;
+            if (!string.IsNullOrWhiteSpace(settings.LayoutResolution))
+            {
+                try
+                {
+                    layoutResolution = ResolutionParser.Parse(settings.LayoutResolution);
+                }
+                catch (FormatException ex)
+                {
+                    return Fail(settings, "--layout-resolution: " + ex.Message);
+                }
+            }
+
             if (!string.IsNullOrWhiteSpace(settings.BurnInVideo))
             {
                 if (!File.Exists(settings.BurnInVideo))
@@ -925,6 +1016,7 @@ internal sealed class ConvertCommand : AsyncCommand<ConvertCommand.Settings>
                 BridgeGapsMaxMs = settings.BridgeGaps,
                 ApplyMinGapMs = applyMinGapMs,
                 Resolution = resolution,
+                LayoutResolution = layoutResolution,
                 ImageStyle = imageStyle,
                 AssaStyleFile = settings.AssaStyleFile,
                 BurnInVideo = settings.BurnInVideo,
@@ -976,6 +1068,14 @@ internal sealed class ConvertCommand : AsyncCommand<ConvertCommand.Settings>
                 TranslateModel = settings.TranslateModel,
                 TranslateApiKey = settings.TranslateApiKey,
                 TranslatePrompt = settings.TranslatePrompt,
+                TranslateBatchSize = settings.TranslateBatchSize,
+                TranslateHistory = settings.TranslateHistory,
+                TranslateSynopsis = settings.TranslateSynopsis,
+                TranslateGlossary = settings.TranslateGlossary,
+                TranslateFormality = settings.TranslateFormality,
+                TranslateKeepLineBreaks = settings.TranslateKeepLineBreaks,
+                TranslateRequestJson = settings.TranslateRequestJson,
+                TranslateAdvancedSettings = advancedSettings,
                 TeletextOnly = settings.TeletextOnly,
                 TeletextOnlyPage = settings.TeletextOnlyPage,
                 Quiet = silent,

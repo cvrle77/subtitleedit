@@ -201,7 +201,7 @@ public partial class OcrViewModel : ObservableObject
     [ObservableProperty] private string _nOcrBinaryOcrFallbackDatabase;
     [ObservableProperty] private string _binaryOcrNOcrFallbackDatabase;
     private const double DefaultImageMaxHeight = 100;
-    private const double DefaultImageMaxWidth = 200;
+    internal const double DefaultImageMaxWidth = 200;
     [ObservableProperty] private double _imageMaxHeight = DefaultImageMaxHeight;
     [ObservableProperty] private double _imageMaxWidth = DefaultImageMaxWidth;
     [ObservableProperty] private FontFamily _textBoxFontFamily;
@@ -2756,10 +2756,12 @@ public partial class OcrViewModel : ObservableObject
         {
             if (Configuration.IsRunningOnWindows && !File.Exists(Path.Combine(Se.PaddleOcrFolder, "paddleocr.exe")))
             {
+                var gpuHint = await GpuBuildHint.GetAsync(GpuBuild.Cpu, GpuBuild.Cuda11, GpuBuild.Cuda12);
                 var answer = await MessageBox.Show(
                     Window!,
                     string.Format(Se.Language.General.DownloadXQuestion, "Paddle OCR"),
                     Environment.NewLine + string.Format(Se.Language.General.XRequiresDownloadingYUseZ, "Paddle OCR", "Paddle OCR", "Paddle OCR"),
+                    gpuHint,
                     MessageBoxButtons.Cancel,
                     MessageBoxIcon.Question,
                     "CPU",
@@ -2800,10 +2802,12 @@ public partial class OcrViewModel : ObservableObject
             }
             else if (Configuration.IsRunningOnLinux && !File.Exists(Path.Combine(Se.PaddleOcrFolder, "paddleocr.bin")))
             {
+                var gpuHint = await GpuBuildHint.GetAsync(GpuBuild.Cpu, GpuBuild.Cuda11, GpuBuild.Cuda12);
                 var answer = await MessageBox.Show(
                     Window!,
                     string.Format(Se.Language.General.DownloadXQuestion, "Paddle OCR"),
                     Environment.NewLine + string.Format(Se.Language.General.XRequiresDownloadingYUseZ, "Paddle OCR", "Paddle OCR", "Paddle OCR"),
+                    gpuHint,
                     MessageBoxButtons.Cancel,
                     MessageBoxIcon.Question,
                     "CPU",
@@ -5505,11 +5509,11 @@ public partial class OcrViewModel : ObservableObject
         AutoDetectSourceLanguage();
     }
 
-    public void InitializeBdn(Subtitle subtitle, string fileName, bool isSon)
+    public void InitializeBdn(Subtitle subtitle, string fileName)
     {
         _sourceFileName = fileName;
         Title = UiUtil.FormatTitleWithFileName(Se.Language.Ocr.OcrX, fileName);
-        _ocrSubtitle = new OcrSubtitleBdn(subtitle, fileName, isSon);
+        _ocrSubtitle = new OcrSubtitleBdn(subtitle, fileName);
         SetOcrSubtitleItems();
         AutoDetectSourceLanguage();
     }

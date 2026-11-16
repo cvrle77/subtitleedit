@@ -441,6 +441,15 @@ public partial class SpeechToTextViewModel : ObservableObject
             }
         }
 
+        // "CPP" is also the value of a never-touched setting, so while no Whisper CPP backend has
+        // been downloaded the CPU backend is not a choice the user made: start on the backend
+        // that fits this computer's GPU instead (#16944). A saved cuBLAS/Vulkan choice is kept.
+        if (whisperCppEngine != null &&
+            savedChoice is not (WhisperChoice.CppCuBlas or WhisperChoice.CppVulkan or WhisperChoice.CppCuBlasLib))
+        {
+            whisperCppEngine.SelectRecommendedBackendIfNoneInstalled(GpuCapabilityHelper.Detect());
+        }
+
         Parameters = GetEffectiveSelectedEngine().CommandLineParameter;
 
         EngineChanged();
@@ -637,6 +646,7 @@ public partial class SpeechToTextViewModel : ObservableObject
         }
         newOptions.Add(ForcedAlignerOption.CanaryCtc());
         newOptions.Add(ForcedAlignerOption.Qwen3());
+        newOptions.Add(ForcedAlignerOption.Qwen3Ultra());
         // wav2vec2 "WhisperX aligner zoo" — 12 language-specific CTC aligners
         // that work on top of any Crisp ASR backend via `-am <path>`.
         newOptions.AddRange(ForcedAlignerOption.Wav2Vec2All());
@@ -1024,6 +1034,10 @@ public partial class SpeechToTextViewModel : ObservableObject
     /// a cue at the seam. Granite otherwise runs in crispasr's fixed 30 s auto-chunks, which drop
     /// words at the cuts: on FLEURS (30 en / 25 de clips, crispasr 0.8.48) Silero took Granite 4.1
     /// from 11.8% to 9.2% WER in English and from 12.7% to 10.7% in German.
+    /// Qwen3 makes no timestamps of its own, so every time comes from the forced aligner, and
+    /// without VAD crispasr hands it pieces so long that it drifts: on a 13 min Japanese anime
+    /// episode (#16800) cues started up to 6.5 s early and several sentences were merged into
+    /// 10-18 s cues. With FireRedVAD the median start/end error was about 0.15 s.
     ///
     /// --chunk-seconds/-ck in the user's parameters means "no VAD, use fixed chunks" - that is
     /// crispasr's own documented way to switch its auto-VAD back off, and it is the only way to
@@ -1043,7 +1057,7 @@ public partial class SpeechToTextViewModel : ObservableObject
             return false;
         }
 
-        var needsVad = engine is CrispAsrCohere or CrispAsrMega or CrispAsrIndexEcho or CrispAsrGranite;
+        var needsVad = engine is CrispAsrCohere or CrispAsrMega or CrispAsrIndexEcho or CrispAsrGranite or CrispAsrQwen3;
         if (!needsVad && CrispAsrVadModel.Get(vadChoice).Choice == CrispAsrVadModel.Automatic)
         {
             return false;
@@ -1072,7 +1086,7 @@ public partial class SpeechToTextViewModel : ObservableObject
     /// was the crispasr v0.8.29 GPU packages, built with AVX-512 against a CI runner that had it
     /// (CrispASR #374) - every CPU without AVX-512 got this on the CUDA/Vulkan build while the CPU
     /// build ran fine, so naming the installed package is most of the answer. That build flaw is
-    /// fixed from v0.8.30 (SE now pins v0.8.50), but the message still earns its keep: a pre-AVX2 CPU
+    /// fixed from v0.8.30 (SE now pins v0.8.53), but the message still earns its keep: a pre-AVX2 CPU
     /// hits the same silent death on the AVX2 CPU package, and an install predating the pin bump
     /// keeps the broken GPU binary until the user downloads the engine again.
     /// </summary>
@@ -3779,10 +3793,12 @@ public partial class SpeechToTextViewModel : ObservableObject
     /// </summary>
     private async Task<bool?> PromptQwen3AsrGpuAsync(string engineName)
     {
+        var gpuHint = await GpuBuildHint.GetAsync(GpuBuild.Cpu, GpuBuild.Vulkan);
         var answer = await MessageBox.Show(
             Window!,
             string.Format(Se.Language.General.DownloadXQuestion, engineName),
             Environment.NewLine + string.Format(Se.Language.Video.AudioToText.XRequiresEngineSelectVersion, engineName),
+            gpuHint,
             MessageBoxButtons.Cancel,
             MessageBoxIcon.Question,
             "CPU",
@@ -4274,7 +4290,7 @@ public partial class SpeechToTextViewModel : ObservableObject
                 RefreshEngineCombo?.Invoke();
             }
 
-            if (!await EnsureIndexEchoCrispAsrVersionAsync(engine))
+            if (!await EnsureCrispAsrVersionForModelAsync(engine, model.Model))
             {
                 return;
             }
@@ -5991,18 +6007,21 @@ public partial class SpeechToTextViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Index-Echo only exists in CrispASR v0.8.41+; an older binary rejects the backend after the
-    /// user has sat through a 2.7 GB model download. Offers the update before that.
+    /// Some backends/models need a newer CrispASR than the user may have installed: Index-Echo only
+    /// exists in v0.8.41+ (an older binary rejects the backend after a 2.7 GB model download), and
+    /// Haas-ja needs v0.8.50+ (an older binary loads it and crashes with an access violation, #16900).
+    /// Offers the update before running.
     /// </summary>
-    private async Task<bool> EnsureIndexEchoCrispAsrVersionAsync(ISpeechToTextEngine engine)
+    private async Task<bool> EnsureCrispAsrVersionForModelAsync(ISpeechToTextEngine engine, WhisperModel model)
     {
-        if (engine is not CrispAsrIndexEcho)
+        if (engine is not ICrispAsrEngine crispAsrEngine ||
+            crispAsrEngine.GetMinimumCrispAsrVersion(model) is not { } minimumVersion)
         {
             return true;
         }
 
         var installedVersion = CrispAsrVersion.TryGet(engine.GetExecutable());
-        if (CrispAsrVersion.IsAtLeast(installedVersion, CrispAsrIndexEcho.MinimumCrispAsrVersion))
+        if (CrispAsrVersion.IsAtLeast(installedVersion, minimumVersion))
         {
             return true;
         }
@@ -6010,7 +6029,7 @@ public partial class SpeechToTextViewModel : ObservableObject
         var answer = await MessageBox.Show(
             Window!,
             string.Format(Se.Language.Video.AudioToText.UpdateXTitle, engine.Name),
-            string.Format(Se.Language.Video.AudioToText.XNeedsNewerCrispAsr, engine.Name, CrispAsrIndexEcho.MinimumCrispAsrVersion, installedVersion),
+            string.Format(Se.Language.Video.AudioToText.XNeedsNewerCrispAsr, engine.Name, minimumVersion, installedVersion),
             MessageBoxButtons.YesNoCancel,
             MessageBoxIcon.Question);
 
@@ -6026,7 +6045,7 @@ public partial class SpeechToTextViewModel : ObservableObject
             return false;
         }
 
-        return CrispAsrVersion.IsAtLeast(CrispAsrVersion.TryGet(engine.GetExecutable()), CrispAsrIndexEcho.MinimumCrispAsrVersion);
+        return CrispAsrVersion.IsAtLeast(CrispAsrVersion.TryGet(engine.GetExecutable()), minimumVersion);
     }
 
     private async Task CheckQwen3AsrCppForUpdateAsync()

@@ -586,6 +586,7 @@ public class SettingsPage : UserControl
                 }
             }),
             MakeCheckboxSetting(Se.Language.Options.Settings.SubtitleGridCenterSelectedRow, nameof(_vm.SubtitleGridCenterSelectedRow)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.CopyTextBlankLineBetweenSubtitles, nameof(_vm.CopyTextBlankLineBetweenSubtitles)),
 
             new SettingsItem(Se.Language.Options.Settings.SaveAsBehavior, () => new ComboBox
             {
@@ -739,7 +740,26 @@ public class SettingsPage : UserControl
             MakeCheckboxSetting(Se.Language.Options.Settings.RememberSecondarySubtitleFile, nameof(_vm.RememberSecondarySubtitleFile)),
             new SettingsItem(Se.Language.Options.Settings.Deinterlace,
                 () => UiUtil.MakeComboBox(_vm.MpvDeinterlaceItems, _vm, nameof(_vm.MpvSelectedDeinterlace))),
-            new SettingsItem(Se.Language.Options.Settings.SubtitlePreviewProperties, () => MakeMpvPreviewSettings(_vm)),
+            new SettingsItem(Se.Language.Options.Settings.SubtitlePreviewProperties, () => MakeMpvPreviewSettings(_vm))
+            {
+                SearchTerms =
+                [
+                    Se.Language.General.FontName,
+                    Se.Language.General.FontSize,
+                    Se.Language.General.Bold,
+                    Se.Language.General.Alignment,
+                    Se.Language.Options.Settings.TextJustify,
+                    Se.Language.Options.Settings.UsePositionFromSubtitleFile,
+                    Se.Language.General.Margin,
+                    Se.Language.Options.Settings.MarginIsPartOfSubtitleArea,
+                    Se.Language.Assa.Primary,
+                    Se.Language.General.Outline,
+                    Se.Language.General.Shadow,
+                    Se.Language.General.BorderStyle,
+                    Se.Language.General.OutlineWidth,
+                    Se.Language.General.ShadowWidth,
+                ],
+            },
             new SettingsItem(!_vm.IsLibMpvDownloadVisible, Se.Language.Options.Settings.DownloadMpv, () => new StackPanel
             {
                 Children =
@@ -908,6 +928,7 @@ public class SettingsPage : UserControl
             // Own strings: General.Show is the start-time column header, not the verb (#16672).
             MakeCheckboxSetting(Se.Language.Options.Settings.WaveformShowNumberAndDuration, nameof(_vm.WaveformShowNumberAndDuration)),
             MakeCheckboxSetting(Se.Language.Options.Settings.WaveformShowCps, nameof(_vm.WaveformShowCps)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.WaveformShowBookmarks, nameof(_vm.WaveformShowBookmarks)),
             new SettingsItem(Se.Language.Options.Settings.WaveformTextFontSize, () => UiUtil.MakeNumericUpDownInt(
                 10 ,
                 100,
@@ -1148,8 +1169,11 @@ public class SettingsPage : UserControl
             new SettingsItem(Se.Language.Options.Settings.GridAlternatingRowColorDark, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.GridAlternatingRowColorDark))),
             new SettingsItem(Se.Language.Options.Settings.ShowGridLines, () => UiUtil.MakeComboBox(_vm.GridLinesVisibilities, _vm, nameof(_vm.SelectedGridLinesVisibility))),
             new SettingsItem(Se.Language.Options.Settings.BookmarkColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.BookmarkColor))),
+            new SettingsItem(Se.Language.Options.Settings.BookmarkColor2, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.BookmarkColor2))),
+            new SettingsItem(Se.Language.Options.Settings.BookmarkColor3, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.BookmarkColor3))),
             new SettingsItem(Se.Language.Options.Settings.SpellCheckHighlightColor, () => UiUtil.MakeColorPickerButton(_vm, nameof(_vm.SpellCheckHighlightColor))),
             MakeCheckboxSetting(Se.Language.Options.Settings.ShowAssaLayer, nameof(_vm.ShowAssaLayer)),
+            MakeCheckboxSetting(Se.Language.Options.Settings.ShowActorBox, nameof(_vm.ShowActorBox)),
             MakeCheckboxSetting(Se.Language.Options.Settings.ShowHorizontalLineAboveToolbar, nameof(_vm.ShowHorizontalLineAboveToolbar)),
             MakeCheckboxSetting(Se.Language.Options.Settings.ShowPluginsMenu, nameof(_vm.ShowPluginsMenu)),
             new SettingsItem(!OperatingSystem.IsWindows(), Se.Language.Options.Settings.WindowsRenderingMode, () => new StackPanel

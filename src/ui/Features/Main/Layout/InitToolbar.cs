@@ -7,12 +7,10 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
-using Avalonia.Media.Imaging;
 using Avalonia.Styling;
 using Nikse.SubtitleEdit.Core.SubtitleFormats;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
-using SkiaSharp;
 using System;
 using System.IO;
 using System.Linq;
@@ -261,7 +259,7 @@ public static class InitToolbar
             stackPanelLeft.Children.Add(new Button
             {
                 Content = MakeImage("AutoTranslate"),
-                Command = vm.ShowAutoTranslateCommand,
+                Command = vm.ToolbarAutoTranslateCommand,
                 Background = Brushes.Transparent,
                 [AutomationProperties.NameProperty] = languageHints.AutoTranslateHint,
                 [ToolTip.TipProperty] = UiUtil.MakeToolTip(languageHints.AutoTranslateHint, shortcuts, nameof(vm.ShowAutoTranslateCommand)),
@@ -274,7 +272,7 @@ public static class InitToolbar
             stackPanelLeft.Children.Add(new Button
             {
                 Content = MakeImage("SpeechToText"),
-                Command = vm.ShowSpeechToTextWhisperCommand,
+                Command = vm.ToolbarSpeechToTextCommand,
                 Background = Brushes.Transparent,
                 [AutomationProperties.NameProperty] = languageHints.SpeechToTextHint,
                 [ToolTip.TipProperty] = UiUtil.MakeToolTip(languageHints.SpeechToTextHint, shortcuts, nameof(vm.ShowSpeechToTextWhisperCommand)),

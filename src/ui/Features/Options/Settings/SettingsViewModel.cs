@@ -256,6 +256,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private string _selectedSubtitleDoubleClickActionType;
 
     [ObservableProperty] private bool _subtitleGridCenterSelectedRow;
+    [ObservableProperty] private bool _copyTextBlankLineBetweenSubtitles;
 
     [ObservableProperty] private ObservableCollection<string> _saveAsBehaviorTypes;
     [ObservableProperty] private ObservableCollection<string> _defaultSaveLocationTypes;
@@ -358,6 +359,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _waveformUseSkiaRenderer;
     [ObservableProperty] private bool _waveformShowNumberAndDuration;
     [ObservableProperty] private bool _waveformShowCps;
+    [ObservableProperty] private bool _waveformShowBookmarks;
     [ObservableProperty] private bool _waveformFocusOnMouseOver;
     [ObservableProperty] private bool _waveformCenterVideoPosition;
     [ObservableProperty] private bool _waveformCenterVideoPositionAlsoWhenPaused;
@@ -507,6 +509,7 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _gridCompactMode;
     [ObservableProperty] private bool _gridAlternatingRows;
     [ObservableProperty] private bool _showAssaLayer;
+    [ObservableProperty] private bool _showActorBox;
     [ObservableProperty] private bool _showHorizontalLineAboveToolbar;
     [ObservableProperty] private ObservableCollection<GridLinesVisibilityDisplay> _gridLinesVisibilities;
     [ObservableProperty] private GridLinesVisibilityDisplay _selectedGridLinesVisibility;
@@ -519,6 +522,8 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty] private bool _useFocusedButtonBackgroundColor;
     [ObservableProperty] private Color _focusedButtonBackgroundColor;
     [ObservableProperty] private Color _bookmarkColor;
+    [ObservableProperty] private Color _bookmarkColor2;
+    [ObservableProperty] private Color _bookmarkColor3;
     [ObservableProperty] private Color _spellCheckHighlightColor;
     [ObservableProperty] private Color _gridAlternatingRowColor;
     [ObservableProperty] private Color _gridAlternatingRowColorDark;
@@ -1004,6 +1009,7 @@ public partial class SettingsViewModel : ObservableObject
         SelectedSubtitleSingleClickActionType = MapFromSelectedSubtitleSingleClickAction(Se.Settings.General.SubtitleSingleClickAction);
         SelectedSubtitleDoubleClickActionType = MapFromSelectedSubtitleDoubleClickAction(Se.Settings.General.SubtitleDoubleClickAction);
         SubtitleGridCenterSelectedRow = Se.Settings.General.SubtitleGridCenterSelectedRow;
+        CopyTextBlankLineBetweenSubtitles = Se.Settings.General.CopyTextBlankLineBetweenSubtitles;
         SelectedSaveAsBehaviorType = MapFromSelectedSaveAsBehavior(Se.Settings.General.SaveAsBehavior);
         SelectedFileChangedOutsideAction = FileChangedOutsideActions.FirstOrDefault(p => p.Action.ToString() == general.FileChangedOutsideAction) ?? FileChangedOutsideActions[0];
         SelectedSaveAsAppendLanguageCode = MapFromSelectedSaveAsAppendLanguageCode(Se.Settings.General.SaveAsAppendLanguageCode);
@@ -1142,6 +1148,7 @@ public partial class SettingsViewModel : ObservableObject
         GridCompactMode = appearance.GridCompactMode;
         GridAlternatingRows = appearance.GridAlternatingRows;
         ShowAssaLayer = appearance.ShowLayer;
+        ShowActorBox = appearance.ShowActor;
         ShowHorizontalLineAboveToolbar = appearance.ShowHorizontalLineAboveToolbar;
         SelectedGridLinesVisibility = GridLinesVisibilities.FirstOrDefault(p => p.Type.ToString() == appearance.GridLinesAppearance) ?? GridLinesVisibilities[0];
         SelectedWindowsRenderingMode = WindowsRenderingModes.FirstOrDefault(p => p.Mode.ToString() == appearance.WindowsRenderingMode) ?? WindowsRenderingModes[0];
@@ -1151,6 +1158,8 @@ public partial class SettingsViewModel : ObservableObject
         UseFocusedButtonBackgroundColor = appearance.UseFocusedButtonBackgroundColor;
         FocusedButtonBackgroundColor = appearance.FocusedButtonBackgroundColor.FromHexToColor();
         BookmarkColor = appearance.BookmarkColor.FromHexToColor();
+        BookmarkColor2 = appearance.BookmarkColor2.FromHexToColor();
+        BookmarkColor3 = appearance.BookmarkColor3.FromHexToColor();
         SpellCheckHighlightColor = appearance.SpellCheckHighlightColor.FromHexToColor();
         GridAlternatingRowColor = appearance.GridAlternatingRowColor.FromHexToColor();
         GridAlternatingRowColorDark = appearance.GridAlternatingRowColorDark.FromHexToColor();
@@ -1164,6 +1173,7 @@ public partial class SettingsViewModel : ObservableObject
         WaveformUseSkiaRenderer = Se.Settings.Waveform.UseSkiaRenderer;
         WaveformShowNumberAndDuration = Se.Settings.Waveform.WaveformShowNumberAndDuration;
         WaveformShowCps = Se.Settings.Waveform.WaveformShowCps;
+        WaveformShowBookmarks = Se.Settings.Waveform.WaveformShowBookmarks;
         WaveformFocusOnMouseOver = Se.Settings.Waveform.FocusOnMouseOver;
         WaveformCenterVideoPosition = Se.Settings.Waveform.CenterVideoPosition;
         WaveformCenterVideoPositionAlsoWhenPaused = Se.Settings.Waveform.CenterVideoPositionAlsoWhenPaused;
@@ -1986,6 +1996,7 @@ public partial class SettingsViewModel : ObservableObject
         general.SubtitleSingleClickAction = MapToSelectedSubtitleSingleClickAction(SelectedSubtitleSingleClickActionType);
         general.SubtitleDoubleClickAction = MapToSelectedSubtitleDoubleClickAction(SelectedSubtitleDoubleClickActionType);
         general.SubtitleGridCenterSelectedRow = SubtitleGridCenterSelectedRow;
+        general.CopyTextBlankLineBetweenSubtitles = CopyTextBlankLineBetweenSubtitles;
         general.SaveAsBehavior = MapToSaveAsBehavior(SelectedSaveAsBehaviorType);
         general.FileChangedOutsideAction = SelectedFileChangedOutsideAction.Action.ToString();
         general.SaveAsAppendLanguageCode = MapToSaveAsAppendLanguageCode(SelectedSaveAsAppendLanguageCode);
@@ -2100,6 +2111,8 @@ public partial class SettingsViewModel : ObservableObject
         appearance.UseFocusedButtonBackgroundColor = UseFocusedButtonBackgroundColor;
         appearance.FocusedButtonBackgroundColor = FocusedButtonBackgroundColor.FromColorToHex();
         appearance.BookmarkColor = BookmarkColor.FromColorToHex();
+        appearance.BookmarkColor2 = BookmarkColor2.FromColorToHex();
+        appearance.BookmarkColor3 = BookmarkColor3.FromColorToHex();
         appearance.SpellCheckHighlightColor = SpellCheckHighlightColor.FromColorToHex();
         appearance.GridAlternatingRowColor = GridAlternatingRowColor.FromColorToHex();
         appearance.GridAlternatingRowColorDark = GridAlternatingRowColorDark.FromColorToHex();
@@ -2114,12 +2127,14 @@ public partial class SettingsViewModel : ObservableObject
         appearance.WindowsRenderingMode = SelectedWindowsRenderingMode.Mode.ToString();
         appearance.SubtitleGridTextDisplay = SelectedSubtitleGridTextDisplayMode.Mode.ToString();
         appearance.ShowLayer = ShowAssaLayer;
+        appearance.ShowActor = ShowActorBox;
         appearance.ShowHorizontalLineAboveToolbar = ShowHorizontalLineAboveToolbar;
 
         Se.Settings.Waveform.DrawGridLines = WaveformDrawGridLines;
         Se.Settings.Waveform.UseSkiaRenderer = WaveformUseSkiaRenderer;
         Se.Settings.Waveform.WaveformShowNumberAndDuration = WaveformShowNumberAndDuration;
         Se.Settings.Waveform.WaveformShowCps = WaveformShowCps;
+        Se.Settings.Waveform.WaveformShowBookmarks = WaveformShowBookmarks;
         Se.Settings.Waveform.FocusOnMouseOver = WaveformFocusOnMouseOver;
         Se.Settings.Waveform.CenterVideoPosition = WaveformCenterVideoPosition;
         Se.Settings.Waveform.CenterVideoPositionAlsoWhenPaused = WaveformCenterVideoPositionAlsoWhenPaused;
@@ -3586,19 +3601,7 @@ public partial class SettingsViewModel : ObservableObject
             vm => vm.SetIsExport(true));
     }
 
-    public void OnKeyDown(KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape)
-        {
-            e.Handled = true;
-            Window?.Close();
-        }
-        else if (UiUtil.IsHelp(e))
-        {
-            e.Handled = true;
-            UiUtil.ShowHelp("features/settings");
-        }
-    }
+    public void OnKeyDown(KeyEventArgs e) => UiUtil.CloseOnEscapeOrShowHelp(e, Window, "features/settings");
 
     /// <summary>
     /// Runs on the tunnel pass: the content's ScrollViewer, text boxes and combo boxes handle

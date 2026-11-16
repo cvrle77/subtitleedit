@@ -25,7 +25,9 @@ using Nikse.SubtitleEdit.Features.Tools.ChangeCasing;
 using Nikse.SubtitleEdit.Features.Tools.ConvertActors;
 using Nikse.SubtitleEdit.Features.Tools.MergeContinuationLines;
 using Nikse.SubtitleEdit.Features.Tools.MergeSubtitlesWithSameTimeCodes;
+using Nikse.SubtitleEdit.Features.Tools.MergeTwoSubtitles;
 using Nikse.SubtitleEdit.Features.Tools.SplitBreakLongLines;
+using Nikse.SubtitleEdit.Features.Video.BurnIn;
 using Nikse.SubtitleEdit.Logic;
 using Nikse.SubtitleEdit.Logic.Config;
 using Nikse.SubtitleEdit.Logic.Dictionaries;
@@ -699,13 +701,6 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
         }
 
         WriteToImageBasedFormat(item, imageSubtitle, cancellationToken);
-    }
-
-    public class TransportStreamResult
-    {
-        public bool IsImage { get; set; }
-        public IOcrSubtitle? OcrSubtitle { get; set; }
-        public Subtitle? Subtitle { get; set; }
     }
 
     public static List<IBinaryParagraphWithPosition> LoadDvbFromMatroska(MatroskaTrackInfo track, MatroskaFile matroska, ref Subtitle subtitle)
@@ -2118,7 +2113,9 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
 
             if (targetFormat.Name == AdvancedSubStationAlpha.NameOfFormat)
             {
-                if (!_config.AssaUseSourceStylesIfPossible || s.OriginalFormat?.Name != AdvancedSubStationAlpha.NameOfFormat)
+                // "Merge translation with original" made its own two styles - the template would drop them
+                if (!IsMergeTranslationWithOriginalActive &&
+                    (!_config.AssaUseSourceStylesIfPossible || s.OriginalFormat?.Name != AdvancedSubStationAlpha.NameOfFormat))
                 {
                     if (!string.IsNullOrEmpty(_config.AssaHeader))
                     {
@@ -2327,7 +2324,9 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
             {
                 // "{\an8}" & co. were stripped from the text but not honored, so top-positioned
                 // lines silently ended up at the bottom (issue #13025).
-                Alignment = ExportTextTags.GetAlignment(subtitle.Text, ExportAlignment.BottomCenter),
+                // Lines without one take the profile's alignment, like the export dialog - a
+                // "Top center" profile still rendered every line at the bottom.
+                Alignment = ExportTextTags.GetAlignment(subtitle.Text, profile.Alignment),
                 // Everything else here follows the export-images profile, so the justification
                 // has to as well - it was hardcoded, ignoring what the dialog had saved.
                 ContentAlignment = profile.ContentAlignment,
@@ -2348,10 +2347,26 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
                 ShadowWidth = profile.ShadowWidth,
                 BackgroundColor = profile.BackgroundColor.FromHexToColor().ToSKColor(),
                 BackgroundCornerRadius = profile.BackgroundCornerRadius,
+                // The dialog saves the box type and its padding, but batch never read them, so
+                // a "box per line"/"one box" profile rendered plain outlined text.
+                BoxType = profile.BoxType switch
+                {
+                    FontBoxType.OneBox => ExportBoxType.OneBox,
+                    FontBoxType.BoxPerLine => ExportBoxType.BoxPerLine,
+                    _ => ExportBoxType.None,
+                },
+                BoxPaddingLeft = profile.BoxPaddingLeft,
+                BoxPaddingRight = profile.BoxPaddingRight,
+                BoxPaddingTop = profile.BoxPaddingTop,
+                BoxPaddingBottom = profile.BoxPaddingBottom,
                 ScreenWidth = profile.ScreenWidth,
                 ScreenHeight = profile.ScreenHeight,
+                PixelAspectRatio = ExportPixelAspect.Parse(profile.PixelAspect),
                 BottomTopMargin = profile.BottomTopMargin,
                 LeftRightMargin = profile.LeftRightMargin,
+                // Without it numbers and Latin words in Persian/Arabic/Hebrew lines came out
+                // reversed, while the single-file export got them right (#16831).
+                IsRightToLeft = profile.IsRightToLeft,
                 // The export handlers read these off the parameters: FCP/BDN take their
                 // timecode frame rate from here (falling back to a 25/23.976 default), and
                 // FCP/Blu-ray render onto a frame-sized canvas when full frame is on.
@@ -2444,6 +2459,21 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
             s = AddFormatting(s);
             s = SplitBreakLongLines(s, Language);
             s = AdjustDisplayDuration(s);
+
+            // "Merge translation with original": every function runs on the source first, so the
+            // subtitle that is stored is exactly the input of the translation, and the merge with
+            // its output is the last step. The plugin runs here too - after the merge it would
+            // get both languages in one subtitle.
+            var mergeActive = IsMergeTranslationWithOriginalActive;
+            if (mergeActive)
+            {
+                s = await RunTextAndTimeCodeFunctions(s, item);
+                s = BeautifyTimeCodes(s, item.FileName);
+                s = SnapTimeCodesToFrames(s, item.FileName);
+                s = await RunPlugin(s, item, cancellationToken);
+            }
+
+            var original = mergeActive ? new Subtitle(s, false) : null;
             s = await AutoTranslate(s, item, cancellationToken);
             if (_config.AutoTranslate.IsActive)
             {
@@ -2453,36 +2483,120 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
                 Language = GetTwoLetterLanguageCode(CurrentTargetLanguage.Code) ?? Language;
             }
 
-            s = ChangeCasing(s, Language);
-            s = OffsetTimeCodes(s);
-            s = ChangeFrameRate(s);
-            s = ChangeSpeed(s);
-            s = BridgeGaps(s);
-            s = ApplyMinGap(s);
-            s = await FixCommonErrorsAsync(s);
-            s = MergeLinesWithSameText(s);
-            s = MergeLinesWithSameTimeCodes(s, Language);
-            s = ConvertColorsToDialog(s, Language);
-            s = MergeShortLines(s);
-            s = MergeContinuationLines(s, Language);
-            s = MultipleReplace(s);
-            s = RemoveLineBreaks(s);
-            s = AutoBalanceLines(s, Language);
-            s = ApplyDurationLimits(s);
-            s = RemoveTextForHearingImpaired(s, Language);
-            s = RemoveUnicodeControlCharacters(s);
-            s = FixRightToLeft(s);
-            s = AssaChangeResolution(s);
-            s = AssaChangeStyle(s);
-            s = AssaChangeStyleProperties(s);
-            s = BeautifyTimeCodes(s, item.FileName);
-            s = SnapTimeCodesToFrames(s, item.FileName);
-            s = await RunPlugin(s, item, cancellationToken);
+            if (original != null)
+            {
+                s = CleanUpTranslation(s);
+                s = MergeTranslationWithOriginal(original, s);
+
+                // Change style / Change style properties are left out: they would rename, replace
+                // or re-align the two styles, so original and translation could end up on top of
+                // each other. Resolution only scales the merged script as a whole.
+                s = AssaChangeResolution(s);
+            }
+            else
+            {
+                s = await RunTextAndTimeCodeFunctions(s, item);
+                s = AssaChangeResolution(s);
+                s = AssaChangeStyle(s);
+                s = AssaChangeStyleProperties(s);
+                s = BeautifyTimeCodes(s, item.FileName);
+                s = SnapTimeCodesToFrames(s, item.FileName);
+                s = await RunPlugin(s, item, cancellationToken);
+            }
+
             s = SortBy(s);
             s = Renumber(s);
         }
 
         return s;
+    }
+
+    /// <summary>
+    /// The text and time code functions - after auto-translate, or before it with "Merge translation with original".
+    /// </summary>
+    private async Task<Subtitle> RunTextAndTimeCodeFunctions(Subtitle s, BatchConvertItem item)
+    {
+        s = ChangeCasing(s, Language);
+        s = OffsetTimeCodes(s);
+        s = ChangeFrameRate(s);
+        s = ChangeSpeed(s);
+        s = BridgeGaps(s);
+        s = ApplyMinGap(s);
+        s = await FixCommonErrorsAsync(s);
+        s = MergeLinesWithSameText(s);
+        s = MergeLinesWithSameTimeCodes(s, Language);
+        s = ConvertColorsToDialog(s, Language);
+        s = MergeShortLines(s);
+        s = MergeContinuationLines(s, Language);
+        s = MultipleReplace(s);
+        s = RemoveLineBreaks(s);
+        s = AutoBalanceLines(s, Language);
+        s = ApplyDurationLimits(s);
+        s = RemoveTextForHearingImpaired(s, Language);
+        s = RemoveUnicodeControlCharacters(s);
+        s = FixRightToLeft(s);
+        return s;
+    }
+
+    /// <summary>
+    /// "Merge translation with original": the text functions ran on the source before the
+    /// translation, so the engine's output still needs the ones that shape a line in the target
+    /// language - otherwise e.g. an Arabic translation never gets its right-to-left fix (the source
+    /// has no right-to-left letters, so the fix skipped it) and long translated lines stay unbalanced.
+    /// Only text-only steps: anything that changes time codes or the number of lines would make
+    /// the translation drift from the original.
+    /// </summary>
+    private Subtitle CleanUpTranslation(Subtitle s)
+    {
+        s = ChangeCasing(s, Language);
+        s = RemoveLineBreaks(s);
+        s = AutoBalanceLines(s, Language);
+        s = RemoveUnicodeControlCharacters(s);
+        s = FixRightToLeft(s);
+        return s;
+    }
+
+    /// <summary>
+    /// Only together with auto-translate - without a translation there is nothing to merge.
+    /// </summary>
+    private bool IsMergeTranslationWithOriginalActive =>
+        _config.MergeTranslationWithOriginal.IsActive && _config.AutoTranslate.IsActive;
+
+    /// <summary>
+    /// "Merge translation with original": one bilingual subtitle, like Tools -> Merge two subtitles.
+    /// Advanced Sub Station Alpha gets the original text in one style and the translation in
+    /// another; other formats get the translation below the original text in the same line.
+    /// </summary>
+    private Subtitle MergeTranslationWithOriginal(Subtitle original, Subtitle translation)
+    {
+        Subtitle merged;
+        if (_config.TargetFormatName == AdvancedSubStationAlpha.NameOfFormat)
+        {
+            // The merged subtitle is ASSA already, so the save will not convert the source
+            // format's own formatting (e.g. WebVTT tags) - do it here, for both parts.
+            var assa = new AdvancedSubStationAlpha();
+            foreach (var part in new[] { original, translation })
+            {
+                if (part.OriginalFormat != null && part.OriginalFormat.Name != assa.Name)
+                {
+                    part.OriginalFormat.RemoveNativeFormatting(part, assa);
+                }
+            }
+
+            var c = _config.MergeTranslationWithOriginal;
+            merged = MergeTwoSubtitlesHelper.BuildAssaMerge(original, translation, c.StyleOriginal, c.StyleTranslation);
+            merged.OriginalFormat = assa;
+        }
+        else
+        {
+            merged = MergeTwoSubtitlesHelper.BuildSubRipMerge(original, translation);
+            merged.Header = translation.Header;
+            merged.Footer = translation.Footer;
+            merged.OriginalFormat = translation.OriginalFormat;
+        }
+
+        merged.Renumber();
+        return merged;
     }
 
     /// <summary>
@@ -3317,10 +3431,14 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
             return subtitle;
         }
 
+        // Whole milliseconds, like Change frame rate above (#14056): the format writers truncate,
+        // so the drop-frame preset saved 1500 ms (-> 1498.50015 ms) as ",498". Start and end are
+        // rounded on their own, so lines that touched still touch.
+        var factor = 100.0 / _config.ChangeSpeed.SpeedPercent;
         foreach (var p in subtitle.Paragraphs)
         {
-            p.StartTime.TotalMilliseconds = TimeSpan.FromMilliseconds(p.StartTime.TotalMilliseconds * (100.0 / _config.ChangeSpeed.SpeedPercent)).TotalMilliseconds;
-            p.EndTime.TotalMilliseconds = TimeSpan.FromMilliseconds(p.EndTime.TotalMilliseconds * (100.0 / _config.ChangeSpeed.SpeedPercent)).TotalMilliseconds;
+            p.StartTime.TotalMilliseconds = TimeSpanExtensions.FromMillisecondsWholeMilliseconds(p.StartTime.TotalMilliseconds * factor).TotalMilliseconds;
+            p.EndTime.TotalMilliseconds = TimeSpanExtensions.FromMillisecondsWholeMilliseconds(p.EndTime.TotalMilliseconds * factor).TotalMilliseconds;
         }
 
         return subtitle;
@@ -3786,6 +3904,10 @@ public class BatchConverter : IBatchConverter, IFixCallbacks
         Configuration.Settings.Tools.OllamaPrompt = Se.Settings.AutoTranslate.OllamaPrompt;
         Configuration.Settings.Tools.OllamaApiUrl = Se.Settings.AutoTranslate.OllamaUrl;
         Configuration.Settings.Tools.OllamaModel = Se.Settings.AutoTranslate.OllamaModel;
+
+        // The LM Studio prompt is edited in the translate settings dialog but only lives in
+        // Se.Settings across restarts - bridge it like the other prompts so a batch run uses it.
+        Configuration.Settings.Tools.LmStudioPrompt = Se.Settings.AutoTranslate.LmStudioPrompt;
 
         // The user-edited llama.cpp prompt lives in Se.Settings; without this a batch run would
         // fall back to the built-in default (a curated model's own prompt still wins - see

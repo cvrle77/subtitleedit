@@ -42,6 +42,10 @@ public class LanguageMain
     public string CopyTextFromOriginalToCurrent { get; set; }
     public string InsertedXTextsFromSubtitleY { get; set; }
     public string ItalicHint { get; set; }
+    public string QcBookmarks { get; set; }
+    public string QcIssues { get; set; }
+    public string QcNoBookmarks { get; set; }
+    public string QcRemoveBookmark { get; set; }
     public string RecordSpeechHint { get; set; }
     public string RecordingSpeechClickToStop { get; set; }
     public string RecordingFailedX { get; set; }
@@ -157,6 +161,8 @@ public class LanguageMain
     public string FormatLimitWarningMaxXCharactersPerLine { get; set; }
     public string FormatLimitWarningMaxXLines { get; set; }
     public string FormatLimitWarningTextWillBeRewrapped { get; set; }
+    public string FormatLimitWarningMaxTimeCodeX { get; set; }
+    public string FormatLimitWarningTimeCodesTooLarge { get; set; }
     public string FormatLimitWarningLinesX { get; set; }
     public string FormatLimitWarningSaveAnyway { get; set; }
     public string FormatLimitWarningDoNotShowAgain { get; set; }
@@ -213,6 +219,10 @@ public class LanguageMain
         CopyTextFromOriginalToCurrent = "Copy text from original to current subtitle";
         InsertedXTextsFromSubtitleY = "Inserted {0} texts from subtitle file \"{1}\"";
         ItalicHint = "Italic selected lines/text";
+        QcBookmarks = "Bookmarks";
+        QcIssues = "Issues";
+        QcNoBookmarks = "No bookmarks yet - add one with the + button.";
+        QcRemoveBookmark = "Remove bookmark from selected lines";
         RecordSpeechHint = "Record speech from microphone into text box (click again to stop)";
         RecordingSpeechClickToStop = "Recording... click the microphone button again to stop";
         RecordingFailedX = "Recording failed: {0}";
@@ -329,6 +339,8 @@ public class LanguageMain
         FormatLimitWarningMaxXLines = "Max {0} lines per subtitle";
         FormatLimitWarningTextWillBeRewrapped = "When saved, these subtitles will be re-wrapped or truncated to fit, so the file will not match what is shown here.";
         FormatLimitWarningLinesX = "Lines: {0}";
+        FormatLimitWarningMaxTimeCodeX = "Max time code {0}";
+        FormatLimitWarningTimeCodesTooLarge = "This format cannot write time codes past its maximum, so these time codes will be wrong in the saved file. SubRip, WebVTT, Timed Text and ASSA/SSA allow up to 9999 hours.";
         FormatLimitWarningSaveAnyway = "Save anyway";
         FormatLimitWarningDoNotShowAgain = "Do not show this warning again";
         NothingToSaveOriginal = "Nothing to save (original)";

@@ -1,7 +1,7 @@
 {
   "title": "SubtitleEdit",
-  "version": "v5.5.0-beta2",
-  "translatedBy": "v. 09.11.2026 di bovirus e GitGianluc",
+  "version": "v5.5.0-beta4",
+  "translatedBy": "v. 11.11.2026 di bovirus e GitGianluc",
   "cultureName": "it-IT",
   "general": {
     "abort": "Annulla",
@@ -2097,8 +2097,8 @@
       "xFixesApplied": "Correzioni applicate: {0}",
       "xFixesYSelected": "{0} correzioni - {1} selezionate",
       "fixFirstLetterToUppercaseAfterParagraph": "Dopo un paragrafo usa la prima lettera in maiuscolo",
-      "mergeShortLine": "Unisci riga corta (singola frase)",
-      "mergeShortLineAll": "Unisci riga corta (tutte eccetto dialoghi)",
+      "mergeShortLine": "Rimuovi interruzione di riga (singola frase)",
+      "mergeShortLineAll": "Rimuovi interruzione di riga (tutte eccetto dialoghi)",
       "breakLongLine": "Dividi riga lunga",
       "fixLongDisplayTime": "Correggi tempi di visualizzazione lunghi",
       "fixInvalidItalicTag": "Correggi etichette corsivo non valide",
@@ -3922,6 +3922,7 @@
       "writeToolsLog": "Scrivi registro strumenti",
       "showSettingsFile": "Visualizza file impostazioni",
       "showAssaLayer": "Visualizza casella livello ASSA",
+      "showActorBox": "Visualizza riquadro attore",
       "waveformCursorColor": "Colore cursore/intestazione forma d'onda",
       "waveformShotChangeColor": "Cambio colore modifica scena forma d'onda",
       "waveformGridColor": "Colore griglia forma d'onda",

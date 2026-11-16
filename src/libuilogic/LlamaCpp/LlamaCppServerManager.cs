@@ -1,9 +1,8 @@
 using System.Diagnostics;
 using System.Globalization;
-using System.Net;
-using System.Net.Sockets;
 using System.Text;
 using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.UiLogic.Common;
 using Nikse.SubtitleEdit.UiLogic.Ocr;
 
 namespace Nikse.SubtitleEdit.UiLogic.LlamaCpp;
@@ -230,6 +229,17 @@ public static class LlamaCppServerManager
             Temperature: 0, NoThinking: true),
         new LlamaCppModel("Index-Translate 9B (Q4_K_M) - 150 languages", "index-translate-9b-q4_k_m.gguf", "5.8 GB",
             "https://huggingface.co/IndexTeam/Index-Translate-9B-GGUF/resolve/main/Index-Translate-9B.Q4_K_M.gguf",
+            Temperature: 0, NoThinking: true),
+
+        // Index-Nailong 9B v1.1 (IndexTeam/bilibili, #16856) - the same family, merged with their
+        // long-document model (256K context), official GGUFs, Apache-2.0; same flags as above.
+        // Tested 2026-11-12 (seconv, 150 dialog lines EN->DA/DE/JA, advanced engine at 10/50/100
+        // lines per batch): on par with Index-Translate 9B, and longer batches did not buy more
+        // consistent names or pronouns. At 50+ lines it twice filled a whole batch with the
+        // prompt's "<translation of line N>" example, and a user saw it pack later lines' JSON
+        // into one value - both are now rejected by IsBrokenValue.
+        new LlamaCppModel("Index-Nailong 9B (Q4_K_M) - 150 languages, long context", "Index-Nailong-9B.Q4_K_M.gguf", "5.6 GB",
+            "https://huggingface.co/IndexTeam/Index-Nailong-9B-GGUF/resolve/main/Index-Nailong-9B.Q4_K_M.gguf",
             Temperature: 0, NoThinking: true),
 
         // Aya Expanse 8B (Cohere) - a dedicated multilingual model (23 languages), a good translation
@@ -526,11 +536,6 @@ public static class LlamaCppServerManager
 
     public static bool IsServerRunning => _serverProcess is { HasExited: false } && _serverPort != 0;
 
-    public static string? RunningModelPath => IsServerRunning ? _serverModelPath : null;
-
-    /// <summary>Context size the running server was started with, or 0 when nothing is running.</summary>
-    public static int RunningContextSize => IsServerRunning ? _serverContextSize : 0;
-
     public static string ApiUrl => $"http://127.0.0.1:{_serverPort}/v1/chat/completions";
 
     public static string GetAndCreateFolder()
@@ -626,12 +631,13 @@ public static class LlamaCppServerManager
             return ("gemma", true, false);
         }
 
-        // "afrislm" / "index-translate": TranslatePsy-AfriSLM and bilibili's Index-Translate are
-        // Qwen 3.5 fine-tunes that think by default just like their base, but no file of those
-        // families carries "qwen" in its name.
+        // "afrislm" / "index-translate" / "index-nailong": TranslatePsy-AfriSLM and bilibili's
+        // Index-Translate and Index-Nailong are Qwen 3.5 fine-tunes that think by default just like
+        // their base, but no file of those families carries "qwen" in its name.
         if (fileName.Contains("qwen", StringComparison.OrdinalIgnoreCase) ||
             fileName.Contains("afrislm", StringComparison.OrdinalIgnoreCase) ||
-            fileName.Contains("index-translate", StringComparison.OrdinalIgnoreCase))
+            fileName.Contains("index-translate", StringComparison.OrdinalIgnoreCase) ||
+            fileName.Contains("index-nailong", StringComparison.OrdinalIgnoreCase))
         {
             return (null, false, true);
         }
@@ -949,7 +955,7 @@ public static class LlamaCppServerManager
                 }
             }
 
-            var port = FindFreeLoopbackPort();
+            var port = LocalServerHelper.FindFreeLoopbackPort();
             var psi = new ProcessStartInfo
             {
                 WorkingDirectory = Path.GetDirectoryName(exe) ?? GetAndCreateFolder(),
@@ -967,7 +973,7 @@ public static class LlamaCppServerManager
             var process = Process.Start(psi)
                 ?? throw new InvalidOperationException("Failed to start llama-server");
 
-            LogAction?.Invoke($"llama-server starting - PID: {process.Id}, Cmd: {FormatLaunchCommand(exe, psi.ArgumentList)}");
+            LogAction?.Invoke($"llama-server starting - PID: {process.Id}, Cmd: {LocalServerHelper.FormatLaunchCommand(exe, psi.ArgumentList)}");
 
             lock (_serverLog)
             {
@@ -1240,20 +1246,6 @@ public static class LlamaCppServerManager
         return result;
     }
 
-    private static int FindFreeLoopbackPort()
-    {
-        var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        try
-        {
-            return ((IPEndPoint)listener.LocalEndpoint).Port;
-        }
-        finally
-        {
-            listener.Stop();
-        }
-    }
-
     private static void HookProcessExitOnce()
     {
         if (_processExitHooked)
@@ -1263,21 +1255,5 @@ public static class LlamaCppServerManager
 
         _processExitHooked = true;
         AppDomain.CurrentDomain.ProcessExit += (_, _) => StopServerInternal();
-    }
-
-    private static string FormatLaunchCommand(string exe, System.Collections.ObjectModel.Collection<string> args)
-    {
-        static string Quote(string s) =>
-            !string.IsNullOrEmpty(s) && s.IndexOfAny(new[] { ' ', '\t' }) >= 0
-                ? "\"" + s.Replace("\"", "\\\"") + "\""
-                : s;
-
-        var sb = new StringBuilder(Quote(exe));
-        foreach (var a in args)
-        {
-            sb.Append(' ').Append(Quote(a));
-        }
-
-        return sb.ToString();
     }
 }

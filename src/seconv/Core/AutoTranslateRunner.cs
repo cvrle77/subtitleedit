@@ -1,6 +1,8 @@
 using Nikse.SubtitleEdit.UiLogic.AutoTranslate;
 using Nikse.SubtitleEdit.Core.Common;
+using Nikse.SubtitleEdit.Core.Settings;
 using Nikse.SubtitleEdit.UiLogic.Translate;
+using Nikse.SubtitleEdit.UiLogic.Translate.LlamaCppAdvanced;
 using Nikse.SubtitleEdit.UiLogic.LlamaCpp;
 
 namespace SeConv.Core;
@@ -15,20 +17,48 @@ namespace SeConv.Core;
 /// free loopback port, and lets <see cref="LlamaCppServerManager"/> kill it at process exit.
 /// seconv never downloads engines or models (consistent with its Tesseract/Paddle policy) —
 /// missing pieces fail fast with instructions instead.
+///
+/// The advanced engines (llamacpp-advanced, ollama-advanced, lmstudio-advanced) run libuilogic's
+/// batch/context loop - numbered batches with a rolling history of translated lines plus an
+/// optional synopsis, glossary and formality - with those settings taken from the command line
+/// (<see cref="CreateAdvancedSettings"/>) instead of the GUI's "Advanced..." dialog.
 /// </summary>
 internal sealed class AutoTranslateRunner
 {
-    public static readonly string[] SupportedEngines = { "llamacpp", "ollama", "lmstudio", "openai-compatible", "libretranslate", "nllb-serve", "nllb-api", "deepl" };
+    public static readonly string[] SupportedEngines = { "llamacpp", "ollama", "lmstudio", "openai-compatible", "libretranslate", "nllb-serve", "nllb-api", "deepl", "llamacpp-advanced", "ollama-advanced", "lmstudio-advanced" };
 
     /// <summary>
     /// Engines that build their request from an editable prompt, i.e. the ones
     /// <c>--translate-prompt</c> can steer. The rest (LibreTranslate, NLLB) are translation
-    /// services with no prompt at all.
+    /// services with no prompt at all. For the advanced engines the prompt is the system prompt
+    /// of the batch protocol (see <see cref="CreateAdvancedSettings"/>).
     /// </summary>
-    public static readonly string[] PromptEngines = { "llamacpp", "ollama", "lmstudio", "openai-compatible" };
+    public static readonly string[] PromptEngines = { "llamacpp", "ollama", "lmstudio", "openai-compatible", "llamacpp-advanced", "ollama-advanced", "lmstudio-advanced" };
 
-    /// <summary>Engines that send <c>--translate-api-key</c>; the local/self-hosted rest have no key.</summary>
-    public static readonly string[] ApiKeyEngines = { "openai-compatible", "deepl" };
+    /// <summary>
+    /// Engines that run libuilogic's advanced batch/context loop, i.e. the ones the options in
+    /// <see cref="AdvancedOptionNames"/> apply to.
+    /// </summary>
+    public static readonly string[] AdvancedEngines = { "llamacpp-advanced", "ollama-advanced", "lmstudio-advanced" };
+
+    /// <summary>Accepted <c>--translate-formality</c> values (case-insensitive).</summary>
+    public static readonly string[] FormalityValues = { "default", "formal", "informal" };
+
+    /// <summary>The options that only the <see cref="AdvancedEngines"/> understand, for error messages.</summary>
+    public const string AdvancedOptionNames = "--translate-batch-size/--translate-history/--translate-synopsis/--translate-glossary/--translate-formality/--translate-keep-line-breaks/--translate-request-json";
+
+    /// <summary>
+    /// The Ollama advanced engine talks to Ollama's OpenAI-compatible endpoint, not the native
+    /// /api/generate url the regular engine uses (same as the GUI's Ollama advanced engine).
+    /// </summary>
+    private const string OllamaAdvancedDefaultUrl = "http://localhost:11434/v1/chat/completions";
+
+    /// <summary>
+    /// Engines that send <c>--translate-api-key</c>. For the LLM engines it is an optional Bearer
+    /// token: a local server can ask for one (llama-server --api-key, LM Studio) or sit behind a
+    /// reverse proxy, and Ollama's hosted models need one.
+    /// </summary>
+    public static readonly string[] ApiKeyEngines = { "llamacpp", "llamacpp-advanced", "ollama", "ollama-advanced", "lmstudio", "lmstudio-advanced", "openai-compatible", "deepl" };
 
     /// <summary>File extensions that make <c>--translate-prompt</c> a file path rather than inline text.</summary>
     private static readonly string[] PromptFileExtensions = { ".txt", ".prompt", ".md" };
@@ -41,11 +71,21 @@ internal sealed class AutoTranslateRunner
     private readonly LlamaCppModel? _llamaCppModel; // non-null = local server mode; start before first use
     private readonly string _engine;
     private readonly string? _prompt; // --translate-prompt, already read from file / unescaped
+    private readonly SeLlamaCppAdvanced? _advancedSettings; // non-null = advanced engine (batch/context loop)
 
     /// <summary>The resolved local llama.cpp model, exposed for tests.</summary>
     internal LlamaCppModel? LlamaCppModel => _llamaCppModel;
 
+    /// <summary>The engine instance, exposed for tests.</summary>
+    internal IAutoTranslator Translator => _translator;
+
+    /// <summary>The batch/context settings of an advanced engine (null for the others), exposed for tests.</summary>
+    internal SeLlamaCppAdvanced? AdvancedSettings => _advancedSettings;
+
     private string? _targetLanguageCode;
+
+    /// <summary>The prompt --verbose printed last: the same language pair prints it once (see <see cref="WritePromptIfVerbose"/>).</summary>
+    private string? _lastPrintedPrompt;
 
     /// <summary>
     /// The target language code as the engine knows it ("de", "zh-CN") - --translate-to
@@ -75,13 +115,14 @@ internal sealed class AutoTranslateRunner
         }
     }
 
-    private AutoTranslateRunner(ConversionOptions options, IAutoTranslator translator, LlamaCppModel? llamaCppModel, string engine, string? prompt)
+    private AutoTranslateRunner(ConversionOptions options, IAutoTranslator translator, LlamaCppModel? llamaCppModel, string engine, string? prompt, SeLlamaCppAdvanced? advancedSettings)
     {
         _options = options;
         _translator = translator;
         _llamaCppModel = llamaCppModel;
         _engine = engine;
         _prompt = prompt;
+        _advancedSettings = advancedSettings;
     }
 
     /// <summary>
@@ -110,6 +151,22 @@ internal sealed class AutoTranslateRunner
                 $"--translate-api-key is not supported by translate engine '{engine}'. Use one of: {string.Join(", ", ApiKeyEngines)}.");
         }
 
+        if (!string.IsNullOrEmpty(apiKey) && string.IsNullOrEmpty(url) && engine is "llamacpp" or "llamacpp-advanced")
+        {
+            // Without a url seconv starts the llama-server itself, and that server takes no key.
+            throw new InvalidOperationException(
+                $"--translate-api-key needs --translate-url with translate engine '{engine}': it is the key of a llama-server that is already running.");
+        }
+
+        var advancedSettings = AdvancedEngines.Contains(engine)
+            ? CreateAdvancedSettings(options.TranslateBatchSize, options.TranslateHistory, options.TranslateSynopsis, options.TranslateGlossary, options.TranslateFormality, options.TranslateKeepLineBreaks, options.TranslateRequestJson, prompt, options.TranslateAdvancedSettings)
+            : null;
+        if (advancedSettings == null && HasAdvancedOptions(options))
+        {
+            throw new InvalidOperationException(
+                $"{AdvancedOptionNames} require an advanced translate engine: --translate-engine:{string.Join(" | ", AdvancedEngines)}.");
+        }
+
         if (options.Verbose)
         {
             LlamaCppServerManager.LogAction = m => Console.WriteLine("  " + m);
@@ -126,10 +183,27 @@ internal sealed class AutoTranslateRunner
                     // bare host:port or an OpenAI-style ".../v1" base and complete either to the
                     // chat/completions endpoint (without doubling an already-present /v1).
                     tools.LlamaCppApiUrl = CompleteChatCompletionsUrl(url);
+                    if (!string.IsNullOrEmpty(apiKey))
+                    {
+                        tools.LlamaCppApiKey = apiKey;
+                    }
                 }
                 else
                 {
                     llamaCppModel = ResolveLocalLlamaCpp(options.TranslateModel);
+                }
+                break;
+            case "llamacpp-advanced":
+                // Read per request: the local server's port is only known once it has started.
+                translator = MakeAdvanced("llama.cpp advanced (local LLM)", "https://github.com/ggml-org/llama.cpp",
+                    () => AutoTranslateUrl.Complete(Configuration.Settings.Tools.LlamaCppApiUrl, LlamaCppTranslate.DefaultUrl), null);
+                if (!string.IsNullOrEmpty(url))
+                {
+                    tools.LlamaCppApiUrl = CompleteChatCompletionsUrl(url);
+                }
+                else
+                {
+                    llamaCppModel = ResolveLocalLlamaCpp(options.TranslateModel, chatModelsOnly: true);
                 }
                 break;
             case "ollama":
@@ -137,6 +211,10 @@ internal sealed class AutoTranslateRunner
                 if (!string.IsNullOrEmpty(url))
                 {
                     tools.OllamaApiUrl = url;
+                }
+                if (!string.IsNullOrEmpty(apiKey))
+                {
+                    tools.OllamaApiKey = apiKey;
                 }
                 if (!string.IsNullOrWhiteSpace(options.TranslateModel))
                 {
@@ -147,9 +225,22 @@ internal sealed class AutoTranslateRunner
                     tools.OllamaPrompt = prompt;
                 }
                 break;
+            case "ollama-advanced":
+                if (string.IsNullOrWhiteSpace(options.TranslateModel))
+                {
+                    // Ollama serves many models and rejects a request without one - fail before any file is converted.
+                    throw new InvalidOperationException("Translate engine 'ollama-advanced' needs a model: pass --translate-model:<name> (e.g. gemma4).");
+                }
+                var ollamaAdvancedUrl = AutoTranslateUrl.Complete(url, OllamaAdvancedDefaultUrl);
+                translator = MakeAdvanced("Ollama advanced (local LLM)", "https://ollama.com", () => ollamaAdvancedUrl, options.TranslateModel.Trim());
+                break;
             case "lmstudio":
                 translator = new LmStudioTranslate();
                 tools.LmStudioApiUrl = string.IsNullOrEmpty(url) ? "http://localhost:1234/v1/chat/completions" : url;
+                if (!string.IsNullOrEmpty(apiKey))
+                {
+                    tools.LmStudioApiKey = apiKey;
+                }
                 if (!string.IsNullOrWhiteSpace(options.TranslateModel))
                 {
                     tools.LmStudioModel = options.TranslateModel.Trim();
@@ -158,6 +249,11 @@ internal sealed class AutoTranslateRunner
                 {
                     tools.LmStudioPrompt = prompt;
                 }
+                break;
+            case "lmstudio-advanced":
+                var lmStudioAdvancedUrl = AutoTranslateUrl.Complete(url, LmStudioTranslate.DefaultUrl);
+                translator = MakeAdvanced("LM Studio advanced (local LLM)", "https://lmstudio.ai/", () => lmStudioAdvancedUrl,
+                    string.IsNullOrWhiteSpace(options.TranslateModel) ? null : options.TranslateModel.Trim());
                 break;
             case "openai-compatible":
                 translator = new OpenAiCompatibleTranslate();
@@ -220,22 +316,197 @@ internal sealed class AutoTranslateRunner
                     $"Translate engine '{options.TranslateEngine}' is not supported. Use one of: {string.Join(", ", SupportedEngines)}.");
         }
 
-        var runner = new AutoTranslateRunner(options, translator, llamaCppModel, engine, prompt);
+        var runner = new AutoTranslateRunner(options, translator, llamaCppModel, engine, prompt, advancedSettings);
         runner.ApplyPromptOverride();
         return runner;
+
+        AdvancedTranslateEngine MakeAdvanced(string name, string homepage, Func<string> apiUrl, string? model)
+        {
+            return new AdvancedTranslateEngine(name, homepage, apiUrl, model) { Settings = advancedSettings!, ApiKey = apiKey };
+        }
     }
 
-    /// <summary>Canonical engine id: empty means the default (llamacpp), and llama.cpp/llama are aliases for it.</summary>
+    /// <summary>
+    /// Canonical engine id: empty means the default (llamacpp); llama.cpp/llama and
+    /// llama.cpp-advanced/llama-advanced are aliases.
+    /// </summary>
     internal static string NormalizeEngine(string? engine)
     {
         var name = string.IsNullOrWhiteSpace(engine) ? "llamacpp" : engine.Trim().ToLowerInvariant();
-        return name is "llama.cpp" or "llama" ? "llamacpp" : name;
+        return name switch
+        {
+            "llama.cpp" or "llama" => "llamacpp",
+            "llama.cpp-advanced" or "llama-advanced" => "llamacpp-advanced",
+            _ => name,
+        };
     }
 
     /// <summary>True when the engine builds its request from an editable prompt (see <see cref="PromptEngines"/>).</summary>
     public static bool SupportsPrompt(string? engine)
     {
         return PromptEngines.Contains(NormalizeEngine(engine));
+    }
+
+    /// <summary>True when the value, after alias resolution, names one of the <see cref="SupportedEngines"/>.</summary>
+    public static bool IsSupportedEngine(string? engine)
+    {
+        return SupportedEngines.Contains(NormalizeEngine(engine));
+    }
+
+    /// <summary>True for the engines that run the advanced batch/context loop (see <see cref="AdvancedEngines"/>).</summary>
+    public static bool IsAdvancedEngine(string? engine)
+    {
+        return AdvancedEngines.Contains(NormalizeEngine(engine));
+    }
+
+    private static bool HasAdvancedOptions(ConversionOptions options)
+    {
+        return options.TranslateBatchSize.HasValue ||
+               options.TranslateHistory.HasValue ||
+               !string.IsNullOrWhiteSpace(options.TranslateSynopsis) ||
+               !string.IsNullOrWhiteSpace(options.TranslateGlossary) ||
+               !string.IsNullOrWhiteSpace(options.TranslateFormality) ||
+               options.TranslateKeepLineBreaks.HasValue ||
+               !string.IsNullOrWhiteSpace(options.TranslateRequestJson);
+    }
+
+    /// <summary>
+    /// The batch/context settings of an advanced engine: what the GUI's "Advanced..." dialog
+    /// edits. The command-line options are applied onto <paramref name="baseSettings"/>, the
+    /// <c>tools.llamaCppAdvanced</c> section of a <c>--settings</c> file (null = the dialog's
+    /// defaults: 10 lines per batch, 12 history pairs, no synopsis/glossary, default formality,
+    /// keep line breaks on), so an option given wins over the file and the file over the defaults.
+    /// The synopsis and glossary are read like <c>--translate-prompt</c> (inline text or a file), the
+    /// request JSON inline when it starts with a brace and from a file otherwise.
+    /// The merged result is validated once, so a bad value from either source throws
+    /// <see cref="InvalidOperationException"/> with an actionable message.
+    /// </summary>
+    internal static SeLlamaCppAdvanced CreateAdvancedSettings(int? batchSize, int? history, string? synopsis, string? glossary, string? formality, bool? keepLineBreaks, string? requestJson, string? prompt, SeLlamaCppAdvanced? baseSettings = null)
+    {
+        var settings = baseSettings ?? new SeLlamaCppAdvanced();
+        if (prompt != null)
+        {
+            settings.Prompt = prompt;
+        }
+
+        if (batchSize.HasValue)
+        {
+            settings.BatchSize = batchSize.Value;
+        }
+
+        if (history.HasValue)
+        {
+            settings.HistoryPairs = history.Value;
+        }
+
+        var synopsisText = ReadPromptOption(synopsis, "--translate-synopsis", string.Empty);
+        if (synopsisText != null)
+        {
+            settings.Synopsis = synopsisText;
+        }
+
+        var glossaryText = ReadPromptOption(glossary, "--translate-glossary", string.Empty);
+        if (glossaryText != null)
+        {
+            settings.Glossary = glossaryText;
+        }
+
+        if (!string.IsNullOrWhiteSpace(formality))
+        {
+            settings.Formality = ParseFormality(formality);
+        }
+
+        if (keepLineBreaks.HasValue)
+        {
+            settings.KeepLineBreaks = keepLineBreaks.Value;
+        }
+
+        var requestJsonText = ReadRequestJsonOption(requestJson);
+        if (requestJsonText != null)
+        {
+            settings.RequestJson = requestJsonText;
+        }
+
+        // The protocol sends the lines as JSON in the user message and the prompt is the system
+        // prompt, so a completion template with the text at {2} has nowhere to put it.
+        if (settings.Prompt.Contains("{2}"))
+        {
+            throw new InvalidOperationException(
+                "--translate-prompt (or tools.llamaCppAdvanced.prompt in --settings) is the system prompt for an advanced engine ({0}=source language, {1}=target language) and cannot contain {2}; " +
+                "use --translate-engine:llamacpp for completion-format models.");
+        }
+
+        var requestJsonError = LlamaCppAdvancedClient.ValidateRequestJson(settings.RequestJson);
+        if (requestJsonError != null)
+        {
+            throw new InvalidOperationException("--translate-request-json (or tools.llamaCppAdvanced.requestJson in --settings): " + requestJsonError);
+        }
+
+        if (settings.BatchSize is < 1 or > 50)
+        {
+            throw new InvalidOperationException($"--translate-batch-size (or tools.llamaCppAdvanced.batchSize in --settings) must be between 1 and 50 (got {settings.BatchSize}).");
+        }
+
+        if (settings.HistoryPairs is < 0 or > 50)
+        {
+            throw new InvalidOperationException($"--translate-history (or tools.llamaCppAdvanced.historyPairs in --settings) must be between 0 and 50 (got {settings.HistoryPairs}).");
+        }
+
+        return settings;
+    }
+
+    /// <summary>Maps a formality value (case-insensitive) to the engine's constant; <paramref name="optionName"/> names the source in the error.</summary>
+    internal static string ParseFormality(string? value, string optionName = "--translate-formality")
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return SeLlamaCppAdvanced.FormalityDefault;
+        }
+
+        return value.Trim().ToLowerInvariant() switch
+        {
+            "default" => SeLlamaCppAdvanced.FormalityDefault,
+            "formal" => SeLlamaCppAdvanced.FormalityFormal,
+            "informal" => SeLlamaCppAdvanced.FormalityInformal,
+            _ => throw new InvalidOperationException($"{optionName} '{value}' is not valid. Use one of: {string.Join(", ", FormalityValues)}."),
+        };
+    }
+
+    /// <summary>
+    /// Resolves <c>--translate-request-json</c>: the text itself when it starts with a brace, else
+    /// the path of a file to read. Unlike <see cref="ReadPromptOption"/> nothing is unescaped - a
+    /// JSON string keeps its own escapes. Null when the option was not given.
+    /// </summary>
+    internal static string? ReadRequestJsonOption(string? value)
+    {
+        if (value == null)
+        {
+            return null;
+        }
+
+        var trimmed = value.Trim();
+        if (trimmed.Length == 0)
+        {
+            throw new InvalidOperationException("--translate-request-json is empty. Pass a JSON object ({...}) or the path to a .json file.");
+        }
+
+        if (trimmed.StartsWith('{'))
+        {
+            return trimmed;
+        }
+
+        if (!FileExistsSafe(trimmed))
+        {
+            throw new InvalidOperationException($"--translate-request-json: file not found: {trimmed}. A value that does not start with {{ is read as a file path.");
+        }
+
+        var size = new FileInfo(trimmed).Length;
+        if (size > MaxPromptFileBytes)
+        {
+            throw new InvalidOperationException($"--translate-request-json: file is too large ({size / 1024} KB, max {MaxPromptFileBytes / 1024} KB): {trimmed}");
+        }
+
+        return File.ReadAllText(trimmed).Trim();
     }
 
     /// <summary>
@@ -245,9 +516,10 @@ internal sealed class AutoTranslateRunner
     /// pass those as one argument. Inline text gets <c>\n</c>, <c>\r</c>, <c>\t</c> and
     /// <c>\\</c> unescaped for the same reason.
     /// <para>
-    /// Shared by <c>--translate-prompt</c> and <c>--ocr-prompt</c>; <paramref name="optionName"/>
-    /// and <paramref name="placeholders"/> only shape the error messages and the "is this a path
-    /// or a sentence?" hint, so both options behave identically.
+    /// Shared by <c>--translate-prompt</c>, <c>--ocr-prompt</c> and the advanced engines'
+    /// <c>--translate-synopsis</c>/<c>--translate-glossary</c>; <paramref name="optionName"/> and
+    /// <paramref name="placeholders"/> (empty for an option without any) only shape the error
+    /// messages and the "is this a path or a sentence?" hint, so the options behave identically.
     /// </para>
     /// </summary>
     internal static string? ReadPromptOption(string? value, string optionName = "--translate-prompt", string placeholders = "{0}/{1}/{2}")
@@ -268,10 +540,11 @@ internal sealed class AutoTranslateRunner
         {
             if (!exists)
             {
+                var inlineHint = string.IsNullOrEmpty(placeholders) ? "has to contain a space" : $"has to contain a space or a {placeholders} placeholder";
                 throw new InvalidOperationException(
                     $"Prompt file not found: {trimmed}. " +
                     $"A {optionName} value with no spaces, or ending in .txt/.prompt/.md, is read as a file path; " +
-                    $"prompt text passed inline has to contain a space or a {placeholders} placeholder.");
+                    $"text passed inline {inlineHint}.");
             }
 
             var size = new FileInfo(trimmed).Length;
@@ -409,7 +682,18 @@ internal sealed class AutoTranslateRunner
                     Console.WriteLine($"  Starting llama-server with model {Path.GetFileName(_llamaCppModel.FileName)} (stops at exit)...");
                 }
 
-                await LlamaCppServerManager.EnsureServerRunningAsync(_llamaCppModel, cancellationToken);
+                if (_advancedSettings != null)
+                {
+                    // The advanced engine puts history, synopsis and glossary into every request,
+                    // so it gets the (default larger) server context and the extra server
+                    // arguments from its settings - the same rule as the GUI.
+                    var contextSize = Math.Clamp(_advancedSettings.ContextSize, 2048, 262144);
+                    await LlamaCppServerManager.EnsureServerRunningAsync(_llamaCppModel, cancellationToken, contextSize, _advancedSettings.ServerArguments, _advancedSettings.ServerArgumentsOnly);
+                }
+                else
+                {
+                    await LlamaCppServerManager.EnsureServerRunningAsync(_llamaCppModel, cancellationToken);
+                }
             }
         }
 
@@ -426,6 +710,10 @@ internal sealed class AutoTranslateRunner
         {
             Console.WriteLine($"  Translating {source.Name} -> {target.Name} via {_translator.Name}...");
         }
+
+        // The LLM engines get the English names as "codes" (ListLanguages puts the name in Code),
+        // so the prompt is built from the same values here.
+        WritePromptIfVerbose(Console.Out, source.Code, target.Code);
 
         var doTranslate = new DoAutoTranslate();
         if (!_options.Quiet)
@@ -446,6 +734,75 @@ internal sealed class AutoTranslateRunner
                 subtitle.Paragraphs[i].Text = rows[i].TranslatedText;
             }
         }
+    }
+
+    /// <summary>
+    /// The prompt as the engine sends it for this language pair: the advanced engines' complete
+    /// system prompt - the instructions plus the keep-line-breaks sentence, formality, synopsis,
+    /// glossary and protocol paragraph, which the prompt field never shows - or the regular LLM
+    /// engines' filled template with &lt;text&gt; where the subtitle text goes. Null for the
+    /// translation services, which have no prompt. Call after <see cref="ApplyPromptSettings"/>:
+    /// for llamacpp the curated model's template is only applied there. Internal for tests.
+    /// </summary>
+    internal string? DescribePrompt(string sourceName, string targetName)
+    {
+        if (_advancedSettings != null)
+        {
+            return LlamaCppAdvancedProtocol.BuildSystemPrompt(sourceName, targetName, _advancedSettings);
+        }
+
+        // The same fields and fallbacks as the engines themselves read.
+        var tools = Configuration.Settings.Tools;
+        var defaults = new ToolsSettings();
+        var template = _engine switch
+        {
+            "llamacpp" => FirstNonBlank(tools.LlamaCppModelPrompt, tools.LlamaCppPrompt, defaults.LlamaCppPrompt),
+            "ollama" => FirstNonBlank(tools.OllamaPrompt, defaults.OllamaPrompt),
+            "lmstudio" => FirstNonBlank(tools.LmStudioPrompt, defaults.LmStudioPrompt),
+            "openai-compatible" => FirstNonBlank(tools.OpenAiCompatibleTranslatePrompt, defaults.OpenAiCompatibleTranslatePrompt),
+            _ => null,
+        };
+
+        return template == null ? null : LlmTranslatePrompt.DescribeUserMessage(template, sourceName, targetName);
+    }
+
+    private static string FirstNonBlank(params string?[] values)
+    {
+        return values.First(v => !string.IsNullOrWhiteSpace(v))!;
+    }
+
+    /// <summary>
+    /// --verbose: writes <see cref="DescribePrompt"/> once per language pair. Neither the GUI nor
+    /// dump-settings shows the assembled prompt, so odd output could not be told apart from a
+    /// model problem without a capture proxy. The source language is detected per file, so the
+    /// prompt can change between files; the same pair again writes nothing. Quiet (which --json
+    /// implies) wins over verbose: stdout stays one JSON document.
+    /// </summary>
+    internal void WritePromptIfVerbose(TextWriter writer, string sourceName, string targetName)
+    {
+        if (!_options.Verbose || _options.Quiet)
+        {
+            return;
+        }
+
+        var prompt = DescribePrompt(sourceName, targetName);
+        if (prompt == null || prompt == _lastPrintedPrompt)
+        {
+            return;
+        }
+
+        _lastPrintedPrompt = prompt;
+        var rule = "  " + new string('-', 40);
+        writer.WriteLine(_advancedSettings != null
+            ? "  System prompt sent to the model:"
+            : "  Prompt sent to the model (<text> = the subtitle text of the request):");
+        writer.WriteLine(rule);
+        foreach (var line in prompt.SplitToLines())
+        {
+            writer.WriteLine("  " + line);
+        }
+
+        writer.WriteLine(rule);
     }
 
     /// <summary>
@@ -487,18 +844,20 @@ internal sealed class AutoTranslateRunner
     /// Local llama.cpp mode: resolve the llama-server binary and a translate model without
     /// downloading anything. The Subtitle Edit data folders are probed first so an install
     /// done via the SE GUI (Auto-translate &gt; llama.cpp) is picked up automatically.
+    /// <paramref name="chatModelsOnly"/> (the advanced engine) refuses completion-only models.
     /// </summary>
-    private static LlamaCppModel ResolveLocalLlamaCpp(string? requestedModel)
+    private static LlamaCppModel ResolveLocalLlamaCpp(string? requestedModel, bool chatModelsOnly = false)
     {
         LlamaCppLocal.EnsureServerBinary("Auto-translate > llama.cpp", "--translate-url");
-        return ResolveLlamaCppModel(requestedModel);
+        return ResolveLlamaCppModel(requestedModel, chatModelsOnly);
     }
 
-    private static LlamaCppModel ResolveLlamaCppModel(string? requestedModel)
+    private static LlamaCppModel ResolveLlamaCppModel(string? requestedModel, bool chatModelsOnly)
     {
         if (!string.IsNullOrWhiteSpace(requestedModel))
         {
             var name = requestedModel.Trim();
+            LlamaCppModel? model;
 
             // Full path to a .gguf: use it directly, but infer the chat-template flags from the file
             // name (TranslateGemma/Qwen need them, whether or not we curate that exact quant).
@@ -510,31 +869,46 @@ internal sealed class AutoTranslateRunner
                 }
 
                 var fileName = Path.GetFileName(name);
-                return LlamaCppServerManager.CreateCustomModel(fileName, Path.GetFullPath(name), string.Empty);
+                model = LlamaCppServerManager.CreateCustomModel(fileName, Path.GetFullPath(name), string.Empty);
             }
-
-            // Name: match curated + custom models in the models folder (with or without .gguf).
-            var all = LlamaCppServerManager.GetAllTranslateModels();
-            var model = all.FirstOrDefault(m => m.FileName.Equals(name, StringComparison.OrdinalIgnoreCase))
+            else
+            {
+                // Name: match curated + custom models in the models folder (with or without .gguf).
+                var all = LlamaCppServerManager.GetAllTranslateModels();
+                model = all.FirstOrDefault(m => m.FileName.Equals(name, StringComparison.OrdinalIgnoreCase))
                         ?? all.FirstOrDefault(m => m.FileName.Equals(name + ".gguf", StringComparison.OrdinalIgnoreCase))
                         ?? all.FirstOrDefault(m => m.DisplayName.Equals(name, StringComparison.OrdinalIgnoreCase));
-            if (model == null || !LlamaCppServerManager.IsModelInstalled(model))
+                if (model == null || !LlamaCppServerManager.IsModelInstalled(model))
+                {
+                    throw new InvalidOperationException(
+                        $"Translate model '{name}' not found in {LlamaCppServerManager.GetAndCreateModelsFolder()}. " +
+                        "Download one in Subtitle Edit (Auto-translate > llama.cpp), drop a .gguf into that folder, " +
+                        "or pass a full path via --translate-model.");
+                }
+            }
+
+            // Checked for both forms (name and path): CreateCustomModel flags MiLMMT files too.
+            if (chatModelsOnly && model.CompletionOnly)
             {
+                // Same rule as the GUI's model list for the advanced engine: a raw-completion model
+                // answers the JSON batch protocol with well-formed JSON holding the untranslated
+                // source lines, which would be written out as a "successful" translation.
                 throw new InvalidOperationException(
-                    $"Translate model '{name}' not found in {LlamaCppServerManager.GetAndCreateModelsFolder()}. " +
-                    "Download one in Subtitle Edit (Auto-translate > llama.cpp), drop a .gguf into that folder, " +
-                    "or pass a full path via --translate-model.");
+                    $"Translate model '{name}' is a completion-only model and cannot follow the advanced engine's batch protocol. " +
+                    "Use it with --translate-engine:llamacpp, or pick a chat model for the advanced engine.");
             }
 
             return model;
         }
 
-        // No model given: pick the first installed translate model (curated order, then custom).
-        var installed = LlamaCppServerManager.GetAllTranslateModels().FirstOrDefault(LlamaCppServerManager.IsModelInstalled);
+        // No model given: pick the first installed translate model (curated order, then custom);
+        // the advanced engine skips completion-only models (see above).
+        var installed = LlamaCppServerManager.GetAllTranslateModels()
+            .FirstOrDefault(m => LlamaCppServerManager.IsModelInstalled(m) && !(chatModelsOnly && m.CompletionOnly));
         if (installed == null)
         {
             throw new InvalidOperationException(
-                $"No llama.cpp translate model found in {LlamaCppServerManager.GetAndCreateModelsFolder()}. " +
+                $"No llama.cpp {(chatModelsOnly ? "chat " : string.Empty)}translate model found in {LlamaCppServerManager.GetAndCreateModelsFolder()}. " +
                 "Download one in Subtitle Edit (Auto-translate > llama.cpp), drop a .gguf into that folder, " +
                 "or pass --translate-model:<path.gguf>.");
         }

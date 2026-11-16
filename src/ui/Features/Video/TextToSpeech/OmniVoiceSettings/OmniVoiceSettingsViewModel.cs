@@ -170,10 +170,12 @@ public partial class OmniVoiceSettingsViewModel : ObservableObject
         var variant = OmniVoiceDownloadService.WindowsVariantVulkan;
         if (Configuration.IsRunningOnWindows)
         {
+            var gpuHint = await GpuBuildHint.GetAsync(GpuBuild.Cpu, GpuBuild.Vulkan, GpuBuild.Cuda);
             var variantAnswer = await MessageBox.Show(
                 Window,
                 Se.Language.Video.TextToSpeech.ReDownloadOmniVoiceTts,
                 Se.Language.Video.TextToSpeech.SelectTheBuildToDownload,
+                gpuHint,
                 MessageBoxButtons.Cancel,
                 MessageBoxIcon.Question,
                 "CPU",
@@ -256,17 +258,5 @@ public partial class OmniVoiceSettingsViewModel : ObservableObject
         Window?.Close();
     }
 
-    internal void OnKeyDown(KeyEventArgs e)
-    {
-        if (e.Key == Key.Escape)
-        {
-            e.Handled = true;
-            Window?.Close();
-        }
-        else if (UiUtil.IsHelp(e))
-        {
-            e.Handled = true;
-            UiUtil.ShowHelp("features/text-to-speech", "omnivoice-tts");
-        }
-    }
+    internal void OnKeyDown(KeyEventArgs e) => UiUtil.CloseOnEscapeOrShowHelp(e, Window, "features/text-to-speech", "omnivoice-tts");
 }

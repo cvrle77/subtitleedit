@@ -31,11 +31,15 @@ public partial class AssaPropertiesViewModel : ObservableObject
     [ObservableProperty] private string _updateDetails;
     [ObservableProperty] private int _videoWidth;
     [ObservableProperty] private int _videoHeight;
+    [ObservableProperty] private int _layoutWidth;
+    [ObservableProperty] private int _layoutHeight;
     [ObservableProperty] private bool _showGetResolutionFromCurrentVideo;
     [ObservableProperty] private ObservableCollection<WrapStyleItem> _wrapStyles;
     [ObservableProperty] private WrapStyleItem _selectedWrapStyle;
     [ObservableProperty] private ObservableCollection<BorderAndShadowScalingItem> _borderAndShadowScalingStyles;
     [ObservableProperty] private BorderAndShadowScalingItem _selectedBorderAndShadowScalingStyle;
+    [ObservableProperty] private ObservableCollection<YCbCrMatrixItem> _yCbCrMatrixItems;
+    [ObservableProperty] private YCbCrMatrixItem _selectedYCbCrMatrix;
 
     public Window? Window { get; internal set; }
     public bool OkPressed { get; private set; }
@@ -46,6 +50,8 @@ public partial class AssaPropertiesViewModel : ObservableObject
     private string _videoFileName;
     private int _currentVideoWidth;
     private int _currentVideoHeight;
+    private int _currentDisplayWidth;
+    private int _currentDisplayHeight;
 
     public AssaPropertiesViewModel(IFileHelper fileHelper, IWindowService windowService)
     {
@@ -65,6 +71,8 @@ public partial class AssaPropertiesViewModel : ObservableObject
         SelectedWrapStyle = WrapStyles[2];
         BorderAndShadowScalingStyles = new ObservableCollection<BorderAndShadowScalingItem>(BorderAndShadowScalingItem.List());
         SelectedBorderAndShadowScalingStyle = BorderAndShadowScalingStyles[2];
+        YCbCrMatrixItems = new ObservableCollection<YCbCrMatrixItem>(YCbCrMatrixItem.List());
+        SelectedYCbCrMatrix = YCbCrMatrixItems.First(p => p.Style == YCbCrMatrixType.None);
 
         _videoFileName = string.Empty;
         Header = string.Empty;
@@ -90,6 +98,9 @@ public partial class AssaPropertiesViewModel : ObservableObject
         UpdateTag("Update Details", UpdateDetails, string.IsNullOrWhiteSpace(UpdateDetails));
         UpdateTag("PlayResX", VideoWidth.ToString(CultureInfo.InvariantCulture), VideoWidth == 0);
         UpdateTag("PlayResY", VideoHeight.ToString(CultureInfo.InvariantCulture), VideoHeight == 0);
+        var hasLayoutRes = LayoutWidth > 0 && LayoutHeight > 0;
+        UpdateTag("LayoutResX", LayoutWidth.ToString(CultureInfo.InvariantCulture), !hasLayoutRes);
+        UpdateTag("LayoutResY", LayoutHeight.ToString(CultureInfo.InvariantCulture), !hasLayoutRes);
         UpdateTag("WrapStyle", ((int)SelectedWrapStyle.Style).ToString(CultureInfo.InvariantCulture), false);
 
         if (SelectedBorderAndShadowScalingStyle.Style == BorderAndShadowScalingType.Yes)
@@ -104,6 +115,8 @@ public partial class AssaPropertiesViewModel : ObservableObject
         {
             UpdateTag("ScaledBorderAndShadow", "Hide", true);
         }
+
+        UpdateTag("YCbCr Matrix", SelectedYCbCrMatrix.Name, SelectedYCbCrMatrix.Style == YCbCrMatrixType.NotSet);
     }
 
     private void UpdateTag(string tag, string text, bool remove)
@@ -135,7 +148,7 @@ public partial class AssaPropertiesViewModel : ObservableObject
             {
                 if (!remove)
                 {
-                    sb.AppendLine(line.Substring(0, tag.Length) + ": " + text);
+                    sb.AppendLine(tag + ": " + text);
                 }
 
                 found = true;
@@ -202,6 +215,8 @@ public partial class AssaPropertiesViewModel : ObservableObject
         {
             VideoWidth = _currentVideoWidth;
             VideoHeight = _currentVideoHeight;
+            SetLayoutResolutionIfUnset(_currentDisplayWidth > 0 ? _currentDisplayWidth : _currentVideoWidth,
+                _currentDisplayHeight > 0 ? _currentDisplayHeight : _currentVideoHeight);
             return;
         }
 
@@ -214,18 +229,77 @@ public partial class AssaPropertiesViewModel : ObservableObject
                 {
                     VideoWidth = mediaInfo.Dimension.Width;
                     VideoHeight = mediaInfo.Dimension.Height;
+                    SetLayoutResolutionIfUnset(mediaInfo.DisplayDimension.Width, mediaInfo.DisplayDimension.Height);
                 });
             }
         });
     }
 
-    public void Initialize(Subtitle subtitle, SubtitleFormat format, string fileName, string videoFileName, int videoWidth = 0, int videoHeight = 0)
+    /// <summary>
+    /// Taking the script resolution from the video means the script is authored for it: a script
+    /// without LayoutRes gets the video's display size too, as the libass guide asks for new
+    /// scripts. An existing LayoutRes is kept - it names the video the script was laid out for.
+    /// </summary>
+    private void SetLayoutResolutionIfUnset(int displayWidth, int displayHeight)
+    {
+        if (LayoutWidth > 0 && LayoutHeight > 0 || displayWidth <= 0 || displayHeight <= 0)
+        {
+            return;
+        }
+
+        LayoutWidth = displayWidth;
+        LayoutHeight = displayHeight;
+    }
+
+    [RelayCommand]
+    private void GetLayoutResolutionFromCurrentVideo()
+    {
+        if (_currentDisplayWidth > 0 && _currentDisplayHeight > 0)
+        {
+            LayoutWidth = _currentDisplayWidth;
+            LayoutHeight = _currentDisplayHeight;
+            return;
+        }
+
+        if (_currentVideoWidth > 0 && _currentVideoHeight > 0)
+        {
+            LayoutWidth = _currentVideoWidth;
+            LayoutHeight = _currentVideoHeight;
+            return;
+        }
+
+        _ = Task.Run(() =>
+        {
+            var mediaInfo = FfmpegMediaInfo2.Parse(_videoFileName);
+            if (mediaInfo?.Dimension is { Width: > 0, Height: > 0 })
+            {
+                var display = mediaInfo.DisplayDimension;
+                Dispatcher.UIThread.Post(() =>
+                {
+                    LayoutWidth = display.Width;
+                    LayoutHeight = display.Height;
+                });
+            }
+        });
+    }
+
+    [RelayCommand]
+    private void ClearLayoutResolution()
+    {
+        LayoutWidth = 0;
+        LayoutHeight = 0;
+    }
+
+    public void Initialize(Subtitle subtitle, SubtitleFormat format, string fileName, string videoFileName, int videoWidth = 0, int videoHeight = 0,
+        int displayWidth = 0, int displayHeight = 0)
     {
         Title = UiUtil.FormatTitleWithFileName(Se.Language.Assa.PropertiesTitleX, fileName);
         Header = subtitle.Header;
         _videoFileName = videoFileName;
         _currentVideoWidth = videoWidth;
         _currentVideoHeight = videoHeight;
+        _currentDisplayWidth = displayWidth;
+        _currentDisplayHeight = displayHeight;
         ShowGetResolutionFromCurrentVideo = (videoWidth > 0 && videoHeight > 0) ||
                                             (!string.IsNullOrWhiteSpace(videoFileName) && System.IO.File.Exists(videoFileName));
 
@@ -239,6 +313,15 @@ public partial class AssaPropertiesViewModel : ObservableObject
 
     private void LoadFromHeader()
     {
+        foreach (var custom in YCbCrMatrixItems.Where(p => p.Style == YCbCrMatrixType.Custom).ToList())
+        {
+            YCbCrMatrixItems.Remove(custom);
+        }
+
+        // "None" (no color mangling) is the libass-recommended value, so it is the default for
+        // files without the header; N/A stays available to leave the header out.
+        SelectedYCbCrMatrix = YCbCrMatrixItems.First(p => p.Style == YCbCrMatrixType.None);
+
         foreach (var line in Header.SplitToLines())
         {
             var s = line.ToLowerInvariant().Trim();
@@ -288,6 +371,20 @@ public partial class AssaPropertiesViewModel : ObservableObject
                     VideoHeight = number;
                 }
             }
+            else if (s.StartsWith("layoutresx:", StringComparison.Ordinal))
+            {
+                if (int.TryParse(line.Trim().Remove(0, 11).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) && number > 0)
+                {
+                    LayoutWidth = number;
+                }
+            }
+            else if (s.StartsWith("layoutresy:", StringComparison.Ordinal))
+            {
+                if (int.TryParse(line.Trim().Remove(0, 11).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) && number > 0)
+                {
+                    LayoutHeight = number;
+                }
+            }
             else if (s.StartsWith("scaledborderandshadow:", StringComparison.Ordinal))
             {
                 var scale = line.Trim().Remove(0, 22).Trim().ToLowerInvariant();
@@ -302,6 +399,30 @@ public partial class AssaPropertiesViewModel : ObservableObject
                 else
                 {
                     SelectedBorderAndShadowScalingStyle = BorderAndShadowScalingStyles.First(p => p.Style == BorderAndShadowScalingType.NotSet);
+                }
+            }
+            else if (s.StartsWith("ycbcr matrix:", StringComparison.Ordinal))
+            {
+                var value = line.Trim().Remove(0, 13).Trim();
+
+                // libass parses the value case-insensitively, so match the same way.
+                var match = YCbCrMatrixItems.FirstOrDefault(p => p.Style != YCbCrMatrixType.NotSet &&
+                                                                 p.Name.Equals(value, StringComparison.OrdinalIgnoreCase));
+                if (value.Length == 0)
+                {
+                    SelectedYCbCrMatrix = YCbCrMatrixItems.First(p => p.Style == YCbCrMatrixType.NotSet);
+                }
+                else if (match != null)
+                {
+                    SelectedYCbCrMatrix = match;
+                }
+                else
+                {
+                    // Not a value libass knows - show and keep it as-is, so OK does not change it
+                    // and N/A can still remove it.
+                    var custom = new YCbCrMatrixItem(value, YCbCrMatrixType.Custom);
+                    YCbCrMatrixItems.Add(custom);
+                    SelectedYCbCrMatrix = custom;
                 }
             }
             else if (s.StartsWith("wrapstyle:", StringComparison.Ordinal))

@@ -78,7 +78,8 @@ internal static class CliSchema
     private static readonly Dictionary<string, string[]> Choices = new(StringComparer.OrdinalIgnoreCase)
     {
         ["--ocr-engine"] = ["tesseract", "nocr", "binaryocr", "ollama", "llamacpp", "paddle", "applevision"],
-        ["--translate-engine"] = ["llamacpp", "ollama", "lmstudio", "openai-compatible", "libretranslate", "nllb-serve", "nllb-api", "deepl"],
+        ["--translate-engine"] = AutoTranslateRunner.SupportedEngines,
+        ["--translate-formality"] = AutoTranslateRunner.FormalityValues,
         ["--box-type"] = ["none", "one-box", "box-per-line"],
         ["--content-alignment"] = ["left", "center", "right", "from-alignment"],
         ["--alignment"] =
@@ -88,6 +89,8 @@ internal static class CliSchema
             "bottom-left", "bottom-center", "bottom-right",
         ],
     };
+
+    private static readonly string[] BoolValues = ["true", "false"];
 
     /// <summary>
     /// Value-carrying options that belong to the operations pipeline rather than to output
@@ -161,7 +164,11 @@ internal static class CliSchema
                 Type: DescribeType(property.PropertyType),
                 Group: isOperation ? "operation" : "option",
                 Description: ReadDescription(property),
-                Choices: Choices.TryGetValue(name, out var choices) ? choices : null,
+                // A bool? option is a flag that also takes an explicit value
+                // (--translate-keep-line-breaks:false), so list the two it accepts.
+                Choices: Choices.TryGetValue(name, out var choices)
+                    ? choices
+                    : Nullable.GetUnderlyingType(property.PropertyType) == typeof(bool) ? BoolValues : null,
                 Discover: DiscoveryCommands.TryGetValue(name, out var discover) ? discover : null,
                 // A bracketed placeholder ("--apply-min-gap [MS]") marks a Spectre
                 // FlagValue option whose value may be omitted entirely.

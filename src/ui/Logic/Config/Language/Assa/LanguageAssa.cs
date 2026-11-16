@@ -4,6 +4,7 @@ public class LanguageAssa
 {
     // ASSA Draw
     public string AssaDraw { get; set; }
+    public string LayoutRemoveTag { get; set; }
     public string DrawSelectTool { get; set; }
     public string DrawUseShapeForErase { get; set; }
     public string DrawLineTool { get; set; }
@@ -368,6 +369,11 @@ public class LanguageAssa
     public string FontsAndGraphics { get; set; }
     public string WrapStyle { get; set; }
     public string BorderAndShadowScaling { get; set; }
+    public string YCbCrMatrix { get; set; }
+    public string YCbCrMatrixHint { get; set; }
+    public string LayoutResolution { get; set; }
+    public string LayoutResolutionHint { get; set; }
+    public string LayoutResolutionFromVideo { get; set; }
     public string Collisions { get; set; }
     public string PlayDepth { get; set; }
     public string Timer { get; set; }
@@ -919,6 +925,11 @@ public class LanguageAssa
         FontsAndGraphics = "Fonts and graphics";
         WrapStyle = "Wrap style";
         BorderAndShadowScaling = "Border and shadow scaling";
+        YCbCrMatrix = "YCbCr matrix";
+        YCbCrMatrixHint = "Must match the video's colorspace and range: TV.709 for HD SDR video, TV.601 for SD; None for anything other than 601/709 (e.g. HDR/BT.2020). If omitted, renderers will assume TV.601 (for VSFilter compatibility).";
+        LayoutResolution = "Layout resolution";
+        LayoutResolutionHint = "LayoutResX/LayoutResY (libass 0.17+, xy-VSFilter): the display size of the video the script was made for. Renderers use it instead of the video's own size for aspect-ratio correction and unscaled borders/blur, so the script looks the same on any video with the same aspect ratio. Set it to the video's display size for new scripts; keep it when moving a script to another resolution of the same video. 0 = not set.";
+        LayoutResolutionFromVideo = "Set layout resolution from current video (display size)";
         Collisions = "Collisions";
         PlayDepth = "Play depth";
         Timer = "Timer";
@@ -1106,5 +1117,8 @@ public class LanguageAssa
         MouseOverColor = "Mouse-over color";
         ClickedColor = "Clicked color";
         DeleteAttachmentQuestion = "Delete attachment?";
+
+        // Layout 14 (ASSA)
+        LayoutRemoveTag = "Remove tag";
     }
 }
