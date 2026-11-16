@@ -33,6 +33,7 @@ internal class IconNames
     public const string Close = "mdi-close";
     public const string ClosedCaption = "mdi-closed-caption";
     public const string Cogs = "mdi-cogs";
+    public const string ContentCut = "mdi-content-cut";
     public const string ContentSave = "mdi-content-save";
     public const string Copy = "mdi-content-copy";
     public const string Counter = "mdi-counter";
@@ -99,6 +100,7 @@ internal class IconNames
     public const string RayEnd = "mdi-ray-end";
     public const string RayEndArrow = "mdi-ray-end-arrow";
     public const string RayStart = "mdi-ray-start";
+    public const string Recycle = "mdi-recycle";
     public const string Regex = "mdi-regex";
     public const string Replay = "mdi-replay";
     public const string Repeat = "mdi-repeat";
