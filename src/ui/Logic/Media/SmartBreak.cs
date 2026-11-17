@@ -52,6 +52,13 @@ public static class SmartBreak
         "i", "a", "pa", "ili", "te", "niti", "ni",
     };
 
+    // Interjections open the next sentence ("... od 9. | E, da proverimo."), so they must not be
+    // stranded at the end of a cue or a line - they belong with the words that follow them.
+    private static readonly HashSet<string> Interjections = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "e", "ma", "hm", "hmm", "mh", "ah", "oh", "uh", "hej", "ej", "aj", "joj", "oj", "eh",
+    };
+
     private static readonly HashSet<string> Clitics = new(StringComparer.OrdinalIgnoreCase)
     {
         "bi", "bih", "bismo", "biste", "je", "su", "sam", "si", "smo", "ste",
@@ -93,6 +100,7 @@ public static class SmartBreak
         set.UnionWith(Clitics);
         set.UnionWith(Strong);
         set.UnionWith(Weak);
+        set.UnionWith(Interjections);
         set.UnionWith(Abbrev);
         set.Add("da");
         set.Add("li");
@@ -111,6 +119,7 @@ public static class SmartBreak
         set.UnionWith(Clitics);
         set.UnionWith(Strong);
         set.UnionWith(Weak);
+        set.UnionWith(Interjections);
         set.Add("da");
         set.Add("li");
         return set;
