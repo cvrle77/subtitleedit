@@ -131,6 +131,12 @@ public static class SmartBreak
         return bare.Length > 0 && DanglingEnd.Contains(bare);
     }
 
+    private static bool IsInterjection(string word)
+    {
+        var bare = Bare(word);
+        return bare.Length > 0 && Interjections.Contains(bare);
+    }
+
     private static readonly Regex NumRe = new(@"^[0-9]+([.,][0-9]+)?$", RegexOptions.Compiled);
 
     private static string Bare(string w) => new string(w.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
@@ -642,8 +648,9 @@ public static class SmartBreak
                     lastHard = j;
                     boundaries.Add(j);
 
-                    // a real pause right after a comma ends the cue
-                    if (j < n)
+                    // a real pause right after a comma ends the cue - but never after an
+                    // interjection: "E," opens the next sentence, so the pause belongs to its start
+                    if (j < n && !IsInterjection(block[j - 1].Word))
                     {
                         var gap = block[j].Start - EffEnd(runs, block[j - 1]);
                         if (gap >= PauseAtComma)
@@ -664,6 +671,20 @@ public static class SmartBreak
             if (j >= n)
             {
                 end = n;
+
+                // A sentence that opens with an interjection ("... od 9. E, da proverimo.") starts
+                // its own cue even when both sentences would still fit two lines: the interjection
+                // belongs with the sentence it opens, never stuck to the end of the previous one.
+                for (var b = i + 1; b < n; b++)
+                {
+                    var previous = block[b - 1].Word.TrimEnd().TrimEnd(',', ';', ':');
+                    var previousEndsSentence = previous.Length > 0 && ".!?\u2026".IndexOf(previous[^1]) >= 0;
+                    if (previousEndsSentence && IsInterjection(block[b].Word))
+                    {
+                        end = b;
+                        break;
+                    }
+                }
             }
             else if (lastHard > i)
             {
