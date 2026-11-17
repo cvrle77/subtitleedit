@@ -6249,6 +6249,33 @@
     <Word to="Sneg" from="Snijeg" />
     <Word to="snega" from="snijega" />
     <Word to="Snega" from="Snijega" />
+    <Word to="mutim" from="mlutim" />
+    <Word to="Mutim" from="Mlutim" />
+    <Word to="umutim" from="obmutim" />
+    <Word to="Umutim" from="Obmutim" />
+    <Word to="odsecam" from="ocecam" />
+    <Word to="Odsecam" from="Ocecam" />
+    <Word to="setila" from="setjela" />
+    <Word to="Setila" from="Setjela" />
+    <Word to="tacnu" from="tasnu" />
+    <Word to="Tacnu" from="Tasnu" />
+    <Word to="uvek" from="uven" />
+    <Word to="Uvek" from="Uven" />
+    <Word to="dragi" from="drađi" />
+        <Word to="srednjoj" from="srednoj" />
+    <Word to="Srednjoj" from="Srednoj" />
+    <Word to="frižideru" from="frežideru" />
+    <Word to="Frižideru" from="Frežideru" />
+    <Word to="pojedemo" from="poedemo" />
+    <Word to="Pojedemo" from="Poedemo" />
+    <Word to="pojesti" from="poesti" />
+    <Word to="Pojesti" from="Poesti" />
+    <Word to="Rozenka" from="Rosenka" />
+    <Word to="rozenka" from="rosenka" />
+    <Word to="Rozenka" from="rozenjka" />
+    <Word to="isečem" from="isetem" />
+    <Word to="Isečem" from="Isetem" />
+    <Word to="Dragi" from="Drađi" />
 </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
@@ -6821,6 +6848,21 @@
     <LinePart to="Vam je na pari" from="Je u melatvari" />
     <LinePart to="spakovala sam" from="spakula sam" />
     <LinePart to="Spakovala sam" from="Spakula sam" />
+    <LinePart to="ima veze" from="ima vez" />
+    <LinePart to="Ima veze" from="Ima vez" />
+    <LinePart to="boga ne molim" from="boga ne morim" />
+    <LinePart to="Boga ne molim" from="Boga ne morim" />
+    <LinePart to="savršen kolač" from="savršen kolac" />
+    <LinePart to="Savršen kolač" from="Savršen kolac" />
+    <LinePart to="mlijeko u prahu" from="mlijeku prahu" />
+    <LinePart to="Mlijeko u prahu" from="Mlijeku prahu" />
+    <LinePart to="više sati" from="više sate" />
+    <LinePart to="Više sati" from="Više sate" />
+    <LinePart to="pun ukus" from="purnu ukusu" />
+    <LinePart to="Pun ukus" from="Purnu ukusu" />
+    <LinePart to="otprilike" from="do prilike" />
+    <LinePart to="Otprilike" from="Do prilike" />
+    <LinePart to="Praznici nam stižu" from="Praznicino stišu" />
 </PartialLines>
   <BeginLines />
   <EndLines />
