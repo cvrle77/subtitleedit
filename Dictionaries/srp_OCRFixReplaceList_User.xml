@@ -6863,6 +6863,8 @@
     <LinePart to="otprilike" from="do prilike" />
     <LinePart to="Otprilike" from="Do prilike" />
     <LinePart to="Praznici nam stižu" from="Praznicino stišu" />
+    <LinePart to="i njega ću samleti" from="i neka ću samleti" />
+    <LinePart to="I njega ću samleti" from="I neka ću samleti" />
 </PartialLines>
   <BeginLines />
   <EndLines />
