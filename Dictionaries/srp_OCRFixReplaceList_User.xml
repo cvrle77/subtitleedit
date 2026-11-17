@@ -6212,6 +6212,24 @@
     <Word to="Stepeni" from="Stupnjevi" />
     <Word to="stepenima" from="stupnjevima" />
     <Word to="Stepenima" from="Stupnjevima" />
+    <Word to="praznici" from="praznice" />
+    <Word to="Praznici" from="Praznice" />
+    <Word to="gustina" from="gostina" />
+    <Word to="Gustina" from="Gostina" />
+    <Word to="uvek" from="uvem" />
+    <Word to="Uvek" from="Uvem" />
+    <Word to="stižu" from="stišu" />
+    <Word to="Stižu" from="Stišu" />
+    <Word to="otapanje" from="otopanje" />
+    <Word to="Otapanje" from="Otopanje" />
+    <Word to="osećam" from="osjecam" />
+    <Word to="Osećam" from="Osjecam" />
+    <Word to="ćerke" from="čerke" />
+    <Word to="Ćerke" from="Čerke" />
+    <Word to="ćerka" from="čerka" />
+    <Word to="Ćerka" from="Čerka" />
+    <Word to="umutim" from="omutim" />
+    <Word to="Umutim" from="Omutim" />
 </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
@@ -6778,6 +6796,8 @@
     <LinePart to="Moja ćerka" from="Moja četka" />
     <LinePart to="pekmezom" from="petmesom" />
     <LinePart to="Pekmezom" from="Petmesom" />
+    <LinePart to="od ove" from="odove" />
+    <LinePart to="Od ove" from="Odove" />
 </PartialLines>
   <BeginLines />
   <EndLines />
