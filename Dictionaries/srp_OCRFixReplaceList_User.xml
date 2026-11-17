@@ -481,7 +481,7 @@
     <Word to="vrele" from="vrale" />
     <Word to="rerna" from="vrena" />
     <Word to="rerna nam" from="relanom" />
-    <Word to="smesu" from="smjesu" />
+    <Word to="smešu" from="smjesu" />
     <Word to="kesice" from="kjestice" />
     <Word to="grama" from="gr" />
     <Word to="Od gore" from="Odgore" />
@@ -1067,10 +1067,10 @@
     <Word to="skuvao" from="skuhao" />
     <Word to="skuvati" from="skuhati" />
     <Word to="skuvaš" from="skuhaš" />
-    <Word to="smesa" from="smjesa" />
-    <Word to="smese" from="smjese" />
-    <Word to="smesi" from="smjesi" />
-    <Word to="smesom" from="smjesom" />
+    <Word to="smeša" from="smjesa" />
+    <Word to="smeše" from="smjese" />
+    <Word to="smeši" from="smjesi" />
+    <Word to="smešom" from="smjesom" />
     <Word to="smešaj" from="smiješaj" />
     <Word to="smešam" from="smiješam" />
     <Word to="smešati" from="smiješati" />
@@ -3451,7 +3451,7 @@
     <Word to="Vrele" from="Vrale" />
     <Word to="Rerna" from="Vrena" />
     <Word to="Rerna nam" from="Relanom" />
-    <Word to="Smesu" from="Smjesu" />
+    <Word to="Smešu" from="Smjesu" />
     <Word to="Kesice" from="Kjestice" />
     <Word to="Grama" from="Gr" />
     <Word to="Pomešamo" from="Pomiješamo" />
@@ -3999,10 +3999,10 @@
     <Word to="Skuvao" from="Skuhao" />
     <Word to="Skuvati" from="Skuhati" />
     <Word to="Skuvaš" from="Skuhaš" />
-    <Word to="Smesa" from="Smjesa" />
-    <Word to="Smese" from="Smjese" />
-    <Word to="Smesi" from="Smjesi" />
-    <Word to="Smesom" from="Smjesom" />
+    <Word to="Smeša" from="Smjesa" />
+    <Word to="Smeše" from="Smjese" />
+    <Word to="Smeši" from="Smjesi" />
+    <Word to="Smešom" from="Smjesom" />
     <Word to="Smešaj" from="Smiješaj" />
     <Word to="Smešam" from="Smiješam" />
     <Word to="Smešati" from="Smiješati" />
@@ -6222,14 +6222,33 @@
     <Word to="Stižu" from="Stišu" />
     <Word to="otapanje" from="otopanje" />
     <Word to="Otapanje" from="Otopanje" />
-    <Word to="osećam" from="osjecam" />
-    <Word to="Osećam" from="Osjecam" />
     <Word to="ćerke" from="čerke" />
     <Word to="Ćerke" from="Čerke" />
     <Word to="ćerka" from="čerka" />
     <Word to="Ćerka" from="Čerka" />
     <Word to="umutim" from="omutim" />
     <Word to="Umutim" from="Omutim" />
+    <Word to="odsecam" from="osjecam" />
+    <Word to="Odsecam" from="Osjecam" />
+    <Word to="lešnikom" from="lješnjakom" />
+    <Word to="mešati" from="mješati" />
+    <Word to="mešajte" from="miješajte" />
+    <Word to="Mešajte" from="Miješajte" />
+    <Word to="mešajte" from="mijesajte" />
+    <Word to="mešaj" from="miješaj" />
+    <Word to="Mešaj" from="Miješaj" />
+    <Word to="ko" from="tko" />
+    <Word to="Ko" from="Tko" />
+    <Word to="detetu" from="djetetu" />
+    <Word to="Detetu" from="Djetetu" />
+    <Word to="deci" from="djeci" />
+    <Word to="Deci" from="Djeci" />
+    <Word to="decom" from="djecom" />
+    <Word to="Decom" from="Djecom" />
+    <Word to="sneg" from="snijeg" />
+    <Word to="Sneg" from="Snijeg" />
+    <Word to="snega" from="snijega" />
+    <Word to="Snega" from="Snijega" />
 </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
@@ -6798,6 +6817,10 @@
     <LinePart to="Pekmezom" from="Petmesom" />
     <LinePart to="od ove" from="odove" />
     <LinePart to="Od ove" from="Odove" />
+    <LinePart to="vam je na pari" from="je u melatvari" />
+    <LinePart to="Vam je na pari" from="Je u melatvari" />
+    <LinePart to="spakovala sam" from="spakula sam" />
+    <LinePart to="Spakovala sam" from="Spakula sam" />
 </PartialLines>
   <BeginLines />
   <EndLines />
