@@ -13816,17 +13816,30 @@ public partial class MainViewModel :
         }
 
         var updatedCount = 0;
+        var matchedCount = 0;
         foreach (var change in changes)
         {
             var line = Subtitles.FirstOrDefault(s =>
                 Math.Abs(s.StartTime.TotalMilliseconds - change.StartMs) < toleranceMs &&
                 Math.Abs(s.EndTime.TotalMilliseconds - change.EndMs) < toleranceMs);
-            if (line != null && line.Text != change.NewText)
+            if (line == null)
             {
-                line.Text = change.NewText;
-                updatedCount++;
+                Se.WriteToolsLog($"TTS apply: NO LINE for {change.StartMs:F0}-{change.EndMs:F0} \"{ShortForLog(change.NewText)}\" (subtitle has {Subtitles.Count} line(s))");
+                continue;
             }
+
+            matchedCount++;
+            if (line.Text == change.NewText)
+            {
+                Se.WriteToolsLog($"TTS apply: already the same at {change.StartMs:F0}-{change.EndMs:F0}");
+                continue;
+            }
+
+            line.Text = change.NewText;
+            updatedCount++;
         }
+
+        Se.WriteToolsLog($"TTS apply: changes={changes.Count} matched={matchedCount} updated={updatedCount} merged={mergedCount}");
 
         if (mergedCount == 0 && updatedCount == 0)
         {
@@ -13859,6 +13872,13 @@ public partial class MainViewModel :
     // Picks the singular or plural resource string for a count, formatting the plural with {0}.
     private static string FormatCount(int count, string singular, string plural)
         => count == 1 ? singular : string.Format(plural, count);
+
+    // One line, short - diagnostics only; the tools log must stay readable.
+    private static string ShortForLog(string text)
+    {
+        var oneLine = text.Replace("\r", " ").Replace("\n", " ").Trim();
+        return oneLine.Length <= 60 ? oneLine : oneLine.Substring(0, 60) + "...";
+    }
 
     [RelayCommand]
     private async Task ShowVideoTransparentSubtitles()

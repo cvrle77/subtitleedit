@@ -3196,6 +3196,10 @@ public partial class TextToSpeechViewModel : ObservableObject
                 var ttsChanges = TtsTextChanges.Build(_lastGeneratedResults, _subtitle.Paragraphs, Fork.TtsCleanText);
                 CollectReviewTextChanges(ttsChanges);
                 Se.WriteToolsLog($"TTS window: OK collected {ttsChanges.Count} text change(s) from the session");
+                foreach (var c in ttsChanges)
+                {
+                    Se.WriteToolsLog($"TTS window: change {c.StartMs:F0}-{c.EndMs:F0} \"{ShortLog(c.NewText)}\"");
+                }
             }
         }
         catch (Exception ex)
@@ -5742,6 +5746,12 @@ public partial class TextToSpeechViewModel : ObservableObject
         }
     }
 
+    // Diagnostics only: one short line in the tools log.
+    private static string ShortLog(string text)
+    {
+        var oneLine = text.Replace("\r", " ").Replace("\n", " ").Trim();
+        return oneLine.Length <= 60 ? oneLine : oneLine.Substring(0, 60) + "...";
+    }
     // The compact cloud-engine descriptions ("pay/fast/good") read like debug output - expand
     // them into words; free-form descriptions (the CrispASR engines) are shown as-is. The
     // source strings are hardcoded English in the engines, so this map matches that.
