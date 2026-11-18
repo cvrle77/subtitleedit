@@ -6162,7 +6162,7 @@
     <Word to="utrošimo" from="utršimo" />
     <Word to="Utrošimo" from="Utršimo" />
     <Word from="Razmrila" to="Razmerila" />
-      <Word to="razmerila" from="razmrila" />
+    <Word to="razmerila" from="razmrila" />
     <Word to="mikserom" from="vikserom" />
     <Word to="Mikserom" from="Vikserom" />
     <Word to="izmesiti" from="izmestiti" />
@@ -6262,7 +6262,7 @@
     <Word to="uvek" from="uven" />
     <Word to="Uvek" from="Uven" />
     <Word to="dragi" from="drađi" />
-        <Word to="srednjoj" from="srednoj" />
+    <Word to="srednjoj" from="srednoj" />
     <Word to="Srednjoj" from="Srednoj" />
     <Word to="frižideru" from="frežideru" />
     <Word to="Frižideru" from="Frežideru" />
@@ -6276,6 +6276,21 @@
     <Word to="isečem" from="isetem" />
     <Word to="Isečem" from="Isetem" />
     <Word to="Dragi" from="Drađi" />
+    <Word from="mjerite" to="merite" />
+    <Word from="smeša" to="smesa" />
+    <Word from="samljevenih" to="samlevenih" />
+    <Word from="tekućine" to="tečnosti" />
+    <Word from="žlice" to="kašike" />
+    <Word from="Phila" to="Fila" />
+    <Word from="funkcionira" to="funkcioniše" />
+    <Word from="Rosen" to="Rozen" />
+    <Word from="mikrovalnoj" to="mikrotalasnoj" />
+    <Word from="mikrovalne" to="mikrotalasne" />
+    <Word from="izmiješate" to="izmešate" />
+      <Word to="lepo" from="lefu" />
+    <Word to="Lepo" from="Lefu" />
+    <Word to="raspremimo" from="raspremljamo" />
+    <Word to="Raspremimo" from="Raspremljamo" />
 </WholeWords>
   <PartialLines>
     <LinePart to="napraviću" from="napravit ću" />
@@ -6819,7 +6834,7 @@
     <LinePart to="Sačekaću" from="Sačekat ću" />
     <LinePart to="sačekaću" from="sačekat cu" />
     <LinePart to="Sačekaću" from="Sačekat cu" />
-      <LinePart to="Sode bikarbone" from="Sude bikarbone" />
+    <LinePart to="Sode bikarbone" from="Sude bikarbone" />
     <LinePart to="šećer u prahu" from="šećeru prahu" />
     <LinePart to="Šećer u prahu" from="Šećeru prahu" />
     <LinePart to="šećer u prahu" from="seceru prahu" />
@@ -6863,6 +6878,12 @@
     <LinePart to="Praznici nam stižu" from="Praznicino stišu" />
     <LinePart to="i njega ću samleti" from="i neka ću samleti" />
     <LinePart to="I njega ću samleti" from="I neka ću samleti" />
+      <LinePart to="ali nema veze" from="ali ima veze" />
+    <LinePart to="Ali nema veze" from="Ali ima veze" />
+    <LinePart to="ali nema veze" from="ali ima vez" />
+    <LinePart to="Ali nema veze" from="Ali ima vez" />
+    <LinePart to="u onaj kamion" from="u naj kamion" />
+    <LinePart to="U onaj kamion" from="U naj kamion" />
 </PartialLines>
   <BeginLines />
   <EndLines />
