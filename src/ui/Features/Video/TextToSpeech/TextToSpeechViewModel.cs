@@ -2966,6 +2966,10 @@ public partial class TextToSpeechViewModel : ObservableObject
         // no merged wav, no dialog, nothing (#12093).
         if (result.OkPressed)
         {
+            // The review window hands back the rows it actually has (regenerate, adjust speed,
+            // split, merge may replace whole TtsStepResult objects), so keep them for the
+            // OK-time comparison with the main subtitle.
+            _lastGeneratedResults = result.StepResults;
             // Text edits from an imported session can also apply to the open subtitle - the
             // time-code matching in the main window simply won't find a line when the imported
             // session belongs to a different subtitle.
@@ -3195,7 +3199,8 @@ public partial class TextToSpeechViewModel : ObservableObject
             {
                 var ttsChanges = TtsTextChanges.Build(_lastGeneratedResults, _subtitle.Paragraphs, Fork.TtsCleanText);
                 CollectReviewTextChanges(ttsChanges);
-                Se.WriteToolsLog($"TTS window: OK collected {ttsChanges.Count} text change(s) from the session");
+                Se.WriteToolsLog($"TTS window: OK collected {ttsChanges.Count} text change(s) from the session" +
+                                 $" (rows={_lastGeneratedResults.Length}, mainLines={_subtitle.Paragraphs.Count})");
                 foreach (var c in ttsChanges)
                 {
                     Se.WriteToolsLog($"TTS window: change {c.StartMs:F0}-{c.EndMs:F0} \"{ShortLog(c.NewText)}\"");
@@ -5728,6 +5733,10 @@ public partial class TextToSpeechViewModel : ObservableObject
         if (result.OkPressed)
         {
             CollectReviewTextChanges(result.TextChanges);
+            // The review window may hand back rows it rebuilt (regenerate, adjust speed, split,
+            // merge). Keeping the pre-review array meant those rows never reached the OK-time
+            // comparison with the main subtitle, so their edits silently vanished.
+            _lastGeneratedResults = result.StepResults;
             return result.StepResults;
         }
 
