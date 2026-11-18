@@ -157,6 +157,9 @@ public partial class TextToSpeechViewModel : ObservableObject
     // (#12093). A later session's edit to the same line replaces the earlier one.
     public List<ReviewTextChange> ReviewTextChanges { get; } = new();
 
+    // Main lines the review split into several rows; the grid follows so line counts match.
+    public List<ReviewSplit> ReviewSplits { get; } = new();
+
     // Set when the user accepted the merge-continuation-lines step: the subtitle actually sent
     // to the TTS engine. The main window applies the merges on OK so the subtitle stays in sync
     // with the generated audio; Cancel discards them.
@@ -3197,11 +3200,17 @@ public partial class TextToSpeechViewModel : ObservableObject
         {
             if (_lastGeneratedResults is { Length: > 0 } && _subtitle.Paragraphs.Count > 0)
             {
-                var ttsChanges = TtsTextChanges.Build(_lastGeneratedResults, _subtitle.Paragraphs, Fork.TtsCleanText);
-                CollectReviewTextChanges(ttsChanges);
-                Se.WriteToolsLog($"TTS window: OK collected {ttsChanges.Count} text change(s) from the session" +
+                var res = TtsTextChanges.Build(_lastGeneratedResults, _subtitle.Paragraphs, Fork.TtsCleanText);
+                CollectReviewTextChanges(res.TextChanges);
+                foreach (var split in res.Splits)
+                {
+                    ReviewSplits.RemoveAll(s => Math.Abs(s.LineStartMs - split.LineStartMs) < 0.5);
+                    ReviewSplits.Add(split);
+                }
+
+                Se.WriteToolsLog($"TTS window: OK collected {res.TextChanges.Count} text change(s), {res.Splits.Count} split(s) from the session" +
                                  $" (rows={_lastGeneratedResults.Length}, mainLines={_subtitle.Paragraphs.Count})");
-                foreach (var c in ttsChanges)
+                foreach (var c in res.TextChanges)
                 {
                     Se.WriteToolsLog($"TTS window: change {c.StartMs:F0}-{c.EndMs:F0} \"{ShortLog(c.NewText)}\"");
                 }

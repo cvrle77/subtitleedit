@@ -13642,7 +13642,7 @@ public partial class MainViewModel :
             // diagnosable even with tools logging off (#12626).
             try
             {
-                ApplyTtsChanges(result.MergedSubtitle, result.ReviewTextChanges, onlyRows);
+                ApplyTtsChanges(result.MergedSubtitle, result.ReviewTextChanges, onlyRows, result.ReviewSplits);
             }
             catch (Exception ex)
             {
@@ -13747,7 +13747,7 @@ public partial class MainViewModel :
     /// <param name="onlyRows">When the session ran on a selection, the rows it covered: a merge
     /// may then only swallow rows in that set, since lines adjacent in the selection need not be
     /// adjacent in the grid.</param>
-    private void ApplyTtsChanges(Subtitle? mergedSubtitle, List<ReviewTextChange> changes, ISet<SubtitleLineViewModel>? onlyRows = null)
+    private void ApplyTtsChanges(Subtitle? mergedSubtitle, List<ReviewTextChange> changes, ISet<SubtitleLineViewModel>? onlyRows = null, List<ReviewSplit>? splits = null)
     {
         const double toleranceMs = 0.5;
 
@@ -13815,6 +13815,47 @@ public partial class MainViewModel :
             mergedCount++;
         }
 
+        var splitCount = 0;
+        foreach (var split in splits ?? new List<ReviewSplit>())
+        {
+            var line = Subtitles.FirstOrDefault(s => Math.Abs(s.StartTime.TotalMilliseconds - split.LineStartMs) < toleranceMs);
+            if (line == null)
+            {
+                Se.WriteToolsLog($"TTS apply: NO LINE to split at {split.LineStartMs:F0}");
+                continue;
+            }
+
+            if (onlyRows != null && !onlyRows.Contains(line))
+            {
+                continue;
+            }
+
+            var index = Subtitles.IndexOf(line);
+            var style = line.Style;
+            var actor = line.Actor;
+            var bookmark = line.Bookmark;
+            var wasSelected = ReferenceEquals(line, SelectedSubtitle);
+            Subtitles.RemoveAt(index);
+            for (var i = 0; i < split.Parts.Count; i++)
+            {
+                var part = split.Parts[i];
+                var paragraph = new Paragraph(part.Text, part.StartMs, part.EndMs)
+                {
+                    Style = style,
+                    Actor = actor,
+                    Bookmark = bookmark,
+                };
+                var viewModel = new SubtitleLineViewModel(paragraph, SelectedSubtitleFormat);
+                Subtitles.Insert(index + i, viewModel);
+                if (wasSelected && i == 0)
+                {
+                    SelectedSubtitle = viewModel;
+                }
+            }
+
+            splitCount++;
+        }
+
         var updatedCount = 0;
         var matchedCount = 0;
         foreach (var change in changes)
@@ -13839,14 +13880,14 @@ public partial class MainViewModel :
             updatedCount++;
         }
 
-        Se.WriteToolsLog($"TTS apply: changes={changes.Count} matched={matchedCount} updated={updatedCount} merged={mergedCount}");
+        Se.WriteToolsLog($"TTS apply: changes={changes.Count} matched={matchedCount} updated={updatedCount} merged={mergedCount} splits={splitCount}");
 
-        if (mergedCount == 0 && updatedCount == 0)
+        if (mergedCount == 0 && updatedCount == 0 && splitCount == 0)
         {
             return;
         }
 
-        if (mergedCount > 0)
+        if (mergedCount > 0 || splitCount > 0)
         {
             Renumber();
         }
