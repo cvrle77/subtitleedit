@@ -30,9 +30,14 @@ public static class TtsTextChanges
         foreach (var item in rows)
         {
             var p = item.Paragraph;
-            var original = lines.FirstOrDefault(o =>
-                Math.Abs(o.StartTime.TotalMilliseconds - p.StartTime.TotalMilliseconds) < 0.5 &&
-                Math.Abs(o.EndTime.TotalMilliseconds - p.EndTime.TotalMilliseconds) < 0.5);
+            // Match by START only: the review trims/extends ends with the audio and a split moves
+            // them, so an exact start+end match misses most rows of an imported session (a real one
+            // had 60 of 116 unmatched for that reason). Same start plus the closest end wins when
+            // two lines share a start.
+            var original = lines
+                .Where(o => Math.Abs(o.StartTime.TotalMilliseconds - p.StartTime.TotalMilliseconds) < 0.5)
+                .OrderBy(o => Math.Abs(o.EndTime.TotalMilliseconds - p.EndTime.TotalMilliseconds))
+                .FirstOrDefault();
             if (original == null)
             {
                 noMatch++;
@@ -51,8 +56,8 @@ public static class TtsTextChanges
             }
 
             changes.Add(new ReviewTextChange(
-                p.StartTime.TotalMilliseconds,
-                p.EndTime.TotalMilliseconds,
+                original.StartTime.TotalMilliseconds,
+                original.EndTime.TotalMilliseconds,
                 clean ? cleaned : item.Text));
         }
 

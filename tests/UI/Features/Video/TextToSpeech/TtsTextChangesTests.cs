@@ -55,6 +55,21 @@ public class TtsTextChangesTests
         Assert.Empty(TtsTextChanges.Build(session, main, clean: true));
     }
 
+    // A session row whose END differs from the main line is still that line: the review trims and
+    // extends ends with the audio. This is the case that used to drop most edits of an imported
+    // session (60 of 116 rows in a real one).
+    [Fact]
+    public void RowWithTheSameStartButADifferentEnd_IsStillTheLine()
+    {
+        var main = new List<Paragraph> { new("Prvi red.", 0, 1000) };
+        var session = new List<TtsStepResult> { Row(0, 1400, "Izmenjeni red.") };
+
+        var change = Assert.Single(TtsTextChanges.Build(session, main, clean: true));
+        Assert.Equal(0, change.StartMs);
+        Assert.Equal(1000, change.EndMs); // the main line's own end, not the session's
+        Assert.Equal("Izmenjeni red.", change.NewText);
+    }
+
     // A session imported for another subtitle must not touch anything.
     [Fact]
     public void RowWithNoMatchingMainLine_IsIgnored()
