@@ -3185,6 +3185,24 @@ public partial class TextToSpeechViewModel : ObservableObject
 
         IsGenerating = false;
         ProgressOpacity = 0;
+
+        // An imported JSON is also the session's "before" text, so the review's own diff has
+        // nothing to report and its edits used to die here. Compare the session with the subtitle
+        // the main window handed over; a row that matches no line is simply ignored.
+        try
+        {
+            if (_lastGeneratedResults is { Length: > 0 } && _subtitle.Paragraphs.Count > 0)
+            {
+                var ttsChanges = TtsTextChanges.Build(_lastGeneratedResults, _subtitle.Paragraphs, Fork.TtsCleanText);
+                CollectReviewTextChanges(ttsChanges);
+                Se.WriteToolsLog($"TTS window: OK collected {ttsChanges.Count} text change(s) from the session");
+            }
+        }
+        catch (Exception ex)
+        {
+            SeLogger.Error(ex, "TTS window: collecting text changes on OK failed");
+        }
+
         OkPressed = true;
 
         // Tear the preview player down here, before the window starts closing, so libmpv's
