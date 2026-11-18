@@ -36,8 +36,10 @@ public static class TtsTextChanges
             if (original == null)
             {
                 noMatch++;
+                var nearest = lines.Count == 0 ? null : lines.OrderBy(o => Math.Abs(o.StartTime.TotalMilliseconds - p.StartTime.TotalMilliseconds)).First();
+                var delta = nearest == null ? 0 : nearest.StartTime.TotalMilliseconds - p.StartTime.TotalMilliseconds;
                 Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
-                    $"TTS changes: NO MATCH {p.StartTime.TotalMilliseconds:F0}-{p.EndTime.TotalMilliseconds:F0} \"{Short(item.Text)}\"");
+                    $"TTS changes: NO MATCH {p.StartTime.TotalMilliseconds:F0}-{p.EndTime.TotalMilliseconds:F0} nearestDelta={delta:F0}ms \"{Short(item.Text)}\"");
                 continue; // no such line in the main subtitle (e.g. an imported session for another one)
             }
 
