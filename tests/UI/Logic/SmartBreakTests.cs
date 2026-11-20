@@ -29,6 +29,29 @@ public class SmartBreakTests
         Assert.Equal("E, da proverimo.", string.Join(" ", cues[1].Lines));
     }
 
+    // Reported on line 19 of a real transcript: "... prebacujemo | i to radimo lagano ..." was a
+    // length-only break, so the clause boundary before "i" had no comma. A break right before a
+    // conjunction now carries the comma (the break itself already happened).
+    [Fact]
+    public void LengthBreakBeforeAConjunction_GetsAComma()
+    {
+        var words = new List<SmartBreakWord>
+        {
+            W("Ovako", 0.0, 0.3), W("od", 0.3, 0.4), W("dole", 0.4, 0.7), W("prema", 0.7, 0.9),
+            W("gore", 0.9, 1.2), W("prebacujemo", 1.2, 1.8), W("i", 1.8, 1.9), W("to", 1.9, 2.0),
+            W("radimo", 2.0, 2.4), W("lagano", 2.4, 2.8), W("da", 2.8, 2.9), W("nam", 2.9, 3.0),
+            W("se", 3.0, 3.1), W("ne", 3.1, 3.2), W("bi", 3.2, 3.3), W("mnogo", 3.3, 3.7),
+        };
+
+        var cues = SmartBreak.Build(words, Array.Empty<(double, double)>());
+        var lines = cues.SelectMany(c => c.Lines).ToList();
+
+        var index = lines.FindIndex(l => l.Contains("prebacujemo"));
+        Assert.True(index >= 0 && index + 1 < lines.Count, "break before 'i' not found");
+        Assert.EndsWith("prebacujemo,", lines[index].TrimEnd());
+        Assert.StartsWith("i ", lines[index + 1].TrimStart());
+    }
+
     // Same rule inside one cue: a line must not end on the interjection either.
     [Fact]
     public void LineDoesNotEndOnAnInterjection()

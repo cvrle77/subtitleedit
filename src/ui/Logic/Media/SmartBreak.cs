@@ -137,6 +137,31 @@ public static class SmartBreak
         return bare.Length > 0 && Interjections.Contains(bare);
     }
 
+    // Words that open a new clause. A line that breaks right before one of them gets the comma the
+    // clause boundary deserves, even when the break itself was only a length decision.
+    private static readonly HashSet<string> ClauseOpeners = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "i", "a", "pa", "te", "ili", "niti", "ni", "no", "vec", "ali", "jer", "dok",
+    };
+
+    private static bool EndsOnConjunction(string line, string nextLine)
+    {
+        var current = line.TrimEnd();
+        if (current.Length == 0 || ",.;:!?…".IndexOf(current[^1]) >= 0)
+        {
+            return false;
+        }
+
+        var next = nextLine.TrimStart();
+        if (next.Length == 0)
+        {
+            return false;
+        }
+
+        var first = next.Split(' ', 2)[0];
+        return ClauseOpeners.Contains(Bare(first));
+    }
+
     private static readonly Regex NumRe = new(@"^[0-9]+([.,][0-9]+)?$", RegexOptions.Compiled);
 
     private static string Bare(string w) => new string(w.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
@@ -1119,6 +1144,36 @@ public static class SmartBreak
             else
             {
                 nextLines[0] = lastWord + " " + nextLines[0];
+            }
+        }
+
+        // A break made only because the line was full is still a clause break when it lands right
+        // before a conjunction ("... prebacujemo | i to radimo ..."): mark it with the comma the
+        // boundary would have had, so the two parts read as the one sentence they are. The break is
+        // already a "risky" one (length, not punctuation), so the comma is what makes the split read
+        // as deliberate rather than as a cut-off.
+        foreach (var cue in merged)
+        {
+            for (var li = 0; li + 1 < cue.Lines.Count; li++)
+            {
+                if (!EndsOnConjunction(cue.Lines[li], cue.Lines[li + 1]))
+                {
+                    continue;
+                }
+
+                cue.Lines[li] = cue.Lines[li].TrimEnd() + ",";
+            }
+        }
+
+        // The same between two cues: the next cue is a new block, and the clause it opens deserves
+        // its comma even when the cut came from a pause rather than from punctuation.
+        for (var ci = 0; ci + 1 < merged.Count; ci++)
+        {
+            var lines = merged[ci].Lines;
+            var nextLines = merged[ci + 1].Lines;
+            if (lines.Count > 0 && nextLines.Count > 0 && EndsOnConjunction(lines[^1], nextLines[0]))
+            {
+                lines[^1] = lines[^1].TrimEnd() + ",";
             }
         }
 
