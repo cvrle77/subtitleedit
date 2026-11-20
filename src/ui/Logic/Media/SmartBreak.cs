@@ -785,8 +785,8 @@ public static class SmartBreak
                 else if (FindConjunctionCut(block, i, n) is { } conj && conj > i)
                 {
                     // A length-only break (no punctuation, no soft clause, and the pause would push a
-                    // wrapped two-line cue) belongs at the conjunction that still keeps the first cue
-                    // on one line: "... prebacujemo | i to radimo ..." instead of a blind word count.
+                    // wrapped two-line cue) belongs at the next conjunction that still keeps the first
+                    // cue on one line, instead of at a blind word count.
                     end = conj;
                 }
                 else if (bestK > i && bestPause >= 0.15)
@@ -1192,10 +1192,10 @@ public static class SmartBreak
         }
 
         // A break made only because the line was full is still a clause break when it lands right
-        // before a conjunction ("... prebacujemo | i to radimo ..."): mark it with the comma the
-        // boundary would have had, so the two parts read as the one sentence they are. The break is
-        // already a "risky" one (length, not punctuation), so the comma is what makes the split read
-        // as deliberate rather than as a cut-off.
+        // before a conjunction: mark it with the comma the boundary would have had, so the two parts
+        // read as the one sentence they are. The break is already a "risky" one (length, not
+        // punctuation), so the comma is what makes the split read as deliberate rather than as a
+        // cut-off.
         foreach (var cue in merged)
         {
             for (var li = 0; li + 1 < cue.Lines.Count; li++)

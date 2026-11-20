@@ -29,28 +29,28 @@ public class SmartBreakTests
         Assert.Equal("E, da proverimo.", string.Join(" ", cues[1].Lines));
     }
 
-    // Reported on line 19 of a real transcript: the text was cut into two blocks purely by word
-    // count ("... prebacujemo" | "i to radimo lagano da nam se ne bi mnogo" | "testa zalepilo za
-    // ruku."). The split belongs at the conjunction, and that boundary carries a comma:
-    // "Ovako od dole prema gore prebacujemo," | "i to radimo lagano da nam se ne bi mnogo testa
-    // zalepilo za ruku."
+    // A block that has no punctuation and no soft clause, and would be cut only to fit the length,
+    // must be cut at the next conjunction (the first part still fits one line) and that boundary
+    // gets the comma. Generic words on purpose: the rule knows word classes (conjunctions), not any
+    // particular transcript.
     [Fact]
     public void LengthOnlyBlock_SplitsAtTheConjunctionAndGetsAComma()
     {
         var words = new List<SmartBreakWord>
         {
-            W("Ovako", 0.0, 0.3), W("od", 0.3, 0.4), W("dole", 0.4, 0.7), W("prema", 0.7, 0.9),
-            W("gore", 0.9, 1.2), W("prebacujemo", 1.2, 1.8), W("i", 1.8, 1.9), W("to", 1.9, 2.0),
-            W("radimo", 2.0, 2.4), W("lagano", 2.4, 2.8), W("da", 2.8, 2.9), W("nam", 2.9, 3.0),
-            W("se", 3.0, 3.1), W("ne", 3.1, 3.2), W("bi", 3.2, 3.3), W("mnogo", 3.3, 3.7),
-            W("testa", 3.7, 4.0), W("zalepilo", 4.0, 4.4), W("za", 4.4, 4.5), W("ruku.", 4.5, 5.0),
+            W("Prvo", 0.0, 0.3), W("uzmemo", 0.3, 0.7), W("ovu", 0.7, 0.9), W("dublju", 0.9, 1.2),
+            W("plasticnu", 1.2, 1.7), W("posudu", 1.7, 2.1),
+            W("i", 2.4, 2.5), W("sve", 2.5, 2.7), W("to", 2.7, 2.8), W("dobro", 2.8, 3.1),
+            W("promesamo", 3.1, 3.7), W("dok", 3.7, 3.8), W("se", 3.8, 3.9), W("ne", 3.9, 4.0),
+            W("bi", 4.0, 4.1), W("mnogo", 4.1, 4.4), W("zalepilo", 4.4, 4.9), W("za", 4.9, 5.0),
+            W("ruku.", 5.0, 5.4),
         };
 
         var cues = SmartBreak.Build(words, Array.Empty<(double, double)>());
 
         Assert.Equal(2, cues.Count);
-        Assert.Equal("Ovako od dole prema gore prebacujemo,", string.Join(" ", cues[0].Lines).Trim());
-        Assert.Equal("i to radimo lagano da nam se ne bi mnogo testa zalepilo za ruku.",
+        Assert.Equal("Prvo uzmemo ovu dublju plasticnu posudu,", string.Join(" ", cues[0].Lines).Trim());
+        Assert.Equal("i sve to dobro promesamo, dok se ne bi mnogo zalepilo za ruku.",
             string.Join(" ", cues[1].Lines).Trim());
     }
 
