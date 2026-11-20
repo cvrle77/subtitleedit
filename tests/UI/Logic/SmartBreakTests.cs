@@ -29,11 +29,13 @@ public class SmartBreakTests
         Assert.Equal("E, da proverimo.", string.Join(" ", cues[1].Lines));
     }
 
-    // Reported on line 19 of a real transcript: "... prebacujemo | i to radimo lagano ..." was a
-    // length-only break, so the clause boundary before "i" had no comma. A break right before a
-    // conjunction now carries the comma (the break itself already happened).
+    // Reported on line 19 of a real transcript: the text was cut into two blocks purely by word
+    // count ("... prebacujemo" | "i to radimo lagano da nam se ne bi mnogo" | "testa zalepilo za
+    // ruku."). The split belongs at the conjunction, and that boundary carries a comma:
+    // "Ovako od dole prema gore prebacujemo," | "i to radimo lagano da nam se ne bi mnogo testa
+    // zalepilo za ruku."
     [Fact]
-    public void LengthBreakBeforeAConjunction_GetsAComma()
+    public void LengthOnlyBlock_SplitsAtTheConjunctionAndGetsAComma()
     {
         var words = new List<SmartBreakWord>
         {
@@ -41,15 +43,15 @@ public class SmartBreakTests
             W("gore", 0.9, 1.2), W("prebacujemo", 1.2, 1.8), W("i", 1.8, 1.9), W("to", 1.9, 2.0),
             W("radimo", 2.0, 2.4), W("lagano", 2.4, 2.8), W("da", 2.8, 2.9), W("nam", 2.9, 3.0),
             W("se", 3.0, 3.1), W("ne", 3.1, 3.2), W("bi", 3.2, 3.3), W("mnogo", 3.3, 3.7),
+            W("testa", 3.7, 4.0), W("zalepilo", 4.0, 4.4), W("za", 4.4, 4.5), W("ruku.", 4.5, 5.0),
         };
 
         var cues = SmartBreak.Build(words, Array.Empty<(double, double)>());
-        var lines = cues.SelectMany(c => c.Lines).ToList();
 
-        var index = lines.FindIndex(l => l.Contains("prebacujemo"));
-        Assert.True(index >= 0 && index + 1 < lines.Count, "break before 'i' not found");
-        Assert.EndsWith("prebacujemo,", lines[index].TrimEnd());
-        Assert.StartsWith("i ", lines[index + 1].TrimStart());
+        Assert.Equal(2, cues.Count);
+        Assert.Equal("Ovako od dole prema gore prebacujemo,", string.Join(" ", cues[0].Lines).Trim());
+        Assert.Equal("i to radimo lagano da nam se ne bi mnogo testa zalepilo za ruku.",
+            string.Join(" ", cues[1].Lines).Trim());
     }
 
     // Same rule inside one cue: a line must not end on the interjection either.

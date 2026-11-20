@@ -144,8 +144,7 @@ public static class SmartBreak
         "i", "a", "pa", "te", "ili", "niti", "ni", "no", "vec", "ali", "jer", "dok",
     };
 
-    private static bool EndsOnConjunction(string line, string nextLine)
-    {
+    private static bool EndsOnConjunction(string line, string nextLine)    {
         var current = line.TrimEnd();
         if (current.Length == 0 || ",.;:!?…".IndexOf(current[^1]) >= 0)
         {
@@ -160,6 +159,40 @@ public static class SmartBreak
 
         var first = next.Split(' ', 2)[0];
         return ClauseOpeners.Contains(Bare(first));
+    }
+
+    // Width of words [from, to) as they will be joined with single spaces.
+    private static int WordSpanLen(IReadOnlyList<SmartBreakWord> w, int from, int to)
+    {
+        var len = 0;
+        for (var k = from; k < to; k++)
+        {
+            len += w[k].Word.Trim().Length + (k > from ? 1 : 0);
+        }
+
+        return len;
+    }
+
+    // The last conjunction that can open the next cue while this one still fits a single line.
+    private static int? FindConjunctionCut(IReadOnlyList<SmartBreakWord> w, int from, int n)
+    {
+        int? cut = null;
+        var len = 0;
+        for (var k = from; k < n; k++)
+        {
+            len += w[k].Word.Trim().Length + (k > from ? 1 : 0);
+            if (k + 1 >= n || len > MaxLen)
+            {
+                break;
+            }
+
+            if (ClauseOpeners.Contains(Bare(w[k + 1].Word)))
+            {
+                cut = k + 1;
+            }
+        }
+
+        return cut;
     }
 
     private static readonly Regex NumRe = new(@"^[0-9]+([.,][0-9]+)?$", RegexOptions.Compiled);
@@ -745,7 +778,18 @@ public static class SmartBreak
                     }
                 }
 
-                if (bestK > i && bestPause >= 0.15)
+                if (bestK > i && bestPause >= 0.15 && WordSpanLen(block, i, bestK) <= MaxLen)
+                {
+                    end = bestK;
+                }
+                else if (FindConjunctionCut(block, i, n) is { } conj && conj > i)
+                {
+                    // A length-only break (no punctuation, no soft clause, and the pause would push a
+                    // wrapped two-line cue) belongs at the conjunction that still keeps the first cue
+                    // on one line: "... prebacujemo | i to radimo ..." instead of a blind word count.
+                    end = conj;
+                }
+                else if (bestK > i && bestPause >= 0.15)
                 {
                     end = bestK;
                 }
