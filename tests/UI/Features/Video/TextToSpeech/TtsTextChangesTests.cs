@@ -14,10 +14,9 @@ public class TtsTextChangesTests
     private static List<Paragraph> Main(params (string Text, double Start, double End)[] lines) =>
         lines.Select(l => new Paragraph(l.Text, l.Start, l.End)).ToList();
 
-    // The review is the authority: every segment it has is published, in order, over the lines it
-    // covers. Reported: edits from an imported session never reached the grid.
+    // 1:1: every row becomes exactly one main line, with the review's text.
     [Fact]
-    public void SessionSegments_ArePublishedInOrder()
+    public void EveryRowBecomesOneLine()
     {
         var main = Main(("Prvi red.", 0, 1000), ("Drugi red.", 1000, 2000));
         var session = new List<TtsStepResult>
@@ -28,32 +27,48 @@ public class TtsTextChangesTests
 
         var result = TtsTextChanges.Build(session, main, clean: true);
 
-        Assert.Equal(0, result.CoveredStartMs);
-        Assert.Equal(2, result.CoveredCount);
         Assert.Equal(2, result.SessionLines.Count);
+        Assert.Equal("Prvi red.", result.SessionLines[0].Text);
         Assert.Equal("Izmenjeni red.", result.SessionLines[1].Text);
-        Assert.Equal(1000, result.SessionLines[1].StartMs);
     }
 
-    // The review trims ends with the audio and moves cues around, but the published lines keep the
-    // main line's own span: a "moved" cue in the review must not move anything in the grid.
+    // The grid keeps its own time codes: the review's audio times never move a line.
     [Fact]
-    public void MovedCueInTheReview_DoesNotMoveTheMainLine()
+    public void GridKeepsItsOwnTimes()
     {
         var main = Main(("Prvi red.", 0, 1000));
-        var session = new List<TtsStepResult> { Row(400, 1400, "Izmenjeni red.") };
+        var session = new List<TtsStepResult> { Row(3000, 4000, "Izmenjeni red.") };
 
-        var result = TtsTextChanges.Build(session, main, clean: true);
+        var part = Assert.Single(TtsTextChanges.Build(session, main, clean: true).SessionLines);
 
-        var part = Assert.Single(result.SessionLines);
         Assert.Equal(0, part.StartMs);
         Assert.Equal(1000, part.EndMs);
         Assert.Equal("Izmenjeni red.", part.Text);
     }
 
-    // A line the review split is divided evenly across its own span - no overlaps, no gaps.
+    // Mapping is by order, so a review that moved a cue far still keeps every text on its own line.
     [Fact]
-    public void SplitLine_IsDividedEvenlyAcrossTheMainSpan()
+    public void MovedCueStaysOnItsOwnLine()
+    {
+        var main = Main(("Prvi red.", 0, 1000), ("Drugi red.", 1000, 2000), ("Treci red.", 2000, 3000));
+        var session = new List<TtsStepResult>
+        {
+            Row(0, 1000, "Prvi red."),
+            Row(60000, 61000, "Pomereni red."),
+            Row(2000, 3000, "Treci red."),
+        };
+
+        var result = TtsTextChanges.Build(session, main, clean: true);
+
+        Assert.Equal(3, result.SessionLines.Count);
+        Assert.Equal("Prvi red.", result.SessionLines[0].Text);
+        Assert.Equal("Treci red.", result.SessionLines[2].Text);
+        Assert.Contains("Pomereni red.", result.SessionLines.Select(l => l.Text));
+    }
+
+    // A review split publishes two segments for the one line, split evenly across its span.
+    [Fact]
+    public void SplitLineIsDividedEvenly()
     {
         var main = Main(("Ovo je jedna linija.", 0, 2000));
         var session = new List<TtsStepResult>
@@ -69,53 +84,8 @@ public class TtsTextChangesTests
         Assert.Equal(1000, result.SessionLines[0].EndMs);
         Assert.Equal(1000, result.SessionLines[1].StartMs);
         Assert.Equal(2000, result.SessionLines[1].EndMs);
-    }
-
-    // A review split publishes two segments for the one line it covered.
-    [Fact]
-    public void TwoRowsInsideOneMainLine_PublishTwoSegments()
-    {
-        var main = Main(("Ovo je jedna linija.", 0, 2000));
-        var session = new List<TtsStepResult>
-        {
-            Row(0, 900, "Ovo je jedan deo."),
-            Row(900, 2000, "A ovo je drugi."),
-        };
-
-        var result = TtsTextChanges.Build(session, main, clean: true);
-
-        Assert.Equal(1, result.CoveredCount);
-        Assert.Equal(2, result.SessionLines.Count);
-        Assert.Equal("Ovo je jedan deo.", result.SessionLines[0].Text);
-        Assert.Equal("A ovo je drugi.", result.SessionLines[1].Text);
-    }
-
-    // Only the session's own rows are published: a main line inside the range that has no row is
-    // not part of the review's state (155 imported rows must give 155 lines, not more).
-    [Fact]
-    public void UnspokenLineInsideTheRange_IsNotPublished()
-    {
-        var main = Main(("Prvi red.", 0, 1000), ("Drugi red.", 1000, 2000), ("Treci red.", 2000, 3000));
-        var session = new List<TtsStepResult> { Row(0, 1000, "Prvi red."), Row(2000, 3000, "Treci red.") };
-
-        var result = TtsTextChanges.Build(session, main, clean: true);
-
-        Assert.Equal(3, result.CoveredCount);
-        Assert.Equal(2, result.SessionLines.Count);
-        Assert.Equal("Treci red.", result.SessionLines[1].Text);
-    }
-
-    // A nudge of a few hundred milliseconds (trim, waveform drag) is still the same line.
-    [Fact]
-    public void RowNudgedByAFewHundredMilliseconds_KeepsItsLine()
-    {
-        var main = Main(("Prvi red.", 0, 1000), ("Drugi red.", 2000, 3000));
-        var session = new List<TtsStepResult> { Row(2600, 3600, "Izmenjeni red.") };
-
-        var result = TtsTextChanges.Build(session, main, clean: true);
-
-        Assert.Equal(2000, result.CoveredStartMs);
-        Assert.Equal("Izmenjeni red.", Assert.Single(result.SessionLines).Text);
+        Assert.Equal("Prvi deo.", result.SessionLines[0].Text);
+        Assert.Equal("Drugi deo.", result.SessionLines[1].Text);
     }
 
     // TTS markup is stripped on the way to the subtitle.
@@ -128,16 +98,16 @@ public class TtsTextChangesTests
         Assert.Equal("Prvi red.", Assert.Single(TtsTextChanges.Build(session, main, clean: true).SessionLines).Text);
     }
 
-    // A session imported for another subtitle publishes nothing.
+    // Fewer rows than lines: only the rows the review has are published.
     [Fact]
-    public void RowWithNoMatchingMainLine_IsIgnored()
+    public void FewerRowsThanLinesPublishesOnlyTheRows()
     {
-        var main = Main(("Prvi red.", 0, 1000));
-        var session = new List<TtsStepResult> { Row(5000, 6000, "Druga emisija.") };
+        var main = Main(("Prvi red.", 0, 1000), ("Drugi red.", 1000, 2000), ("Treci red.", 2000, 3000));
+        var session = new List<TtsStepResult> { Row(0, 1000, "Prvi red."), Row(2000, 3000, "Treci red.") };
 
         var result = TtsTextChanges.Build(session, main, clean: true);
-        Assert.Empty(result.SessionLines);
-        Assert.Equal(0, result.CoveredCount);
-        Assert.Equal(1, result.NoMatch);
+
+        Assert.Equal(2, result.SessionLines.Count);
+        Assert.Equal(3, result.CoveredCount); // a session from the top is the whole subtitle
     }
 }

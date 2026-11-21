@@ -7,10 +7,12 @@ using Nikse.SubtitleEdit.Logic.Media;
 namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech;
 
 /// <summary>
-/// The TTS review's state, ready to be written over the main subtitle. The review is the authority:
-/// every row it has (text, its edits, its splits and merges) is published, and the main lines those
-/// rows cover are replaced by exactly those rows. Diffing row-by-row against the main text was the
-/// wrong model - it needed the time codes to line up and lost anything the review had moved.
+/// The TTS review's state, ready to be written over the main subtitle. The review is the authority
+/// and the rows are in the same order as the subtitle, so the mapping is by ORDER, not by time:
+/// walking both lists once puts each row on the line it belongs to, whatever the review did to the
+/// time codes (audio trim, cue moves). Each row becomes exactly one main line; a line the review
+/// split is divided evenly across that line's own span, and the grid's time codes are never taken
+/// from the review.
 /// </summary>
 public static class TtsTextChanges
 {
@@ -26,11 +28,7 @@ public static class TtsTextChanges
         public int CoveredCount { get; set; }
 
         public int Rows { get; set; }
-        public int NoMatch { get; set; }
     }
-
-    // A cue nudged by the review keeps its line as long as its start stays inside this window.
-    private const double NearestStartToleranceMs = 1500;
 
     public static Result Build(IEnumerable<TtsStepResult> results, IEnumerable<Paragraph> mainLines, bool clean)
     {
@@ -44,31 +42,28 @@ public static class TtsTextChanges
             return result;
         }
 
+        // The row list and the subtitle are the same list: row i belongs to line (offset + i). No
+        // time matching at all - the review's times are audio times and a cue moved there would
+        // otherwise drag its text onto a different line.
+        var firstRowStart = rows[0].Paragraph.StartTime.TotalMilliseconds;
+        var offset = lines.FindIndex(l => Math.Abs(l.StartTime.TotalMilliseconds - firstRowStart) <= 1500);
+        if (offset < 0)
+        {
+            offset = 0;
+        }
+
         var perLine = new List<TtsStepResult>[lines.Count];
-        var claimed = new bool[lines.Count];
-
-        foreach (var item in rows)
+        for (var i = 0; i < rows.Count; i++)
         {
-            var index = FindLine(lines, claimed, item.Paragraph.StartTime.TotalMilliseconds);
-            if (index < 0)
-            {
-                result.NoMatch++;
-                Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
-                    $"TTS session: NO LINE for {item.Paragraph.StartTime.TotalMilliseconds:F0}-{item.Paragraph.EndTime.TotalMilliseconds:F0} \"{Short(item.Text)}\"");
-                continue; // a row the main subtitle has no place for (e.g. a session for another one)
-            }
-
-            claimed[index] = true;
-            (perLine[index] ??= new List<TtsStepResult>()).Add(item);
+            var lineIndex = Math.Min(offset + i, lines.Count - 1);
+            (perLine[lineIndex] ??= new List<TtsStepResult>()).Add(rows[i]);
         }
 
-        var first = Array.IndexOf(claimed, true);
-        var last = Array.LastIndexOf(claimed, true);
-        if (first < 0 || last < first)
-        {
-            return result;
-        }
-
+        var first = offset;
+        var lastMapped = Math.Min(offset + rows.Count - 1, lines.Count - 1);
+        // A session that starts at the top of the subtitle is the whole subtitle: the grid must end
+        // up with exactly the rows the review has (a line with no row was dropped in the review).
+        var last = offset == 0 ? lines.Count - 1 : lastMapped;
         result.CoveredStartMs = lines[first].StartTime.TotalMilliseconds;
         result.CoveredCount = last - first + 1;
 
@@ -77,88 +72,27 @@ public static class TtsTextChanges
             var group = perLine[i];
             if (group == null)
             {
-                // A main line the session has no row for is not part of the review's state: the
-                // session is what gets published, one segment per row (155 rows in, 155 lines out).
+                // A line the session has no row for is not part of the review's state: the grid must
+                // hold exactly the rows the review holds (155 rows in, 155 lines out).
                 continue;
             }
 
-            var ordered = group.OrderBy(g => g.Paragraph.StartTime.TotalMilliseconds).ToList();
             var lineStart = lines[i].StartTime.TotalMilliseconds;
             var span = lines[i].EndTime.TotalMilliseconds - lineStart;
-            for (var k = 0; k < ordered.Count; k++)
+            for (var k = 0; k < group.Count; k++)
             {
-                // Text and the number of segments come from the review; the time codes stay the main
-                // line's own. The review trims ends with the audio and moves cues around, and letting
-                // those times through put cues on top of each other and pushed them outside their
-                // line. A line the review split is divided evenly across its own span.
-                var start = lineStart + span * k / ordered.Count;
-                var end = lineStart + span * (k + 1) / ordered.Count;
-
+                var start = lineStart + span * k / group.Count;
+                var end = lineStart + span * (k + 1) / group.Count;
                 result.SessionLines.Add(new ReviewSplitPart(
                     start,
                     end,
-                    clean ? TtsTextCleaner.Clean(ordered[k].Text) : ordered[k].Text));
+                    clean ? TtsTextCleaner.Clean(group[k].Text) : group[k].Text));
             }
         }
 
         Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
-            $"TTS session: rows={rows.Count} coveredLines={result.CoveredCount} from={result.CoveredStartMs:F0} publishLines={result.SessionLines.Count} noLine={result.NoMatch}");
+            $"TTS session: rows={rows.Count} coveredLines={result.CoveredCount} from={result.CoveredStartMs:F0} publishLines={result.SessionLines.Count}");
 
         return result;
-    }
-
-    // The line a row belongs to: its own start, the line that contains a split half's start, or the
-    // nearest free line within the nudge window (a review trim moves a start by a fraction of a
-    // second, and an exact match used to throw those rows away).
-    private static int FindLine(IReadOnlyList<Paragraph> lines, bool[] claimed, double startMs)
-    {
-        for (var i = 0; i < lines.Count; i++)
-        {
-            if (Math.Abs(lines[i].StartTime.TotalMilliseconds - startMs) < 0.5)
-            {
-                return i;
-            }
-        }
-
-        for (var i = 0; i < lines.Count; i++)
-        {
-            if (startMs > lines[i].StartTime.TotalMilliseconds + 0.5 &&
-                startMs < lines[i].EndTime.TotalMilliseconds - 0.5)
-            {
-                return i;
-            }
-        }
-
-        var best = -1;
-        var bestDelta = double.MaxValue;
-        for (var i = 0; i < lines.Count; i++)
-        {
-            if (claimed[i])
-            {
-                continue;
-            }
-
-            var delta = Math.Abs(lines[i].StartTime.TotalMilliseconds - startMs);
-            if (delta < bestDelta)
-            {
-                bestDelta = delta;
-                best = i;
-            }
-        }
-
-        if (best >= 0 && bestDelta <= NearestStartToleranceMs)
-        {
-            Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
-                $"TTS session: near start {startMs:F0} -> line {lines[best].StartTime.TotalMilliseconds:F0} (delta={bestDelta:F0}ms)");
-            return best;
-        }
-
-        return -1;
-    }
-
-    private static string Short(string text)
-    {
-        var oneLine = text.Replace("\r", " ").Replace("\n", " ").Trim();
-        return oneLine.Length <= 50 ? oneLine : oneLine.Substring(0, 50) + "...";
     }
 }
