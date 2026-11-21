@@ -2,26 +2,31 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nikse.SubtitleEdit.Core.Common;
-using Nikse.SubtitleEdit.Features.Video.TextToSpeech.ReviewSpeech;
 using Nikse.SubtitleEdit.Logic.Media;
 
 namespace Nikse.SubtitleEdit.Features.Video.TextToSpeech;
 
 /// <summary>
-/// Turns a TTS session into edits for the main window by matching every row with the line the main
-/// subtitle has at the same START. The review trims and extends ends with the audio (and a split
-/// moves them), so the end must not be part of the match - an exact start+end match used to drop
-/// half of a real session. A row that has no start of its own but falls inside a main line belongs
-/// to that line: two or more such rows mean the review split it, which the grid then has to follow.
-/// Rows whose cleaned text matches the main line are left alone, so tags, "(,,,)" pauses, spacing
-/// and CAPS emphasis alone never overwrite a line.
+/// The TTS review's state, ready to be written over the main subtitle. The review is the authority:
+/// every row it has (text, its edits, its splits and merges) is published, and the main lines those
+/// rows cover are replaced by exactly those rows. Diffing row-by-row against the main text was the
+/// wrong model - it needed the time codes to line up and lost anything the review had moved.
 /// </summary>
 public static class TtsTextChanges
 {
     public sealed class Result
     {
-        public List<ReviewTextChange> TextChanges { get; } = new();
-        public List<ReviewSplit> Splits { get; } = new();
+        /// <summary>Every session row in order, as it must appear in the subtitle.</summary>
+        public List<ReviewSplitPart> SessionLines { get; } = new();
+
+        /// <summary>Start of the first main line the session covers (0 when nothing was covered).</summary>
+        public double CoveredStartMs { get; set; }
+
+        /// <summary>How many main lines the session replaces.</summary>
+        public int CoveredCount { get; set; }
+
+        public int Rows { get; set; }
+        public int NoMatch { get; set; }
     }
 
     // A cue nudged by the review keeps its line as long as its start stays inside this window.
@@ -32,132 +37,116 @@ public static class TtsTextChanges
         var result = new Result();
         var lines = mainLines.ToList();
         var rows = results.ToList();
-        var matched = 0;
-        var noMatch = 0;
+        result.Rows = rows.Count;
+
+        if (lines.Count == 0 || rows.Count == 0)
+        {
+            return result;
+        }
+
         var perLine = new List<TtsStepResult>[lines.Count];
         var claimed = new bool[lines.Count];
 
         foreach (var item in rows)
         {
-            var p = item.Paragraph;
-            var index = lines.FindIndex(o =>
-                Math.Abs(o.StartTime.TotalMilliseconds - p.StartTime.TotalMilliseconds) < 0.5);
+            var index = FindLine(lines, claimed, item.Paragraph.StartTime.TotalMilliseconds);
             if (index < 0)
             {
-                // No start of its own: it may be the second half of a line the review split.
-                index = lines.FindIndex(o =>
-                    p.StartTime.TotalMilliseconds > o.StartTime.TotalMilliseconds + 0.5 &&
-                    p.StartTime.TotalMilliseconds < o.EndTime.TotalMilliseconds - 0.5);
-            }
-
-            if (index < 0)
-            {
-                // A review that trims or nudges cues moves the start by a fraction of a second. The
-                // nearest unclaimed line within this window is still the same line; without it those
-                // edits were reported as NO MATCH and silently lost.
-                var best = -1;
-                var bestDelta = double.MaxValue;
-                for (var i = 0; i < lines.Count; i++)
-                {
-                    if (claimed[i])
-                    {
-                        continue;
-                    }
-
-                    var delta = Math.Abs(lines[i].StartTime.TotalMilliseconds - p.StartTime.TotalMilliseconds);
-                    if (delta < bestDelta)
-                    {
-                        bestDelta = delta;
-                        best = i;
-                    }
-                }
-
-                if (best >= 0 && bestDelta <= NearestStartToleranceMs)
-                {
-                    index = best;
-                    Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
-                        $"TTS changes: near start {p.StartTime.TotalMilliseconds:F0} -> line {lines[index].StartTime.TotalMilliseconds:F0} (delta={bestDelta:F0}ms) \"{Short(item.Text)}\"");
-                }
-            }
-
-            if (index < 0)
-            {
-                noMatch++;
-                var nearest = lines.Count == 0 ? null : lines.OrderBy(o => Math.Abs(o.StartTime.TotalMilliseconds - p.StartTime.TotalMilliseconds)).First();
-                var delta = nearest == null ? 0 : nearest.StartTime.TotalMilliseconds - p.StartTime.TotalMilliseconds;
+                result.NoMatch++;
                 Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
-                    $"TTS changes: NO MATCH {p.StartTime.TotalMilliseconds:F0}-{p.EndTime.TotalMilliseconds:F0} nearestDelta={delta:F0}ms \"{Short(item.Text)}\"");
-                continue;
+                    $"TTS session: NO LINE for {item.Paragraph.StartTime.TotalMilliseconds:F0}-{item.Paragraph.EndTime.TotalMilliseconds:F0} \"{Short(item.Text)}\"");
+                continue; // a row the main subtitle has no place for (e.g. a session for another one)
             }
 
-            matched++;
             claimed[index] = true;
             (perLine[index] ??= new List<TtsStepResult>()).Add(item);
         }
 
-        for (var i = 0; i < lines.Count; i++)
+        var first = Array.IndexOf(claimed, true);
+        var last = Array.LastIndexOf(claimed, true);
+        if (first < 0 || last < first)
+        {
+            return result;
+        }
+
+        result.CoveredStartMs = lines[first].StartTime.TotalMilliseconds;
+        result.CoveredCount = last - first + 1;
+
+        for (var i = first; i <= last; i++)
         {
             var group = perLine[i];
-            if (group == null || group.Count == 0)
+            if (group == null)
             {
+                // A main line that no row speaks stays as it is (its own text and time codes).
+                result.SessionLines.Add(new ReviewSplitPart(
+                    lines[i].StartTime.TotalMilliseconds,
+                    lines[i].EndTime.TotalMilliseconds,
+                    clean ? TtsTextCleaner.Clean(lines[i].Text) : lines[i].Text));
                 continue;
             }
 
-            var ordered = group.OrderBy(g => g.Paragraph.StartTime.TotalMilliseconds).ToList();
-            var line = lines[i];
-
-            if (ordered.Count > 1)
+            foreach (var row in group.OrderBy(g => g.Paragraph.StartTime.TotalMilliseconds))
             {
-                var parts = new List<ReviewSplitPart>();
-                for (var k = 0; k < ordered.Count; k++)
-                {
-                    var text = TextOf(ordered[k], clean);
-                    if (parts.Count > 0 && Normalize(text) == Normalize(parts[^1].Text))
-                    {
-                        continue; // an empty second half adds nothing
-                    }
-
-                    parts.Add(new ReviewSplitPart(
-                        k == 0 ? line.StartTime.TotalMilliseconds : ordered[k].Paragraph.StartTime.TotalMilliseconds,
-                        k == ordered.Count - 1 ? line.EndTime.TotalMilliseconds : ordered[k].Paragraph.StartTime.TotalMilliseconds,
-                        text));
-                }
-
-                if (parts.Count > 1)
-                {
-                    result.Splits.Add(new ReviewSplit(line.StartTime.TotalMilliseconds, parts));
-                    continue;
-                }
+                result.SessionLines.Add(new ReviewSplitPart(
+                    row.Paragraph.StartTime.TotalMilliseconds,
+                    row.Paragraph.EndTime.TotalMilliseconds,
+                    clean ? TtsTextCleaner.Clean(row.Text) : row.Text));
             }
-
-            var only = ordered[0];
-            var cleaned = TtsTextCleaner.Clean(only.Text);
-            if (Normalize(cleaned) == Normalize(TtsTextCleaner.Clean(line.Text)))
-            {
-                continue; // same words - only TTS markup, spacing or line wrapping differs
-            }
-
-            result.TextChanges.Add(new ReviewTextChange(
-                line.StartTime.TotalMilliseconds,
-                line.EndTime.TotalMilliseconds,
-                clean ? cleaned : only.Text));
         }
 
         Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
-            $"TTS changes: rows={rows.Count} matched={matched} text={result.TextChanges.Count} splits={result.Splits.Count} noMatch={noMatch} mainLines={lines.Count}");
+            $"TTS session: rows={rows.Count} coveredLines={result.CoveredCount} from={result.CoveredStartMs:F0} publishLines={result.SessionLines.Count} noLine={result.NoMatch}");
 
         return result;
     }
 
-    private static string TextOf(TtsStepResult row, bool clean)
+    // The line a row belongs to: its own start, the line that contains a split half's start, or the
+    // nearest free line within the nudge window (a review trim moves a start by a fraction of a
+    // second, and an exact match used to throw those rows away).
+    private static int FindLine(IReadOnlyList<Paragraph> lines, bool[] claimed, double startMs)
     {
-        return clean ? TtsTextCleaner.Clean(row.Text) : row.Text;
-    }
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (Math.Abs(lines[i].StartTime.TotalMilliseconds - startMs) < 0.5)
+            {
+                return i;
+            }
+        }
 
-    // Same words compare equal no matter how the line was wrapped or spaced.
-    private static string Normalize(string text)
-    {
-        return System.Text.RegularExpressions.Regex.Replace(text, @"\s+", " ").Trim();
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (startMs > lines[i].StartTime.TotalMilliseconds + 0.5 &&
+                startMs < lines[i].EndTime.TotalMilliseconds - 0.5)
+            {
+                return i;
+            }
+        }
+
+        var best = -1;
+        var bestDelta = double.MaxValue;
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (claimed[i])
+            {
+                continue;
+            }
+
+            var delta = Math.Abs(lines[i].StartTime.TotalMilliseconds - startMs);
+            if (delta < bestDelta)
+            {
+                bestDelta = delta;
+                best = i;
+            }
+        }
+
+        if (best >= 0 && bestDelta <= NearestStartToleranceMs)
+        {
+            Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
+                $"TTS session: near start {startMs:F0} -> line {lines[best].StartTime.TotalMilliseconds:F0} (delta={bestDelta:F0}ms)");
+            return best;
+        }
+
+        return -1;
     }
 
     private static string Short(string text)

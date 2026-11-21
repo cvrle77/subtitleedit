@@ -13642,7 +13642,7 @@ public partial class MainViewModel :
             // diagnosable even with tools logging off (#12626).
             try
             {
-                ApplyTtsChanges(result.MergedSubtitle, result.ReviewTextChanges, onlyRows, result.ReviewSplits);
+                ApplyTtsChanges(result.MergedSubtitle, result.ReviewSession, onlyRows);
             }
             catch (Exception ex)
             {
@@ -13747,7 +13747,7 @@ public partial class MainViewModel :
     /// <param name="onlyRows">When the session ran on a selection, the rows it covered: a merge
     /// may then only swallow rows in that set, since lines adjacent in the selection need not be
     /// adjacent in the grid.</param>
-    private void ApplyTtsChanges(Subtitle? mergedSubtitle, List<ReviewTextChange> changes, ISet<SubtitleLineViewModel>? onlyRows = null, List<ReviewSplit>? splits = null)
+    private void ApplyTtsChanges(Subtitle? mergedSubtitle, TtsTextChanges.Result? session, ISet<SubtitleLineViewModel>? onlyRows = null)
     {
         const double toleranceMs = 0.5;
 
@@ -13815,91 +13815,82 @@ public partial class MainViewModel :
             mergedCount++;
         }
 
-        var splitCount = 0;
-        foreach (var split in splits ?? new List<ReviewSplit>())
+        // Publish the review's state: its segments replace the main lines they cover, in order and
+        // with their own time codes. Everything the review has - text, splits, moved cues - lands
+        // exactly as it is; diffing against the old text lost whatever had moved.
+        var publishedCount = 0;
+        if (session is { SessionLines.Count: > 0, CoveredCount: > 0 })
         {
-            var line = Subtitles.FirstOrDefault(s => Math.Abs(s.StartTime.TotalMilliseconds - split.LineStartMs) < toleranceMs);
-            if (line == null)
+            var first = -1;
+            var minDelta = double.MaxValue;
+            for (var i = 0; i < Subtitles.Count; i++)
             {
-                Se.WriteToolsLog($"TTS apply: NO LINE to split at {split.LineStartMs:F0}");
-                continue;
-            }
-
-            if (onlyRows != null && !onlyRows.Contains(line))
-            {
-                continue;
-            }
-
-            var index = Subtitles.IndexOf(line);
-            var style = line.Style;
-            var actor = line.Actor;
-            var bookmark = line.Bookmark;
-            var wasSelected = ReferenceEquals(line, SelectedSubtitle);
-            Subtitles.RemoveAt(index);
-            for (var i = 0; i < split.Parts.Count; i++)
-            {
-                var part = split.Parts[i];
-                var paragraph = new Paragraph(part.Text, part.StartMs, part.EndMs)
+                var delta = Math.Abs(Subtitles[i].StartTime.TotalMilliseconds - session.CoveredStartMs);
+                if (delta < minDelta)
                 {
-                    Style = style,
-                    Actor = actor,
-                    Bookmark = bookmark,
-                };
-                var viewModel = new SubtitleLineViewModel(paragraph, SelectedSubtitleFormat);
-                Subtitles.Insert(index + i, viewModel);
-                if (wasSelected && i == 0)
-                {
-                    SelectedSubtitle = viewModel;
+                    minDelta = delta;
+                    first = i;
                 }
             }
 
-            splitCount++;
+            if (first < 0 || minDelta > 1500)
+            {
+                Se.WriteToolsLog($"TTS publish: NO LINE for covered start {session.CoveredStartMs:F0}");
+            }
+            else if (onlyRows != null && !onlyRows.Contains(Subtitles[first]))
+            {
+                Se.WriteToolsLog("TTS publish: covered range is outside the selection");
+            }
+            else
+            {
+                var template = Subtitles[first];
+                var style = template.Style;
+                var actor = template.Actor;
+                var wasSelected = Enumerable
+                    .Range(first, Math.Min(session.CoveredCount, Subtitles.Count - first))
+                    .Any(i => ReferenceEquals(Subtitles[i], SelectedSubtitle));
+
+                for (var i = 0; i < session.CoveredCount && first < Subtitles.Count; i++)
+                {
+                    Subtitles.RemoveAt(first);
+                }
+
+                for (var i = 0; i < session.SessionLines.Count; i++)
+                {
+                    var part = session.SessionLines[i];
+                    var paragraph = new Paragraph(part.Text, part.StartMs, part.EndMs)
+                    {
+                        Style = style,
+                        Actor = actor,
+                    };
+                    var viewModel = new SubtitleLineViewModel(paragraph, SelectedSubtitleFormat);
+                    Subtitles.Insert(first + i, viewModel);
+                    if (wasSelected && i == 0)
+                    {
+                        SelectedSubtitle = viewModel;
+                    }
+                }
+
+                publishedCount = session.SessionLines.Count;
+            }
         }
 
-        var updatedCount = 0;
-        var matchedCount = 0;
-        foreach (var change in changes)
-        {
-            var line = Subtitles.FirstOrDefault(s =>
-                Math.Abs(s.StartTime.TotalMilliseconds - change.StartMs) < toleranceMs &&
-                Math.Abs(s.EndTime.TotalMilliseconds - change.EndMs) < toleranceMs);
-            if (line == null)
-            {
-                Se.WriteToolsLog($"TTS apply: NO LINE for {change.StartMs:F0}-{change.EndMs:F0} \"{ShortForLog(change.NewText)}\" (subtitle has {Subtitles.Count} line(s))");
-                continue;
-            }
+        Se.WriteToolsLog($"TTS publish: lines={publishedCount} covered={session?.CoveredCount ?? 0} merged={mergedCount}");
 
-            matchedCount++;
-            if (line.Text == change.NewText)
-            {
-                Se.WriteToolsLog($"TTS apply: already the same at {change.StartMs:F0}-{change.EndMs:F0}");
-                continue;
-            }
-
-            line.Text = change.NewText;
-            updatedCount++;
-        }
-
-        Se.WriteToolsLog($"TTS apply: changes={changes.Count} matched={matchedCount} updated={updatedCount} merged={mergedCount} splits={splitCount}");
-
-        if (mergedCount == 0 && updatedCount == 0 && splitCount == 0)
+        if (mergedCount == 0 && publishedCount == 0)
         {
             return;
         }
 
-        if (mergedCount > 0 || splitCount > 0)
-        {
-            Renumber();
-        }
-
+        Renumber();
         _updateAudioVisualizer = true;
         RefreshSubtitlePreview();
 
         var lang = Se.Language.Video.TextToSpeech;
         var parts = new List<string>();
-        if (updatedCount > 0)
+        if (publishedCount > 0)
         {
-            parts.Add(FormatCount(updatedCount, lang.SubtitleUpdatedFromReviewSingular, lang.SubtitleUpdatedFromReviewPlural));
+            parts.Add(FormatCount(publishedCount, lang.SubtitleUpdatedFromReviewSingular, lang.SubtitleUpdatedFromReviewPlural));
         }
 
         if (mergedCount > 0)

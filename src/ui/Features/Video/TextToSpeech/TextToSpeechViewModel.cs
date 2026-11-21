@@ -157,8 +157,8 @@ public partial class TextToSpeechViewModel : ObservableObject
     // (#12093). A later session's edit to the same line replaces the earlier one.
     public List<ReviewTextChange> ReviewTextChanges { get; } = new();
 
-    // Main lines the review split into several rows; the grid follows so line counts match.
-    public List<ReviewSplit> ReviewSplits { get; } = new();
+    // The review's whole state (every segment, in order) plus the main range it covers.
+    public TtsTextChanges.Result? ReviewSession { get; private set; }
 
     // Set when the user accepted the merge-continuation-lines step: the subtitle actually sent
     // to the TTS engine. The main window applies the merges on OK so the subtitle stays in sync
@@ -3193,32 +3193,20 @@ public partial class TextToSpeechViewModel : ObservableObject
         IsGenerating = false;
         ProgressOpacity = 0;
 
-        // An imported JSON is also the session's "before" text, so the review's own diff has
-        // nothing to report and its edits used to die here. Compare the session with the subtitle
-        // the main window handed over; a row that matches no line is simply ignored.
+        // Publish the review's own state: every segment, in order, over the main lines those rows
+        // cover. Diffing row-by-row against the main text was the wrong model - it needed the time
+        // codes to line up and threw away whatever the review had moved or split.
         try
         {
             if (_lastGeneratedResults is { Length: > 0 } && _subtitle.Paragraphs.Count > 0)
             {
-                var res = TtsTextChanges.Build(_lastGeneratedResults, _subtitle.Paragraphs, Fork.TtsCleanText);
-                CollectReviewTextChanges(res.TextChanges);
-                foreach (var split in res.Splits)
-                {
-                    ReviewSplits.RemoveAll(s => Math.Abs(s.LineStartMs - split.LineStartMs) < 0.5);
-                    ReviewSplits.Add(split);
-                }
-
-                Se.WriteToolsLog($"TTS window: OK collected {res.TextChanges.Count} text change(s), {res.Splits.Count} split(s) from the session" +
-                                 $" (rows={_lastGeneratedResults.Length}, mainLines={_subtitle.Paragraphs.Count})");
-                foreach (var c in res.TextChanges)
-                {
-                    Se.WriteToolsLog($"TTS window: change {c.StartMs:F0}-{c.EndMs:F0} \"{ShortLog(c.NewText)}\"");
-                }
+                ReviewSession = TtsTextChanges.Build(_lastGeneratedResults, _subtitle.Paragraphs, Fork.TtsCleanText);
+                Se.WriteToolsLog($"TTS window: OK publishing {ReviewSession.SessionLines.Count} segment(s) over {ReviewSession.CoveredCount} main line(s)");
             }
         }
         catch (Exception ex)
         {
-            SeLogger.Error(ex, "TTS window: collecting text changes on OK failed");
+            SeLogger.Error(ex, "TTS window: collecting the session on OK failed");
         }
 
         OkPressed = true;
