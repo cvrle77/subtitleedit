@@ -112,6 +112,7 @@ public static class TtsTextChanges
         result.CoveredStartMs = lines[first].StartTime.TotalMilliseconds;
         result.CoveredCount = last - first + 1;
 
+        var changed = 0;
         for (var i = first; i <= last; i++)
         {
             var group = perLine[i] ?? new List<TtsStepResult>();
@@ -131,16 +132,39 @@ public static class TtsTextChanges
             var span = lines[i].EndTime.TotalMilliseconds - lineStart;
             for (var k = 0; k < group.Count; k++)
             {
+                var published = clean ? TtsTextCleaner.Clean(group[k].Text) : group[k].Text;
+                if (Normalize(published) != Normalize(lines[i].Text))
+                {
+                    changed++;
+                    if (changed <= 3)
+                    {
+                        Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
+                            $"TTS session: line {i} changes \"{Short(lines[i].Text)}\" -> \"{Short(published)}\"");
+                    }
+                }
+
                 result.SessionLines.Add(new ReviewSplitPart(
                     lineStart + span * k / group.Count,
                     lineStart + span * (k + 1) / group.Count,
-                    clean ? TtsTextCleaner.Clean(group[k].Text) : group[k].Text));
+                    published));
             }
         }
 
         Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
-            $"TTS session: rows={rows.Count} matchedLines={claimed.Count(c => c)} coveredLines={result.CoveredCount} from={result.CoveredStartMs:F0} publishLines={result.SessionLines.Count}");
+            $"TTS session: rows={rows.Count} matchedLines={claimed.Count(c => c)} coveredLines={result.CoveredCount} from={result.CoveredStartMs:F0} publishLines={result.SessionLines.Count} changed={changed}");
 
         return result;
+    }
+
+    // Same words compare equal no matter how the line was wrapped or spaced.
+    private static string Normalize(string text)
+    {
+        return System.Text.RegularExpressions.Regex.Replace(text ?? string.Empty, @"\s+", " ").Trim();
+    }
+
+    private static string Short(string text)
+    {
+        var oneLine = (text ?? string.Empty).Replace("\r", " ").Replace("\n", " ").Trim();
+        return oneLine.Length <= 40 ? oneLine : oneLine.Substring(0, 40) + "...";
     }
 }

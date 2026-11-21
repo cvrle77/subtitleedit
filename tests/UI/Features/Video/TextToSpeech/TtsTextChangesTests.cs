@@ -1,4 +1,4 @@
-using Nikse.SubtitleEdit.Core.Common;
+﻿using Nikse.SubtitleEdit.Core.Common;
 using Nikse.SubtitleEdit.Features.Video.TextToSpeech;
 
 namespace UITests.Features.Video.TextToSpeech;
@@ -107,6 +107,39 @@ public class TtsTextChangesTests
         Assert.Equal(2000, result.SessionLines[1].EndMs);
     }
 
+    // In/out for the reported case: he edits line 9 and moves its start and end in the review; every
+    // line must come out with its own text, line 9 with the edited one.
+    [Fact]
+    public void EditedNinthLine_WithMovedTimes_ComesOutEdited()
+    {
+        var main = Enumerable.Range(0, 12)
+            .Select(i => new Paragraph($"Linija {i + 1}.", i * 1000, i * 1000 + 900))
+            .ToList();
+
+        var session = new List<TtsStepResult>();
+        for (var i = 0; i < 12; i++)
+        {
+            var text = i == 8 ? "Izmenjena deveta" : $"Linija {i + 1}.";
+            var start = i * 1000;
+            var end = start + 900;
+            if (i == 8)
+            {
+                start += 250; // moved in the review
+                end -= 150;
+            }
+
+            session.Add(Row(start, end, text));
+        }
+
+        var result = TtsTextChanges.Build(session, main, clean: true);
+
+        Assert.Equal(12, result.SessionLines.Count);
+        for (var i = 0; i < 12; i++)
+        {
+            Assert.Equal(i == 8 ? "Izmenjena deveta" : $"Linija {i + 1}.", result.SessionLines[i].Text);
+        }
+    }
+
     // TTS markup is stripped on the way to the subtitle.
     [Fact]
     public void MarkupIsCleaned()
@@ -117,3 +150,4 @@ public class TtsTextChangesTests
         Assert.Equal("Prvi red.", Assert.Single(TtsTextChanges.Build(session, main, clean: true).SessionLines).Text);
     }
 }
+
