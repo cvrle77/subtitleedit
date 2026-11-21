@@ -13846,6 +13846,11 @@ public partial class MainViewModel :
                 var template = Subtitles[first];
                 var style = template.Style;
                 var actor = template.Actor;
+                var sources = session.SessionLines
+                    .Select(part => part.SourceLineIndex >= 0 && part.SourceLineIndex < Subtitles.Count
+                        ? Subtitles[part.SourceLineIndex]
+                        : template)
+                    .ToList();
                 var wasSelected = Enumerable
                     .Range(first, Math.Min(session.CoveredCount, Subtitles.Count - first))
                     .Any(i => ReferenceEquals(Subtitles[i], SelectedSubtitle));
@@ -13858,12 +13863,21 @@ public partial class MainViewModel :
                 for (var i = 0; i < session.SessionLines.Count; i++)
                 {
                     var part = session.SessionLines[i];
+                    var source = sources[i];
+                    // A published line replaces its own main line, so everything the grid keeps per
+                    // line, not only the text, comes across: the translation column, style, actor,
+                    // bookmark and number.
                     var paragraph = new Paragraph(part.Text, part.StartMs, part.EndMs)
                     {
-                        Style = style,
-                        Actor = actor,
+                        Style = source.Style,
+                        Actor = source.Actor,
+                        Bookmark = source.Bookmark,
                     };
-                    var viewModel = new SubtitleLineViewModel(paragraph, SelectedSubtitleFormat);
+                    var viewModel = new SubtitleLineViewModel(paragraph, SelectedSubtitleFormat)
+                    {
+                        OriginalText = source.OriginalText,
+                        Number = source.Number,
+                    };
                     Subtitles.Insert(first + i, viewModel);
                     if (wasSelected && i == 0)
                     {

@@ -13,10 +13,14 @@ public class ReviewSplitPart
     public double EndMs { get; }
     public string Text { get; }
 
-    public ReviewSplitPart(double startMs, double endMs, string text)
+    /// <summary>Index of the main line this segment came from, or -1 when unknown.</summary>
+    public int SourceLineIndex { get; }
+
+    public ReviewSplitPart(double startMs, double endMs, string text, int sourceLineIndex = -1)
     {
         StartMs = startMs;
         EndMs = endMs;
         Text = text;
+        SourceLineIndex = sourceLineIndex;
     }
 }
