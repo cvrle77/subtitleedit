@@ -140,6 +140,20 @@ public static class TtsTextChanges
             }
         }
 
+        // The review rounds audio times, so neighbouring rows can overlap by a few milliseconds
+        // (measured: six rows, 4-17 ms). The grid must not inherit that: every end is pulled back to
+        // the next row's start.
+        for (var i = 0; i + 1 < result.SessionLines.Count; i++)
+        {
+            var current = result.SessionLines[i];
+            var next = result.SessionLines[i + 1];
+            if (current.EndMs > next.StartMs)
+            {
+                var clamped = Math.Max(current.StartMs + 1, next.StartMs);
+                result.SessionLines[i] = new ReviewSplitPart(current.StartMs, clamped, current.Text);
+            }
+        }
+
         Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
             $"TTS session: rows={rows.Count} matchedLines={claimed.Count(c => c)} coveredLines={result.CoveredCount} from={result.CoveredStartMs:F0} publishLines={result.SessionLines.Count} changed={changed}");
 

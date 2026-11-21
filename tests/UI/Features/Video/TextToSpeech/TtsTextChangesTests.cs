@@ -66,7 +66,7 @@ public class TtsTextChangesTests
         }
 
         Assert.Equal(8250, result.SessionLines[8].StartMs);
-        Assert.Equal(9300, result.SessionLines[8].EndMs);
+        Assert.Equal(9000, result.SessionLines[8].EndMs); // clamped: the next row starts at 9000
     }
 
     // A split in the review gives two lines, each with the times the review gave it.
@@ -127,6 +127,27 @@ public class TtsTextChangesTests
 
         Assert.Equal(3, result.SessionLines.Count);
         Assert.Equal("Pomereni red.", result.SessionLines[2].Text);
+    }
+
+    // The review rounds audio times, so neighbouring rows can overlap by a few milliseconds
+    // (measured on the reported session: six pairs, 4-17 ms). Publishing pulls each end back to the
+    // next row's start so the grid never inherits an overlap.
+    [Fact]
+    public void NeighbouringRowsNeverOverlap()
+    {
+        var main = Main(("Prvi red.", 0, 1000), ("Drugi red.", 1000, 2000));
+        var session = new List<TtsStepResult>
+        {
+            Row(0, 1015, "Prvi red."),
+            Row(1000, 2000, "Drugi red."),
+        };
+
+        var result = TtsTextChanges.Build(session, main, clean: true);
+
+        Assert.Equal(2, result.SessionLines.Count);
+        Assert.Equal(1000, result.SessionLines[0].EndMs);
+        Assert.Equal(1000, result.SessionLines[1].StartMs);
+        Assert.True(result.SessionLines[0].EndMs <= result.SessionLines[1].StartMs);
     }
 
     // TTS markup is stripped on the way to the subtitle.
