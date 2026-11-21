@@ -83,20 +83,16 @@ public static class TtsTextChanges
             }
 
             var ordered = group.OrderBy(g => g.Paragraph.StartTime.TotalMilliseconds).ToList();
+            var lineStart = lines[i].StartTime.TotalMilliseconds;
+            var span = lines[i].EndTime.TotalMilliseconds - lineStart;
             for (var k = 0; k < ordered.Count; k++)
             {
-                // Text and structure come from the review, the timing envelope from the main line:
-                // the review trims and extends ends with the audio, so publishing its raw times put
-                // cues on top of each other. The line's own span is split at the review's own
-                // boundaries, which keeps the segment count and the texts exact without overlapping.
-                var lineStart = lines[i].StartTime.TotalMilliseconds;
-                var lineEnd = lines[i].EndTime.TotalMilliseconds;
-                var start = k == 0
-                    ? lineStart
-                    : Math.Clamp(ordered[k].Paragraph.StartTime.TotalMilliseconds, lineStart, lineEnd);
-                var end = k == ordered.Count - 1
-                    ? lineEnd
-                    : Math.Clamp(ordered[k + 1].Paragraph.StartTime.TotalMilliseconds, start, lineEnd);
+                // Text and the number of segments come from the review; the time codes stay the main
+                // line's own. The review trims ends with the audio and moves cues around, and letting
+                // those times through put cues on top of each other and pushed them outside their
+                // line. A line the review split is divided evenly across its own span.
+                var start = lineStart + span * k / ordered.Count;
+                var end = lineStart + span * (k + 1) / ordered.Count;
 
                 result.SessionLines.Add(new ReviewSplitPart(
                     start,

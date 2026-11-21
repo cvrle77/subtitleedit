@@ -35,21 +35,40 @@ public class TtsTextChangesTests
         Assert.Equal(1000, result.SessionLines[1].StartMs);
     }
 
-    // The review trims ends with the audio, but the published segment keeps the main line's own
-    // span so cues never end up on top of each other.
+    // The review trims ends with the audio and moves cues around, but the published lines keep the
+    // main line's own span: a "moved" cue in the review must not move anything in the grid.
     [Fact]
-    public void PublishedSegment_KeepsTheMainLineSpan()
+    public void MovedCueInTheReview_DoesNotMoveTheMainLine()
     {
         var main = Main(("Prvi red.", 0, 1000));
-        var session = new List<TtsStepResult> { Row(0, 1400, "Izmenjeni red.") };
+        var session = new List<TtsStepResult> { Row(400, 1400, "Izmenjeni red.") };
 
         var result = TtsTextChanges.Build(session, main, clean: true);
 
-        Assert.Equal(1, result.CoveredCount);
         var part = Assert.Single(result.SessionLines);
         Assert.Equal(0, part.StartMs);
         Assert.Equal(1000, part.EndMs);
         Assert.Equal("Izmenjeni red.", part.Text);
+    }
+
+    // A line the review split is divided evenly across its own span - no overlaps, no gaps.
+    [Fact]
+    public void SplitLine_IsDividedEvenlyAcrossTheMainSpan()
+    {
+        var main = Main(("Ovo je jedna linija.", 0, 2000));
+        var session = new List<TtsStepResult>
+        {
+            Row(0, 900, "Prvi deo."),
+            Row(900, 2000, "Drugi deo."),
+        };
+
+        var result = TtsTextChanges.Build(session, main, clean: true);
+
+        Assert.Equal(2, result.SessionLines.Count);
+        Assert.Equal(0, result.SessionLines[0].StartMs);
+        Assert.Equal(1000, result.SessionLines[0].EndMs);
+        Assert.Equal(1000, result.SessionLines[1].StartMs);
+        Assert.Equal(2000, result.SessionLines[1].EndMs);
     }
 
     // A review split publishes two segments for the one line it covered.
