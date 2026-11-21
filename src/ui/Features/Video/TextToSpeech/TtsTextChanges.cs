@@ -103,7 +103,7 @@ public static class TtsTextChanges
         }
 
         var first = Array.FindIndex(perLine, g => g != null);
-        var last = Array.FindLastIndex(perLine, g => g != null);
+        var last = first == 0 ? lines.Count - 1 : Array.FindLastIndex(perLine, g => g != null);
         if (first < 0 || last < first)
         {
             return result;
@@ -116,36 +116,26 @@ public static class TtsTextChanges
         for (var i = first; i <= last; i++)
         {
             var group = perLine[i] ?? new List<TtsStepResult>();
-            if (i == first && i == last && group.Count == 0)
+            foreach (var row in group)
             {
-                continue;
-            }
-
-            if (group.Count == 0)
-            {
-                // The session has no row for this line: it is not part of the review's state, and
-                // publishing it would add a line the review does not show.
-                continue;
-            }
-
-            var lineStart = lines[i].StartTime.TotalMilliseconds;
-            var span = lines[i].EndTime.TotalMilliseconds - lineStart;
-            for (var k = 0; k < group.Count; k++)
-            {
-                var published = clean ? TtsTextCleaner.Clean(group[k].Text) : group[k].Text;
-                if (Normalize(published) != Normalize(lines[i].Text))
+                // Everything the review has: its text and its own time codes, verbatim.
+                var published = clean ? TtsTextCleaner.Clean(row.Text) : row.Text;
+                if (Normalize(published) != Normalize(lines[i].Text) ||
+                    Math.Abs(row.Paragraph.StartTime.TotalMilliseconds - lines[i].StartTime.TotalMilliseconds) > 0.5 ||
+                    Math.Abs(row.Paragraph.EndTime.TotalMilliseconds - lines[i].EndTime.TotalMilliseconds) > 0.5)
                 {
                     changed++;
                     if (changed <= 3)
                     {
                         Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
-                            $"TTS session: line {i} changes \"{Short(lines[i].Text)}\" -> \"{Short(published)}\"");
+                            $"TTS session: line {i} {lines[i].StartTime.TotalMilliseconds:F0}-{lines[i].EndTime.TotalMilliseconds:F0} \"{Short(lines[i].Text)}\"" +
+                            $" -> {row.Paragraph.StartTime.TotalMilliseconds:F0}-{row.Paragraph.EndTime.TotalMilliseconds:F0} \"{Short(published)}\"");
                     }
                 }
 
                 result.SessionLines.Add(new ReviewSplitPart(
-                    lineStart + span * k / group.Count,
-                    lineStart + span * (k + 1) / group.Count,
+                    row.Paragraph.StartTime.TotalMilliseconds,
+                    row.Paragraph.EndTime.TotalMilliseconds,
                     published));
             }
         }

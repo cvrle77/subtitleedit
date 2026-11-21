@@ -14,40 +14,82 @@ public class TtsTextChangesTests
     private static List<Paragraph> Main(params (string Text, double Start, double End)[] lines) =>
         lines.Select(l => new Paragraph(l.Text, l.Start, l.End)).ToList();
 
-    // 1:1: every row becomes exactly one main line, with the review's text.
+    // 1:1: every review row becomes exactly one main line - text and time codes verbatim.
     [Fact]
-    public void EveryRowBecomesOneLine()
+    public void EveryRowBecomesOneLine_WithItsOwnTimes()
     {
         var main = Main(("Prvi red.", 0, 1000), ("Drugi red.", 1000, 2000));
         var session = new List<TtsStepResult>
         {
             Row(0, 1000, "Prvi red."),
-            Row(1000, 2000, "Izmenjeni red."),
+            Row(1000, 2500, "Izmenjeni red."), // end moved in the review
         };
 
         var result = TtsTextChanges.Build(session, main, clean: true);
 
         Assert.Equal(2, result.SessionLines.Count);
-        Assert.Equal("Prvi red.", result.SessionLines[0].Text);
         Assert.Equal("Izmenjeni red.", result.SessionLines[1].Text);
+        Assert.Equal(1000, result.SessionLines[1].StartMs);
+        Assert.Equal(2500, result.SessionLines[1].EndMs); // the review's own end
     }
 
-    // The grid keeps its own time codes: the review's audio times never move a line.
+    // The reported loop: he edits line 9 and moves its start and end; every line keeps its text and
+    // line 9 gets the edited text plus the moved times.
     [Fact]
-    public void GridKeepsItsOwnTimes()
+    public void EditedNinthLine_WithMovedTimes_ComesOutEdited()
     {
-        var main = Main(("Prvi red.", 0, 1000));
-        var session = new List<TtsStepResult> { Row(0, 1400, "Izmenjeni red.") };
+        var main = Enumerable.Range(0, 12)
+            .Select(i => new Paragraph($"Linija {i + 1}.", i * 1000, i * 1000 + 900))
+            .ToList();
 
-        var part = Assert.Single(TtsTextChanges.Build(session, main, clean: true).SessionLines);
+        var session = new List<TtsStepResult>();
+        for (var i = 0; i < 12; i++)
+        {
+            var text = i == 8 ? "Izmenjena deveta" : $"Linija {i + 1}.";
+            var start = i * 1000;
+            var end = start + 900;
+            if (i == 8)
+            {
+                start += 250;
+                end += 400;
+            }
 
-        Assert.Equal(0, part.StartMs);
-        Assert.Equal(1000, part.EndMs);
-        Assert.Equal("Izmenjeni red.", part.Text);
+            session.Add(Row(start, end, text));
+        }
+
+        var result = TtsTextChanges.Build(session, main, clean: true);
+
+        Assert.Equal(12, result.SessionLines.Count);
+        for (var i = 0; i < 12; i++)
+        {
+            Assert.Equal(i == 8 ? "Izmenjena deveta" : $"Linija {i + 1}.", result.SessionLines[i].Text);
+        }
+
+        Assert.Equal(8250, result.SessionLines[8].StartMs);
+        Assert.Equal(9300, result.SessionLines[8].EndMs);
     }
 
-    // The reported catastrophe: the session has one row fewer than the subtitle (a line was
-    // dropped), and mapping by position moved every text after it one line too early.
+    // A split in the review gives two lines, each with the times the review gave it.
+    [Fact]
+    public void SplitPublishesBothHalvesWithTheirTimes()
+    {
+        var main = Main(("Ovo je jedna linija.", 0, 2000));
+        var session = new List<TtsStepResult>
+        {
+            Row(0, 900, "Prvi deo."),
+            Row(900, 2000, "Drugi deo."),
+        };
+
+        var result = TtsTextChanges.Build(session, main, clean: true);
+
+        Assert.Equal(2, result.SessionLines.Count);
+        Assert.Equal("Prvi deo.", result.SessionLines[0].Text);
+        Assert.Equal(900, result.SessionLines[0].EndMs);
+        Assert.Equal("Drugi deo.", result.SessionLines[1].Text);
+        Assert.Equal(900, result.SessionLines[1].StartMs);
+    }
+
+    // A line missing from the session must not shift the following texts onto the wrong lines.
     [Fact]
     public void MissingLineInTheSession_DoesNotShiftTheTexts()
     {
@@ -87,59 +129,6 @@ public class TtsTextChangesTests
         Assert.Equal("Pomereni red.", result.SessionLines[2].Text);
     }
 
-    // A review split publishes two segments for the one line, split evenly across its span.
-    [Fact]
-    public void SplitLineIsDividedEvenly()
-    {
-        var main = Main(("Ovo je jedna linija.", 0, 2000));
-        var session = new List<TtsStepResult>
-        {
-            Row(0, 900, "Prvi deo."),
-            Row(900, 2000, "Drugi deo."),
-        };
-
-        var result = TtsTextChanges.Build(session, main, clean: true);
-
-        Assert.Equal(2, result.SessionLines.Count);
-        Assert.Equal(0, result.SessionLines[0].StartMs);
-        Assert.Equal(1000, result.SessionLines[0].EndMs);
-        Assert.Equal(1000, result.SessionLines[1].StartMs);
-        Assert.Equal(2000, result.SessionLines[1].EndMs);
-    }
-
-    // In/out for the reported case: he edits line 9 and moves its start and end in the review; every
-    // line must come out with its own text, line 9 with the edited one.
-    [Fact]
-    public void EditedNinthLine_WithMovedTimes_ComesOutEdited()
-    {
-        var main = Enumerable.Range(0, 12)
-            .Select(i => new Paragraph($"Linija {i + 1}.", i * 1000, i * 1000 + 900))
-            .ToList();
-
-        var session = new List<TtsStepResult>();
-        for (var i = 0; i < 12; i++)
-        {
-            var text = i == 8 ? "Izmenjena deveta" : $"Linija {i + 1}.";
-            var start = i * 1000;
-            var end = start + 900;
-            if (i == 8)
-            {
-                start += 250; // moved in the review
-                end -= 150;
-            }
-
-            session.Add(Row(start, end, text));
-        }
-
-        var result = TtsTextChanges.Build(session, main, clean: true);
-
-        Assert.Equal(12, result.SessionLines.Count);
-        for (var i = 0; i < 12; i++)
-        {
-            Assert.Equal(i == 8 ? "Izmenjena deveta" : $"Linija {i + 1}.", result.SessionLines[i].Text);
-        }
-    }
-
     // TTS markup is stripped on the way to the subtitle.
     [Fact]
     public void MarkupIsCleaned()
@@ -150,4 +139,3 @@ public class TtsTextChangesTests
         Assert.Equal("Prvi red.", Assert.Single(TtsTextChanges.Build(session, main, clean: true).SessionLines).Text);
     }
 }
-
