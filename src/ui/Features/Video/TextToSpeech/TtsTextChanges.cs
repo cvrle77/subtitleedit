@@ -136,8 +136,7 @@ public static class TtsTextChanges
                 result.SessionLines.Add(new ReviewSplitPart(
                     row.Paragraph.StartTime.TotalMilliseconds,
                     row.Paragraph.EndTime.TotalMilliseconds,
-                    published,
-                    i));
+                    published));
             }
         }
 
@@ -151,7 +150,7 @@ public static class TtsTextChanges
             if (current.EndMs > next.StartMs)
             {
                 var clamped = Math.Max(current.StartMs + 1, next.StartMs);
-                result.SessionLines[i] = new ReviewSplitPart(current.StartMs, clamped, current.Text, current.SourceLineIndex);
+                result.SessionLines[i] = new ReviewSplitPart(current.StartMs, clamped, current.Text);
             }
         }
 
