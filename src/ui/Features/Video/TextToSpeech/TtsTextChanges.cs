@@ -24,6 +24,9 @@ public static class TtsTextChanges
         public List<ReviewSplit> Splits { get; } = new();
     }
 
+    // A cue nudged by the review keeps its line as long as its start stays inside this window.
+    private const double NearestStartToleranceMs = 1500;
+
     public static Result Build(IEnumerable<TtsStepResult> results, IEnumerable<Paragraph> mainLines, bool clean)
     {
         var result = new Result();
@@ -32,6 +35,7 @@ public static class TtsTextChanges
         var matched = 0;
         var noMatch = 0;
         var perLine = new List<TtsStepResult>[lines.Count];
+        var claimed = new bool[lines.Count];
 
         foreach (var item in rows)
         {
@@ -48,6 +52,36 @@ public static class TtsTextChanges
 
             if (index < 0)
             {
+                // A review that trims or nudges cues moves the start by a fraction of a second. The
+                // nearest unclaimed line within this window is still the same line; without it those
+                // edits were reported as NO MATCH and silently lost.
+                var best = -1;
+                var bestDelta = double.MaxValue;
+                for (var i = 0; i < lines.Count; i++)
+                {
+                    if (claimed[i])
+                    {
+                        continue;
+                    }
+
+                    var delta = Math.Abs(lines[i].StartTime.TotalMilliseconds - p.StartTime.TotalMilliseconds);
+                    if (delta < bestDelta)
+                    {
+                        bestDelta = delta;
+                        best = i;
+                    }
+                }
+
+                if (best >= 0 && bestDelta <= NearestStartToleranceMs)
+                {
+                    index = best;
+                    Nikse.SubtitleEdit.Logic.Config.Se.WriteToolsLog(
+                        $"TTS changes: near start {p.StartTime.TotalMilliseconds:F0} -> line {lines[index].StartTime.TotalMilliseconds:F0} (delta={bestDelta:F0}ms) \"{Short(item.Text)}\"");
+                }
+            }
+
+            if (index < 0)
+            {
                 noMatch++;
                 var nearest = lines.Count == 0 ? null : lines.OrderBy(o => Math.Abs(o.StartTime.TotalMilliseconds - p.StartTime.TotalMilliseconds)).First();
                 var delta = nearest == null ? 0 : nearest.StartTime.TotalMilliseconds - p.StartTime.TotalMilliseconds;
@@ -57,6 +91,7 @@ public static class TtsTextChanges
             }
 
             matched++;
+            claimed[index] = true;
             (perLine[index] ??= new List<TtsStepResult>()).Add(item);
         }
 

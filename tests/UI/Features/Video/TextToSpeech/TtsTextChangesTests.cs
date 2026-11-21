@@ -74,6 +74,20 @@ public class TtsTextChangesTests
         Assert.Empty(result.TextChanges);
     }
 
+    // A review that nudges a cue's start (trim, waveform drag) must still find its line: the
+    // reported session had four edited rows 200-730 ms off and they were lost as NO MATCH.
+    [Fact]
+    public void RowNudgedByAFewHundredMilliseconds_IsStillTheLine()
+    {
+        var main = new List<Paragraph> { new("Prvi red.", 0, 1000), new("Drugi red.", 2000, 3000) };
+        var session = new List<TtsStepResult> { Row(2600, 3600, "Izmenjeni red.") };
+
+        var change = Assert.Single(TtsTextChanges.Build(session, main, clean: true).TextChanges);
+        Assert.Equal(2000, change.StartMs); // the main line's own start
+        Assert.Equal(3000, change.EndMs);
+        Assert.Equal("Izmenjeni red.", change.NewText);
+    }
+
     // TTS markup alone must never overwrite a line.
     [Fact]
     public void MarkupOnlyDifference_IsNotAChange()
