@@ -3243,6 +3243,19 @@ public partial class ReviewSpeechViewModel : ObservableObject
     /// half of a split share. Returns false when the audio could not be produced (the row is left
     /// as it was, and the caller must not play it).
     /// </summary>
+    // The neighbouring line's words for the request-stitching context, in the same character window
+    // the generate path uses. Excluded rows are skipped: they are not part of the audio.
+    private string StitchNeighbourText(ReviewRow row, int direction, bool fromEnd)
+    {
+        var texts = Lines
+            .Select(l => l.Include
+                ? Utilities.UnbreakLine(HtmlUtil.RemoveHtmlTags(l.Text ?? string.Empty, alsoSsaTags: true)).Trim()
+                : string.Empty)
+            .ToList();
+
+        return StitchNeighbour.Text(texts, Lines.IndexOf(row), direction, fromEnd);
+    }
+
     private async Task<bool> RegenerateRowCoreAsync(ITtsEngine engine, ReviewRow line, Voice voice,
         string? model, string? instruction, TtsLanguage? language, string? region, string? oldStyle)
     {
@@ -3276,11 +3289,25 @@ public partial class ReviewSpeechViewModel : ObservableObject
             TtsResult speakResult;
             try
             {
+                // ElevenLabs v4: request stitching, exactly like the generate path. A regenerated
+                // line used to be sent on its own, so the model had no neighbouring words to
+                // condition the delivery on and it could sound unlike the same line in the first
+                // read. Request ids are not available per row (a chunked v4 run has none), so this
+                // uses the text window the generate path uses when ids are missing.
+                var stripText = Utilities.UnbreakLine(HtmlUtil.RemoveHtmlTags(line.Text, alsoSsaTags: true));
+                var stitch = engine is ElevenLabs && model is "eleven_v4" or "eleven_v4_turbo"
+                    ? new TtsStitchContext(
+                        StitchNeighbourText(line, -1, fromEnd: true),
+                        StitchNeighbourText(line, +1, fromEnd: false),
+                        Array.Empty<string>())
+                    : null;
+
                 speakResult = await TtsInstructionSwap.RunAsync(engine, instruction, () =>
                     // Strip markup here the way the main generate path does - the row text is the
                     // subtitle's own text, and engines vocalize "<i>" or garble on tags.
-                    engine.Speak(Utilities.UnbreakLine(HtmlUtil.RemoveHtmlTags(line.Text, alsoSsaTags: true)),
-                        _waveFolder, voice, language, region, model, _cancellationToken));
+                    stitch is null
+                        ? engine.Speak(stripText, _waveFolder, voice, language, region, model, _cancellationToken)
+                        : ((ElevenLabs)engine).SpeakStitched(stripText, _waveFolder, voice, language, region, model, stitch, _cancellationToken));
             }
             finally
             {
