@@ -77,20 +77,31 @@ public static class TtsTextChanges
             var group = perLine[i];
             if (group == null)
             {
-                // A main line that no row speaks stays as it is (its own text and time codes).
-                result.SessionLines.Add(new ReviewSplitPart(
-                    lines[i].StartTime.TotalMilliseconds,
-                    lines[i].EndTime.TotalMilliseconds,
-                    clean ? TtsTextCleaner.Clean(lines[i].Text) : lines[i].Text));
+                // A main line the session has no row for is not part of the review's state: the
+                // session is what gets published, one segment per row (155 rows in, 155 lines out).
                 continue;
             }
 
-            foreach (var row in group.OrderBy(g => g.Paragraph.StartTime.TotalMilliseconds))
+            var ordered = group.OrderBy(g => g.Paragraph.StartTime.TotalMilliseconds).ToList();
+            for (var k = 0; k < ordered.Count; k++)
             {
+                // Text and structure come from the review, the timing envelope from the main line:
+                // the review trims and extends ends with the audio, so publishing its raw times put
+                // cues on top of each other. The line's own span is split at the review's own
+                // boundaries, which keeps the segment count and the texts exact without overlapping.
+                var lineStart = lines[i].StartTime.TotalMilliseconds;
+                var lineEnd = lines[i].EndTime.TotalMilliseconds;
+                var start = k == 0
+                    ? lineStart
+                    : Math.Clamp(ordered[k].Paragraph.StartTime.TotalMilliseconds, lineStart, lineEnd);
+                var end = k == ordered.Count - 1
+                    ? lineEnd
+                    : Math.Clamp(ordered[k + 1].Paragraph.StartTime.TotalMilliseconds, start, lineEnd);
+
                 result.SessionLines.Add(new ReviewSplitPart(
-                    row.Paragraph.StartTime.TotalMilliseconds,
-                    row.Paragraph.EndTime.TotalMilliseconds,
-                    clean ? TtsTextCleaner.Clean(row.Text) : row.Text));
+                    start,
+                    end,
+                    clean ? TtsTextCleaner.Clean(ordered[k].Text) : ordered[k].Text));
             }
         }
 
